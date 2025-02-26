@@ -1,28 +1,44 @@
 'use client'
 
-import React, { useState } from 'react';
+import React, { useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Trophy, ArrowUp, ArrowDown, Calendar, Dumbbell, Scale, Info } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { useProgressStore } from '@/store/progress';
 
 const ProgressDashboard = () => {
-  // Mock data for charts
-  const performanceData = [
-    { date: "02/10", pushups: 18, pullups: 10, weight: 76.2 },
-    { date: "02/12", pushups: 20, pullups: 11, weight: 75.8 },
-    { date: "02/14", pushups: 19, pullups: 12, weight: 75.5 },
-    { date: "02/16", pushups: 22, pullups: 12, weight: 75.2 },
-    { date: "02/17", pushups: 23, pullups: 13, weight: 75.5 },
-  ];
+  const { 
+    performanceData, 
+    achievements, 
+    currentWeight,
+    weightChange,
+    maxPushups,
+    pushupChange,
+    trainingDays,
+    isLoading, 
+    error, 
+    fetchProgressData 
+  } = useProgressStore();
 
-  const achievements = [
-    { id: 1, title: "20+ Push-ups", date: "Feb 12", type: "strength" },
-    { id: 2, title: "Sub 76kg Weight", date: "Feb 14", type: "weight" },
-    { id: 3, title: "10+ Pull-ups", date: "Feb 10", type: "strength" },
-  ];
+  useEffect(() => {
+    fetchProgressData();
+  }, [fetchProgressData]);
+
+  if (isLoading) {
+    return <div className="text-center py-8">Loading progress data...</div>;
+  }
+
+  if (error) {
+    return (
+      <Alert variant="destructive" className="m-4">
+        <AlertTitle>Error</AlertTitle>
+        <AlertDescription>{error}</AlertDescription>
+      </Alert>
+    );
+  }
 
   return (
-    <div className="max-w-3xl mx-auto p-6 space-y-6">
+    <div className="max-w-3xl mx-auto p-6 space-y-6 bg-white shadow-md rounded-lg">
       {/* Header */}
       <div className="space-y-2">
         <h1 className="text-2xl font-bold">Progress Dashboard</h1>
@@ -31,43 +47,43 @@ const ProgressDashboard = () => {
 
       {/* Key Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white p-4 rounded-lg border border-gray-200">
+        <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
           <div className="flex items-center space-x-2 text-gray-600 mb-2">
             <Scale className="h-5 w-5" />
             <span className="font-medium">Current Weight</span>
           </div>
           <div className="flex items-baseline space-x-2">
-            <span className="text-2xl font-bold">75.5</span>
+            <span className="text-2xl font-bold">{currentWeight}</span>
             <span className="text-sm text-gray-600">kg</span>
             <span className="text-sm text-green-600 flex items-center">
               <ArrowDown className="h-4 w-4" />
-              0.7kg
+              {Math.abs(weightChange)}kg
             </span>
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-lg border border-gray-200">
+        <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
           <div className="flex items-center space-x-2 text-gray-600 mb-2">
             <Dumbbell className="h-5 w-5" />
             <span className="font-medium">Max Push-ups</span>
           </div>
           <div className="flex items-baseline space-x-2">
-            <span className="text-2xl font-bold">23</span>
+            <span className="text-2xl font-bold">{maxPushups}</span>
             <span className="text-sm text-gray-600">reps</span>
             <span className="text-sm text-green-600 flex items-center">
               <ArrowUp className="h-4 w-4" />
-              3 reps
+              {pushupChange} reps
             </span>
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-lg border border-gray-200">
+        <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
           <div className="flex items-center space-x-2 text-gray-600 mb-2">
             <Calendar className="h-5 w-5" />
             <span className="font-medium">Training Days</span>
           </div>
           <div className="flex items-baseline space-x-2">
-            <span className="text-2xl font-bold">5/7</span>
+            <span className="text-2xl font-bold">{trainingDays}/7</span>
             <span className="text-sm text-gray-600">days</span>
             <span className="text-sm text-blue-600">on track</span>
           </div>
@@ -75,7 +91,7 @@ const ProgressDashboard = () => {
       </div>
 
       {/* Performance Chart */}
-      <div className="bg-white p-4 rounded-lg border border-gray-200">
+      <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
         <h3 className="font-medium mb-4">Strength Progress vs Weight</h3>
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
@@ -113,7 +129,7 @@ const ProgressDashboard = () => {
       </div>
 
       {/* Recent Achievements */}
-      <div className="bg-white rounded-lg border border-gray-200">
+      <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
         <div className="p-4 border-b border-gray-200">
           <h3 className="font-medium">Recent Achievements</h3>
         </div>
