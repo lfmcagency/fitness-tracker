@@ -1,0 +1,9 @@
+import ProgressDashboard from '@/components/ProgressDashboard';
+
+export default function DashboardPage() {
+  return (
+    <main className="min-h-screen bg-gray-50">
+      <ProgressDashboard />
+    </main>
+  );
+}

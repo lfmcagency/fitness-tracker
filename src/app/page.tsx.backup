@@ -1,0 +1,53 @@
+﻿// src/app/page.tsx
+import { BarChart2, Dumbbell, Apple, CheckSquare } from 'lucide-react';
+import Link from 'next/link';
+
+export default function HomePage() {
+  const modules = [
+    {
+      href: "/dashboard",
+      title: "Dashboard",
+      description: "Track your overall progress and metrics",
+      icon: <BarChart2 className="h-6 w-6 mb-2 text-blue-500" />
+    },
+    {
+      href: "/training",
+      title: "Training",
+      description: "Manage your workouts and exercises",
+      icon: <Dumbbell className="h-6 w-6 mb-2 text-green-500" />
+    },
+    {
+      href: "/nutrition",
+      title: "Nutrition",
+      description: "Track your nutrition and macros",
+      icon: <Apple className="h-6 w-6 mb-2 text-red-500" />
+    },
+    {
+      href: "/routine",
+      title: "Daily Routine",
+      description: "Manage your daily tasks and habits",
+      icon: <CheckSquare className="h-6 w-6 mb-2 text-purple-500" />
+    }
+  ];
+
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-gray-50">
+      <h1 className="text-4xl font-bold mb-4">Welcome to FitTrack</h1>
+      <p className="text-gray-600 mb-12">Select a module to get started</p>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl w-full">
+        {modules.map((module) => (
+          <Link 
+            key={module.href} 
+            href={module.href}
+            className="p-6 bg-white rounded-lg shadow-sm border border-gray-200 hover:border-blue-500 transition-colors flex flex-col items-center text-center"
+          >
+            {module.icon}
+            <h2 className="text-xl font-semibold mb-2">{module.title}</h2>
+            <p className="text-gray-600">{module.description}</p>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
