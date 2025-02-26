@@ -1,14 +1,13 @@
 // src/app/api/auth/[...nextauth]/route.ts
 import NextAuth from 'next-auth';
+import CredentialsProvider from 'next-auth/providers/credentials';
 import { MongoDBAdapter } from '@auth/mongodb-adapter';
 import clientPromise from '@/lib/db/mongodb-adapter';
-import GoogleProvider from 'next-auth/providers/google';
-import CredentialsProvider from 'next-auth/providers/credentials';
 import dbConnect from '@/lib/db/mongodb';
 import User from '@/models/User';
 import { compare } from 'bcrypt';
 
-export const authOptions = {
+const handler = NextAuth({
   adapter: MongoDBAdapter(clientPromise),
   providers: [
     CredentialsProvider({
@@ -43,11 +42,6 @@ export const authOptions = {
         };
       }
     }),
-    // Add Google provider if needed
-    // GoogleProvider({
-    //   clientId: process.env.GOOGLE_CLIENT_ID,
-    //   clientSecret: process.env.GOOGLE_CLIENT_SECRET
-    // })
   ],
   session: {
     strategy: 'jwt',
@@ -55,8 +49,7 @@ export const authOptions = {
   pages: {
     signIn: '/auth/signin',
   },
-};
-
-const handler = NextAuth(authOptions);
+  secret: process.env.NEXTAUTH_SECRET,
+});
 
 export { handler as GET, handler as POST };
