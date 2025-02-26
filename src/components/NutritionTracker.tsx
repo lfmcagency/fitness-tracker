@@ -1,42 +1,20 @@
 'use client'
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Calendar, Plus, Search, Timer, Info, ChevronRight, ChevronDown, ArrowUp, BarChart2 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
-import type { MacroGoals, Meal, Food } from '@/types';
+import { useNutritionStore } from '@/store/nutrition';
 
 const NutritionTracker: React.FC = () => {
+  const { meals, goals, isLoading, error, fetchMeals } = useNutritionStore();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [showSearch, setShowSearch] = useState<boolean>(false);
   const [searchTerm, setSearchTerm] = useState<string>('');
 
-  const [goals] = useState<MacroGoals>({
-    protein: 140,
-    carbs: 350,
-    fat: 90,
-    calories: 3000
-  });
-
-  const [meals, setMeals] = useState<Meal[]>([
-    {
-      id: 1,
-      name: "Breakfast",
-      time: "08:00",
-      foods: [
-        { name: "Oatmeal", amount: 100, protein: 13, carbs: 68, fat: 7, calories: 389 },
-        { name: "Protein Shake", amount: 30, protein: 24, carbs: 3, fat: 2, calories: 120 }
-      ]
-    },
-    {
-      id: 2,
-      name: "Lunch",
-      time: "13:00",
-      foods: [
-        { name: "Chicken Breast", amount: 200, protein: 62, carbs: 0, fat: 7, calories: 330 }
-      ]
-    }
-  ]);
+  useEffect(() => {
+    fetchMeals(selectedDate.toISOString().split('T')[0]);
+  }, [fetchMeals, selectedDate]);
 
   // Calculate totals
   const totals = meals.reduce((acc, meal) => {
@@ -55,15 +33,15 @@ const NutritionTracker: React.FC = () => {
     };
   }, { protein: 0, carbs: 0, fat: 0, calories: 0 });
 
-  // Sample food database with types
-  const foodDatabase: Food[] = [
+  // Sample food database
+  const foodDatabase = [
     { name: "Chicken Breast", amount: 100, protein: 31, carbs: 0, fat: 3.6, calories: 165 },
     { name: "Oatmeal", amount: 100, protein: 13, carbs: 68, fat: 7, calories: 389 },
     { name: "Protein Shake", amount: 30, protein: 24, carbs: 3, fat: 2, calories: 120 }
   ];
 
   return (
-    <div className="max-w-2xl mx-auto p-6 space-y-6">
+    <div className="max-w-2xl mx-auto p-6 space-y-6 bg-white shadow-md rounded-lg">
       {/* Header with Date Selection */}
       <div className="flex justify-between items-center">
         <div className="space-y-1">
@@ -83,6 +61,18 @@ const NutritionTracker: React.FC = () => {
           Weekly View
         </button>
       </div>
+
+      {/* Loading state */}
+      {isLoading && <div className="text-center py-4">Loading meals...</div>}
+
+      {/* Error state */}
+      {error && (
+        <Alert variant="destructive">
+          <Info className="h-4 w-4" />
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
 
       {/* Macro Overview Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -111,6 +101,7 @@ const NutritionTracker: React.FC = () => {
         ))}
       </div>
 
+      {/* Rest of the component remains the same... */}
       {/* Quick Add Section */}
       <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-4">
         <div className="flex items-center space-x-2">
@@ -207,4 +198,3 @@ const NutritionTracker: React.FC = () => {
 };
 
 export default NutritionTracker;
-

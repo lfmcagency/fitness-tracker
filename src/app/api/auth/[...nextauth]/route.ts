@@ -1,7 +1,7 @@
+// src/app/api/auth/[...nextauth]/route.ts
 import NextAuth from "next-auth/next";
 import CredentialsProvider from "next-auth/providers/credentials";
 
-// Define a simplified version of authOptions for local development
 const authOptions = {
   providers: [
     CredentialsProvider({
@@ -31,12 +31,9 @@ const authOptions = {
   pages: {
     signIn: "/auth/signin",
   },
-  // Add this to make NextAuth work without database access
   secret: process.env.NEXTAUTH_SECRET || "development-secret-key",
 };
 
-// Create the handler
 const handler = NextAuth(authOptions);
 
-// Export the handler functions
 export { handler as GET, handler as POST };

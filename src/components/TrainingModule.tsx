@@ -1,55 +1,20 @@
 'use client'
 
-import React, { useState } from 'react';
+import React, { useEffect } from 'react';
 import { Timer, ChevronRight, ArrowUp, BarChart2, Info } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
-import type { Exercise } from '@/types';
+import { useWorkoutStore } from '@/store/workout';
 
 const TrainingModule: React.FC = () => {
-  const [currentWeight, setCurrentWeight] = useState<string>("75.5");
-  const [exercises, setExercises] = useState<Exercise[]>([
-    {
-      id: 1,
-      name: "Push-Ups",
-      sets: [
-        { reps: 20, completed: true },
-        { reps: 18, completed: true },
-        { reps: 15, completed: false },
-        { reps: 12, completed: false }
-      ],
-      lastSession: { maxReps: 18, totalVolume: 65 },
-      restTime: 90
-    },
-    {
-      id: 2,
-      name: "Pull-Ups",
-      sets: [
-        { reps: 12, completed: true },
-        { reps: 10, completed: false },
-        { reps: 8, completed: false }
-      ],
-      lastSession: { maxReps: 10, totalVolume: 30 },
-      restTime: 120
-    },
-    {
-      id: 3,
-      name: "Dips",
-      sets: [
-        { reps: 15, completed: false },
-        { reps: 12, completed: false },
-        { reps: 10, completed: false }
-      ],
-      lastSession: { maxReps: 12, totalVolume: 37 },
-      restTime: 90
-    }
-  ]);
+  const { exercises, currentWeight, isLoading, error, fetchExercises, updateCurrentWeight, toggleSet } = useWorkoutStore();
 
-  const [activeTimer, setActiveTimer] = useState<number | null>(null);
-  const [elapsedTime, setElapsedTime] = useState<number>(0);
+  useEffect(() => {
+    fetchExercises();
+  }, [fetchExercises]);
 
   return (
-    <div className="max-w-2xl mx-auto p-6 space-y-6">
+    <div className="max-w-2xl mx-auto p-6 space-y-6 bg-white shadow-md rounded-lg">
       {/* Header Section */}
       <div className="space-y-2">
         <h1 className="text-2xl font-bold">Upper Body Push/Pull</h1>
@@ -65,11 +30,23 @@ const TrainingModule: React.FC = () => {
         <input
           type="number"
           value={currentWeight}
-          onChange={(e) => setCurrentWeight(e.target.value)}
+          onChange={(e) => updateCurrentWeight(e.target.value)}
           className="mt-1 p-2 border border-gray-300 rounded-md w-full"
           step="0.1"
         />
       </div>
+
+      {/* Loading state */}
+      {isLoading && <div className="text-center py-4">Loading exercises...</div>}
+
+      {/* Error state */}
+      {error && (
+        <Alert variant="destructive">
+          <Info className="h-4 w-4" />
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
 
       {/* Exercises */}
       <div className="space-y-4">
@@ -84,29 +61,33 @@ const TrainingModule: React.FC = () => {
                 </div>
               </div>
 
-              {/* Progress from last session */}
+              {/* Progress from last session - with null checking */}
               <div className="mt-2 flex items-center space-x-4 text-sm text-gray-600">
                 <div className="flex items-center space-x-1">
                   <ArrowUp className="h-4 w-4 text-green-500" />
-                  <span>Max: {exercise.lastSession.maxReps} reps</span>
+                  <span>Max: {exercise.lastSession?.maxReps || 0} reps</span>
                 </div>
                 <div className="flex items-center space-x-1">
                   <BarChart2 className="h-4 w-4 text-blue-500" />
-                  <span>Volume: {exercise.lastSession.totalVolume}</span>
+                  <span>Volume: {exercise.lastSession?.totalVolume || 0}</span>
                 </div>
               </div>
             </div>
 
             {/* Sets */}
             <div className="divide-y divide-gray-100">
-              {exercise.sets.map((set, index) => (
-                <div key={index} className="p-4 flex justify-between items-center hover:bg-gray-50">
+              {exercise.sets?.map((set, index) => (
+                <div 
+                  key={index} 
+                  className="p-4 flex justify-between items-center hover:bg-gray-50 cursor-pointer"
+                  onClick={() => toggleSet(exercise.id, index)}
+                >
                   <div className="flex items-center space-x-3">
                     <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center
                       ${set.completed 
                         ? "border-green-500 bg-green-50 text-green-500" 
                         : "border-gray-300"}`}>
-                      {set.completed && "?"}
+                      {set.completed && "✓"}
                     </div>
                     <span className="font-medium">Set {index + 1}</span>
                   </div>
@@ -134,4 +115,3 @@ const TrainingModule: React.FC = () => {
 };
 
 export default TrainingModule;
-
