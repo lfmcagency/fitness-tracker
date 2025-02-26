@@ -1,13 +1,17 @@
 'use client'
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CheckCircle2, Circle, Info, ChevronRight, Timer, Zap } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 import { useTaskStore } from '@/store/tasks';
 
 const DailyRoutineManager: React.FC = () => {
-  const { tasks, toggleTask } = useTaskStore();
+  const { tasks, toggleTask, fetchTasks } = useTaskStore();
+  
+  useEffect(() => {
+    fetchTasks();
+  }, [fetchTasks]);
   
   const completedTasks = tasks.filter(task => task.completed).length;
   const totalTasks = tasks.length;
@@ -87,4 +91,3 @@ const DailyRoutineManager: React.FC = () => {
 };
 
 export default DailyRoutineManager;
-
