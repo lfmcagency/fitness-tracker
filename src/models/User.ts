@@ -1,4 +1,3 @@
-// src/models/User.ts
 import mongoose from 'mongoose';
 
 const UserSchema = new mongoose.Schema({
@@ -7,6 +6,11 @@ const UserSchema = new mongoose.Schema({
     type: String,
     required: true,
     unique: true
+  },
+  password: {
+    type: String,
+    // Make password optional for now during development
+    required: false
   },
   image: String,
   bodyweight: [{
@@ -22,4 +26,7 @@ const UserSchema = new mongoose.Schema({
   }
 }, { timestamps: true });
 
-export default mongoose.models.User || mongoose.model('User', UserSchema);
+// Use this pattern to avoid model recompilation errors
+const User = mongoose.models.User || mongoose.model('User', UserSchema);
+
+export default User;

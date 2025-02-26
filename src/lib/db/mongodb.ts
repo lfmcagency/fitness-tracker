@@ -1,17 +1,8 @@
-// src/lib/db/mongodb.ts
 import mongoose from 'mongoose';
 
-if (!process.env.MONGODB_URI) {
-  throw new Error('Please define the MONGODB_URI environment variable');
-}
+// Check for MongoDB URI and provide fallback for development
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/fitness-tracker';
 
-const MONGODB_URI = process.env.MONGODB_URI;
-
-/**
- * Global is used here to maintain a cached connection across hot reloads
- * in development. This prevents connections growing exponentially
- * during API Route usage.
- */
 let cached = global.mongoose;
 
 if (!cached) {
@@ -28,12 +19,33 @@ async function dbConnect() {
       bufferCommands: false,
     };
 
-    cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongoose) => {
-      return mongoose;
-    });
+    // Add proper error handling
+    cached.promise = (async () => {
+      try {
+        console.log('Connecting to MongoDB...');
+        return await mongoose.connect(MONGODB_URI, opts);
+      } catch (error) {
+        console.error('MongoDB connection error:', error);
+        
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('Continuing with limited functionality in development mode');
+          return mongoose; // Return mongoose instance even without connection
+        } else {
+          throw error; // In production, fail if DB can't connect
+        }
+      }
+    })();
   }
 
-  cached.conn = await cached.promise;
+  try {
+    cached.conn = await cached.promise;
+  } catch (error) {
+    // Already logged in the promise
+    if (process.env.NODE_ENV !== 'development') {
+      throw error;
+    }
+  }
+  
   return cached.conn;
 }
 

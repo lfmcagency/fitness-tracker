@@ -1,8 +1,8 @@
-import NextAuth from "next-auth/next";
+import { getServerSession } from "next-auth/next";
+import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 
-// Define a simplified version of authOptions for local development
-const authOptions = {
+export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
       name: "Credentials",
@@ -11,7 +11,7 @@ const authOptions = {
         password: { label: "Password", type: "password" }
       },
       async authorize(credentials) {
-        // For development purposes, accept a hardcoded test user
+        // For development purposes only
         if (credentials?.email === "test@example.com" && credentials?.password === "password") {
           return {
             id: "1",
@@ -19,8 +19,6 @@ const authOptions = {
             email: "test@example.com"
           };
         }
-        
-        // Any other credentials will fail
         return null;
       }
     }),
@@ -31,12 +29,7 @@ const authOptions = {
   pages: {
     signIn: "/auth/signin",
   },
-  // Add this to make NextAuth work without database access
   secret: process.env.NEXTAUTH_SECRET || "development-secret-key",
 };
 
-// Create the handler
-const handler = NextAuth(authOptions);
-
-// Export the handler functions
-export { handler as GET, handler as POST };
+export const getAuth = () => getServerSession(authOptions);
