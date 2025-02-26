@@ -1,17 +1,62 @@
 'use client'
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Timer, ChevronRight, ArrowUp, BarChart2, Info } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
-import { useWorkoutStore } from '@/store/workout';
-
 const TrainingModule: React.FC = () => {
-  const { exercises, currentWeight, isLoading, error, fetchExercises, updateCurrentWeight, toggleSet } = useWorkoutStore();
+  const [currentWeight, setCurrentWeight] = useState<string>("75.5");
+  const [exercises, setExercises] = useState([
+    {
+      id: 1,
+      name: "Push-ups",
+      sets: [
+        { reps: 20, completed: false },
+        { reps: 18, completed: false },
+        { reps: 15, completed: false }
+      ],
+      lastSession: { maxReps: 18, totalVolume: 65 },
+      restTime: 90
+    },
+    {
+      id: 2,
+      name: "Pull-ups",
+      sets: [
+        { reps: 12, completed: false },
+        { reps: 10, completed: false },
+        { reps: 8, completed: false }
+      ],
+      lastSession: { maxReps: 10, totalVolume: 30 },
+      restTime: 120
+    },
+    {
+      id: 3,
+      name: "Squats",
+      sets: [
+        { reps: 20, completed: false },
+        { reps: 18, completed: false },
+        { reps: 15, completed: false }
+      ],
+      lastSession: { maxReps: 18, totalVolume: 65 },
+      restTime: 90
+    }
+  ]);
 
-  useEffect(() => {
-    fetchExercises();
-  }, [fetchExercises]);
+  const toggleSet = (exerciseId: number, setIndex: number) => {
+    setExercises(prevExercises => 
+      prevExercises.map(exercise => {
+        if (exercise.id === exerciseId) {
+          const updatedSets = [...exercise.sets];
+          updatedSets[setIndex] = {
+            ...updatedSets[setIndex],
+            completed: !updatedSets[setIndex].completed
+          };
+          return { ...exercise, sets: updatedSets };
+        }
+        return exercise;
+      })
+    );
+  };
 
   return (
     <div className="max-w-2xl mx-auto p-6 space-y-6 bg-white shadow-md rounded-lg">
@@ -30,23 +75,11 @@ const TrainingModule: React.FC = () => {
         <input
           type="number"
           value={currentWeight}
-          onChange={(e) => updateCurrentWeight(e.target.value)}
+          onChange={(e) => setCurrentWeight(e.target.value)}
           className="mt-1 p-2 border border-gray-300 rounded-md w-full"
           step="0.1"
         />
       </div>
-
-      {/* Loading state */}
-      {isLoading && <div className="text-center py-4">Loading exercises...</div>}
-
-      {/* Error state */}
-      {error && (
-        <Alert variant="destructive">
-          <Info className="h-4 w-4" />
-          <AlertTitle>Error</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
 
       {/* Exercises */}
       <div className="space-y-4">
@@ -61,7 +94,7 @@ const TrainingModule: React.FC = () => {
                 </div>
               </div>
 
-              {/* Progress from last session - with null checking */}
+              {/* Progress from last session */}
               <div className="mt-2 flex items-center space-x-4 text-sm text-gray-600">
                 <div className="flex items-center space-x-1">
                   <ArrowUp className="h-4 w-4 text-green-500" />
@@ -76,7 +109,7 @@ const TrainingModule: React.FC = () => {
 
             {/* Sets */}
             <div className="divide-y divide-gray-100">
-              {exercise.sets?.map((set, index) => (
+              {exercise.sets.map((set, index) => (
                 <div 
                   key={index} 
                   className="p-4 flex justify-between items-center hover:bg-gray-50 cursor-pointer"

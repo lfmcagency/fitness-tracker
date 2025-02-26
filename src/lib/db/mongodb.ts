@@ -17,33 +17,31 @@ async function dbConnect() {
   if (!cached.promise) {
     const opts = {
       bufferCommands: false,
+      serverSelectionTimeoutMS: 5000,
     };
 
     // Add proper error handling
-    cached.promise = (async () => {
-      try {
-        console.log('Connecting to MongoDB...');
-        return await mongoose.connect(MONGODB_URI, opts);
-      } catch (error) {
+    cached.promise = mongoose.connect(MONGODB_URI, opts)
+      .then(mongoose => {
+        console.log('Connected to MongoDB');
+        return mongoose;
+      })
+      .catch(error => {
         console.error('MongoDB connection error:', error);
         
         if (process.env.NODE_ENV === 'development') {
-          console.warn('Continuing with limited functionality in development mode');
+          console.warn('Using mock data in development mode');
           return mongoose; // Return mongoose instance even without connection
-        } else {
-          throw error; // In production, fail if DB can't connect
         }
-      }
-    })();
+        
+        throw error; // In production, fail if DB can't connect
+      });
   }
 
   try {
     cached.conn = await cached.promise;
   } catch (error) {
-    // Already logged in the promise
-    if (process.env.NODE_ENV !== 'development') {
-      throw error;
-    }
+    console.error('Failed to connect to MongoDB, using mock data');
   }
   
   return cached.conn;

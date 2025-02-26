@@ -1,16 +1,19 @@
 'use client'
 
 import React, { useState, useEffect } from 'react';
-import { Calendar, Plus, Search, Timer, Info, ChevronRight, ChevronDown, ArrowUp, BarChart2 } from 'lucide-react';
+import { Calendar, Plus, Search, Timer, Info, ChevronRight, X } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-
 import { useNutritionStore } from '@/store/nutrition';
+import MealModal from './MealModal';
 
 const NutritionTracker: React.FC = () => {
-  const { meals, goals, isLoading, error, fetchMeals } = useNutritionStore();
+  const { meals, goals, isLoading, error, fetchMeals, addFoodToMeal, addMeal } = useNutritionStore();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [showSearch, setShowSearch] = useState<boolean>(false);
   const [searchTerm, setSearchTerm] = useState<string>('');
+  const [activeMealId, setActiveMealId] = useState<number | null>(null);
+  const [showFoodModal, setShowFoodModal] = useState<boolean>(false);
+  const [showMealModal, setShowMealModal] = useState<boolean>(false);
 
   useEffect(() => {
     fetchMeals(selectedDate.toISOString().split('T')[0]);
@@ -37,8 +40,39 @@ const NutritionTracker: React.FC = () => {
   const foodDatabase = [
     { name: "Chicken Breast", amount: 100, protein: 31, carbs: 0, fat: 3.6, calories: 165 },
     { name: "Oatmeal", amount: 100, protein: 13, carbs: 68, fat: 7, calories: 389 },
-    { name: "Protein Shake", amount: 30, protein: 24, carbs: 3, fat: 2, calories: 120 }
+    { name: "Protein Shake", amount: 30, protein: 24, carbs: 3, fat: 2, calories: 120 },
+    { name: "Rice", amount: 100, protein: 7, carbs: 80, fat: 0.6, calories: 365 },
+    { name: "Eggs", amount: 50, protein: 6, carbs: 0.6, fat: 5, calories: 78 },
+    { name: "Broccoli", amount: 100, protein: 2.8, carbs: 7, fat: 0.4, calories: 34 }
   ];
+
+  const handleAddFood = (mealId: number) => {
+    setActiveMealId(mealId);
+    setShowFoodModal(true);
+    setSearchTerm('');
+  };
+
+  const quickAddFood = (food: any) => {
+    if (activeMealId) {
+      addFoodToMeal(activeMealId, food);
+      setShowFoodModal(false);
+      setSearchTerm('');
+    }
+  };
+
+  const handleAddMeal = (mealData: { name: string; time: string }) => {
+    addMeal(mealData);
+  };
+
+  const filteredFoods = searchTerm 
+    ? foodDatabase.filter(food => food.name.toLowerCase().includes(searchTerm.toLowerCase()))
+    : [];
+
+  const handleDateChange = (increment: number) => {
+    const newDate = new Date(selectedDate);
+    newDate.setDate(newDate.getDate() + increment);
+    setSelectedDate(newDate);
+  };
 
   return (
     <div className="max-w-2xl mx-auto p-6 space-y-6 bg-white shadow-md rounded-lg">
@@ -46,8 +80,9 @@ const NutritionTracker: React.FC = () => {
       <div className="flex justify-between items-center">
         <div className="space-y-1">
           <h1 className="text-2xl font-bold">Nutrition Tracker</h1>
-          <div className="flex items-center space-x-2 text-gray-600 cursor-pointer">
+          <div className="flex items-center space-x-2 text-gray-600">
             <Calendar className="h-4 w-4" />
+            <button onClick={() => handleDateChange(-1)} className="px-1">◀</button>
             <span>
               {selectedDate.toLocaleDateString('en-US', { 
                 weekday: 'long', 
@@ -55,6 +90,7 @@ const NutritionTracker: React.FC = () => {
                 day: 'numeric' 
               })}
             </span>
+            <button onClick={() => handleDateChange(1)} className="px-1">▶</button>
           </div>
         </div>
         <button className="text-blue-600 hover:text-blue-700 font-medium">
@@ -77,10 +113,10 @@ const NutritionTracker: React.FC = () => {
       {/* Macro Overview Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: 'Protein', value: totals.protein, goal: goals.protein, color: 'bg-pink-500', icon: 'P' },
-          { label: 'Carbs', value: totals.carbs, goal: goals.carbs, color: 'bg-blue-500', icon: 'C' },
-          { label: 'Fat', value: totals.fat, goal: goals.fat, color: 'bg-green-500', icon: 'F' },
-          { label: 'Calories', value: totals.calories, goal: goals.calories, color: 'bg-orange-500', icon: 'kCal' }
+          { label: 'Protein', value: totals.protein, goal: goals.protein, color: 'bg-pink-500', textColor: 'text-pink-500', icon: 'P' },
+          { label: 'Carbs', value: totals.carbs, goal: goals.carbs, color: 'bg-blue-500', textColor: 'text-blue-500', icon: 'C' },
+          { label: 'Fat', value: totals.fat, goal: goals.fat, color: 'bg-green-500', textColor: 'text-green-500', icon: 'F' },
+          { label: 'Calories', value: totals.calories, goal: goals.calories, color: 'bg-orange-500', textColor: 'text-orange-500', icon: 'kCal' }
         ].map((macro) => (
           <div key={macro.label} className="bg-white p-4 rounded-lg border border-gray-200 space-y-2">
             <div className="flex justify-between items-center">
@@ -101,8 +137,7 @@ const NutritionTracker: React.FC = () => {
         ))}
       </div>
 
-      {/* Rest of the component remains the same... */}
-      {/* Quick Add Section */}
+      {/* Food Search & Quick Add */}
       <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-4">
         <div className="flex items-center space-x-2">
           <Search className="h-5 w-5 text-gray-400" />
@@ -112,24 +147,48 @@ const NutritionTracker: React.FC = () => {
             className="w-full outline-none"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            onFocus={() => setShowSearch(true)}
           />
+          {searchTerm && (
+            <button onClick={() => setSearchTerm('')} className="text-gray-500">
+              <X className="h-4 w-4" />
+            </button>
+          )}
         </div>
         
         {/* Frequent Foods */}
         <div>
           <h3 className="text-sm font-medium text-gray-700 mb-3">Quick Add</h3>
           <div className="flex flex-wrap gap-2">
-            {["Protein Shake", "Chicken Breast", "Rice", "Eggs", "Oatmeal"].map((food, index) => (
+            {["Protein Shake", "Chicken Breast", "Rice", "Eggs", "Oatmeal"].map((foodName, index) => {
+              const food = foodDatabase.find(f => f.name === foodName);
+              return (
+                <button
+                  key={index}
+                  className="px-3 py-1.5 bg-gray-100 rounded-full text-sm text-gray-700 hover:bg-gray-200 transition-colors"
+                  onClick={() => food && activeMealId && quickAddFood(food)}
+                >
+                  {foodName}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Search Results */}
+        {searchTerm && filteredFoods.length > 0 && (
+          <div className="mt-2 border rounded-md divide-y">
+            {filteredFoods.map((food, idx) => (
               <button
-                key={index}
-                className="px-3 py-1.5 bg-gray-100 rounded-full text-sm text-gray-700 hover:bg-gray-200 transition-colors"
+                key={idx}
+                className="w-full p-2 text-left hover:bg-gray-50 flex justify-between items-center"
+                onClick={() => activeMealId && quickAddFood(food)}
               >
-                {food}
+                <span>{food.name}</span>
+                <span className="text-sm text-gray-500">{food.amount}g</span>
               </button>
             ))}
           </div>
-        </div>
+        )}
       </div>
 
       {/* Meals List */}
@@ -145,7 +204,10 @@ const NutritionTracker: React.FC = () => {
                     {meal.time}
                   </span>
                 </div>
-                <button className="text-blue-600 hover:text-blue-700">
+                <button 
+                  className="text-blue-600 hover:text-blue-700"
+                  onClick={() => handleAddFood(meal.id)}
+                >
                   <Plus className="h-5 w-5" />
                 </button>
               </div>
@@ -173,7 +235,10 @@ const NutritionTracker: React.FC = () => {
       </div>
 
       {/* Add Meal Button */}
-      <button className="w-full p-4 bg-white rounded-lg border border-gray-200 text-blue-600 hover:bg-gray-50 transition-colors flex items-center justify-center space-x-2">
+      <button 
+        className="w-full p-4 bg-white rounded-lg border border-gray-200 text-blue-600 hover:bg-gray-50 transition-colors flex items-center justify-center space-x-2"
+        onClick={() => setShowMealModal(true)}
+      >
         <Plus className="h-5 w-5" />
         <span>Add New Meal</span>
       </button>
@@ -193,6 +258,80 @@ const NutritionTracker: React.FC = () => {
           </AlertDescription>
         </Alert>
       )}
+
+      {/* Food Selection Modal */}
+      {showFoodModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full p-6 space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="text-xl font-medium">Add Food</h3>
+              <button onClick={() => setShowFoodModal(false)} className="text-gray-500">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="flex items-center space-x-2 border rounded-md p-2">
+                <Search className="h-5 w-5 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search foods..."
+                  className="w-full outline-none"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              
+              {searchTerm ? (
+                <div className="max-h-64 overflow-y-auto border rounded-md divide-y">
+                  {filteredFoods.length > 0 ? (
+                    filteredFoods.map((food, idx) => (
+                      <button
+                        key={idx}
+                        className="w-full p-3 text-left hover:bg-gray-50 flex justify-between items-center"
+                        onClick={() => quickAddFood(food)}
+                      >
+                        <div>
+                          <div className="font-medium">{food.name}</div>
+                          <div className="text-sm text-gray-500">
+                            P: {food.protein}g | C: {food.carbs}g | F: {food.fat}g | {food.calories} kCal
+                          </div>
+                        </div>
+                        <span className="text-sm text-gray-500">{food.amount}g</span>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="p-4 text-center text-gray-500">No foods found</div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <h4 className="font-medium">Quick Add</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {foodDatabase.map((food, index) => (
+                      <button
+                        key={index}
+                        className="px-3 py-2 bg-gray-100 rounded-md text-sm text-gray-700 hover:bg-gray-200 transition-colors"
+                        onClick={() => quickAddFood(food)}
+                      >
+                        {food.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Meal Modal */}
+      <MealModal 
+        isOpen={showMealModal}
+        onClose={() => setShowMealModal(false)}
+        onSave={handleAddMeal}
+      />
     </div>
   );
 };

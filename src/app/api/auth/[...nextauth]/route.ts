@@ -1,8 +1,8 @@
-// src/app/api/auth/[...nextauth]/route.ts
 import NextAuth from "next-auth/next";
 import CredentialsProvider from "next-auth/providers/credentials";
+import type { NextAuthOptions } from "next-auth";
 
-const authOptions = {
+const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
       name: "Credentials",
@@ -26,7 +26,7 @@ const authOptions = {
     }),
   ],
   session: {
-    strategy: "jwt",
+    strategy: "jwt" as const, // Use 'as const' to ensure correct type
   },
   pages: {
     signIn: "/auth/signin",
