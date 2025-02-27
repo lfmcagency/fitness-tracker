@@ -28,19 +28,34 @@ export const authOptions: NextAuthOptions = {
     strategy: "jwt",
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
+  cookies: {
+    sessionToken: {
+      name: `next-auth.session-token`,
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: process.env.NODE_ENV === "production",
+      },
+    },
+  },
   pages: {
     signIn: "/auth/signin",
   },
+  debug: process.env.NEXTAUTH_DEBUG === "true",
   secret: process.env.NEXTAUTH_SECRET || "development-secret-key",
   callbacks: {
-    session: ({ session, token }) => {
+    async jwt({ token, user }) {
+      if (user) {
+        token.id = user.id;
+      }
+      return token;
+    },
+    async session({ session, token }) {
       if (session?.user) {
-        session.user.id = token.sub || "1";
+        session.user.id = token.id as string;
       }
       return session;
-    },
-    jwt: ({ token }) => {
-      return token;
     }
   },
 }

@@ -20,15 +20,11 @@ export async function middleware(request: NextRequest) {
       secret: process.env.NEXTAUTH_SECRET || "development-secret-key",
     });
 
-    // For debugging - log the token presence
-    console.log(`Path: ${path}, Token exists: ${!!token}`);
-
     // Redirect to login if not authenticated
     if (!token) {
-      // Store the current URL to redirect back after login
-      const url = new URL('/auth/signin', request.url);
-      url.searchParams.set('callbackUrl', encodeURI(request.url));
-      return NextResponse.redirect(url);
+      const callbackUrl = encodeURIComponent(request.url);
+      const signInUrl = new URL(`/auth/signin?callbackUrl=${callbackUrl}`, request.url);
+      return NextResponse.redirect(signInUrl);
     }
   }
 
