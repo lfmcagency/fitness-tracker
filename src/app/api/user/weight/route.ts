@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server';
-import dbConnect from '@/lib/db/mongodb';
+import { dbConnect } from '@/lib/db/mongodb';
 import User from '@/models/User';
 import { getAuth } from '@/lib/auth';
 

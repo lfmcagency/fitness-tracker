@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
-import dbConnect from '@/lib/db/mongodb';
+import { dbConnect } from '@/lib/db/mongodb';
 import Exercise from '@/models/Exercise';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 

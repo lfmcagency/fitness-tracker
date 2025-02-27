@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic'
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/db/mongodb';
+import { dbConnect } from '@/lib/db/mongodb';
 import mongoose from 'mongoose';
 
 export async function GET() {
