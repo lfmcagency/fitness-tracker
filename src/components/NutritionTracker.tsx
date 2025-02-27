@@ -61,7 +61,10 @@ const NutritionTracker: React.FC = () => {
   };
 
   const handleAddMeal = (mealData: { name: string; time: string }) => {
-    addMeal(mealData);
+    addMeal({
+      ...mealData,
+      foods: []
+    });
   };
 
   const filteredFoods = searchTerm 
