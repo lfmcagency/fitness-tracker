@@ -1,17 +1,30 @@
 import mongoose from 'mongoose';
 
-// Use the environment variable with your Atlas connection string as fallback
+// Check for MongoDB URI and provide fallback for development
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://louisfaucher95:ZHEpXGfvuNF7ydoB@fitness-tracker.dsosg.mongodb.net/?retryWrites=true&w=majority';
 
-let cached = global.mongoose;
-
-if (!cached) {
-  cached = global.mongoose = { conn: null, promise: null };
+// Define proper types for our global mongoose cache
+interface MongooseCache {
+  conn: typeof mongoose | null;
+  promise: Promise<typeof mongoose> | null;
 }
+
+// Define the global mongoose interface
+declare global {
+  var mongoose: MongooseCache;
+}
+
+// Initialize the cached connection
+if (!global.mongoose) {
+  global.mongoose = { conn: null, promise: null };
+}
+
+// Get the cached connection
+let cached = global.mongoose;
 
 async function dbConnect() {
   if (cached.conn) {
-    console.log('Using cached MongoDB connection');
+    console.log('Using cached mongoose connection');
     return cached.conn;
   }
 
@@ -21,15 +34,13 @@ async function dbConnect() {
       serverSelectionTimeoutMS: 5000,
     };
 
-    console.log('Connecting to MongoDB with URI:', MONGODB_URI);
-    
-    // Add proper error handling
+    console.log('Creating new mongoose connection');
     cached.promise = mongoose.connect(MONGODB_URI, opts)
-      .then(mongoose => {
-        console.log('Successfully connected to MongoDB');
+      .then((mongoose) => {
+        console.log('Connected to MongoDB successfully');
         return mongoose;
       })
-      .catch(error => {
+      .catch((error) => {
         console.error('MongoDB connection error:', error);
         
         if (process.env.NODE_ENV === 'development') {
@@ -44,11 +55,11 @@ async function dbConnect() {
   try {
     cached.conn = await cached.promise;
   } catch (error) {
-    console.error('Failed to connect to MongoDB:', error);
-    if (process.env.NODE_ENV === 'production') {
-      throw error;
+    console.error('Error establishing MongoDB connection:', error);
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('Continuing in development mode with mock data');
     } else {
-      console.warn('Using mock data in development mode');
+      throw error; // In production, we want to fail fast if DB connection fails
     }
   }
   
