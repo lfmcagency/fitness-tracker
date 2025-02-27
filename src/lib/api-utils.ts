@@ -1,4 +1,4 @@
-// New file: src/lib/api-utils.ts
+// src/lib/api-utils.ts
 import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 
@@ -9,12 +9,12 @@ type ApiResponse<T = any> = {
   error?: string;
 };
 
-export function apiResponse<T>(data: T, message?: string): NextResponse<ApiResponse<T>> {
+export function apiResponse<T>(data: T, message?: string, status: number = 200): NextResponse<ApiResponse<T>> {
   return NextResponse.json({
     success: true,
     data,
     message
-  });
+  }, { status });
 }
 
 export function apiError(message: string, status: number = 400, error?: any): NextResponse<ApiResponse> {
@@ -29,7 +29,7 @@ export function apiError(message: string, status: number = 400, error?: any): Ne
   }, { status });
 }
 
-export function handleApiError(error: unknown, message: string) {
+export function handleApiError(error: unknown, message: string): NextResponse<ApiResponse> {
   if (error instanceof mongoose.Error.ValidationError) {
     const errorMessages = Object.values(error.errors).map(e => e.message).join(', ');
     return apiError(`Validation error: ${errorMessages}`, 400, error);

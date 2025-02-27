@@ -3,11 +3,31 @@
 import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
+// Define proper types for the API response
+interface DatabaseInfo {
+  database?: {
+    connected?: boolean;
+    state?: string;
+    host?: string;
+    name?: string;
+    collections?: Record<string, number>;
+  };
+  environment?: string;
+}
+
+interface Exercise {
+  _id: string;
+  name: string;
+  category: string;
+  progressionLevel?: number;
+  description?: string;
+}
+
 export default function DatabaseAdminPage() {
-  const [dbInfo, setDbInfo] = useState<any>(null)
+  const [dbInfo, setDbInfo] = useState<DatabaseInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [exercises, setExercises] = useState<any[]>([])
+  const [exercises, setExercises] = useState<Exercise[]>([])
   const [exercisesLoading, setExercisesLoading] = useState(true)
 
   useEffect(() => {
@@ -15,18 +35,18 @@ export default function DatabaseAdminPage() {
       try {
         // Get database info
         const dbResponse = await fetch('/api/debug/db')
-        const dbData = await dbResponse.json()
+        const dbData: { success: boolean; database?: any } = await dbResponse.json()
         setDbInfo(dbData)
         setLoading(false)
         
         // Get exercises
         const exercisesResponse = await fetch('/api/exercises')
-        const exercisesData = await exercisesResponse.json()
+        const exercisesData: { success: boolean; data?: Exercise[] } = await exercisesResponse.json()
         setExercises(exercisesData.data || [])
         setExercisesLoading(false)
       } catch (err) {
         console.error('Error fetching data:', err)
-        setError('Failed to fetch data: ' + (err instanceof Error ? err.message : String(err)))
+        setError('Failed to fetch data: ' + ((err as Error)?.message || String(err)))
         setLoading(false)
       }
     }
@@ -80,11 +100,11 @@ export default function DatabaseAdminPage() {
             <CardTitle>Collections</CardTitle>
           </CardHeader>
           <CardContent>
-            {Object.keys(dbInfo?.database?.collections || {}).length === 0 ? (
+            {!dbInfo?.database?.collections || Object.keys(dbInfo.database.collections).length === 0 ? (
               <p>No collections found</p>
             ) : (
               <div className="space-y-2">
-                {Object.entries(dbInfo?.database?.collections || {}).map(([model, count]) => (
+                {Object.entries(dbInfo.database.collections).map(([model, count]) => (
                   <div key={model}>
                     <span className="font-medium">{model}:</span>{' '}
                     <span>{count}</span>

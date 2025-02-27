@@ -3,8 +3,18 @@
 import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
+// Define proper types for the exercises
+interface Exercise {
+  _id: string;
+  name: string;
+  category: string;
+  subcategory?: string;
+  progressionLevel?: number;
+  description?: string;
+}
+
 export default function ExercisesAdminPage() {
-  const [exercises, setExercises] = useState<any[]>([])
+  const [exercises, setExercises] = useState<Exercise[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState('all')
@@ -13,15 +23,15 @@ export default function ExercisesAdminPage() {
     async function fetchExercises() {
       try {
         const response = await fetch('/api/exercises')
-        const data = await response.json()
+        const data: { success: boolean; data?: Exercise[]; message?: string } = await response.json()
         
-        if (data.success) {
-          setExercises(data.data || [])
+        if (data.success && data.data) {
+          setExercises(data.data)
         } else {
           setError(data.message || 'Failed to fetch exercises')
         }
       } catch (err) {
-        setError('Error fetching exercises: ' + (err instanceof Error ? err.message : String(err)))
+        setError('Error fetching exercises: ' + ((err as Error)?.message || String(err)))
       } finally {
         setLoading(false)
       }
@@ -31,34 +41,34 @@ export default function ExercisesAdminPage() {
   }, [])
 
   // Group exercises by category
-  const exercisesByCategory = exercises.reduce((acc, exercise) => {
+  const exercisesByCategory = exercises.reduce<Record<string, Exercise[]>>((acc, exercise) => {
     const category = exercise.category || 'uncategorized'
     if (!acc[category]) {
       acc[category] = []
     }
     acc[category].push(exercise)
     return acc
-  }, {} as Record<string, any[]>)
+  }, {})
 
   // Group exercises by subcategory
-  const exercisesBySubcategory = exercises.reduce((acc, exercise) => {
+  const exercisesBySubcategory = exercises.reduce<Record<string, Exercise[]>>((acc, exercise) => {
     const subcategory = exercise.subcategory || 'uncategorized'
     if (!acc[subcategory]) {
       acc[subcategory] = []
     }
     acc[subcategory].push(exercise)
     return acc
-  }, {} as Record<string, any[]>)
+  }, {})
 
   // Get counts by progression level
-  const countsByLevel = exercises.reduce((acc, exercise) => {
+  const countsByLevel = exercises.reduce<Record<number, number>>((acc, exercise) => {
     const level = exercise.progressionLevel || 0
     if (!acc[level]) {
       acc[level] = 0
     }
     acc[level]++
     return acc
-  }, {} as Record<number, number>)
+  }, {})
 
   // Filter exercises based on selected filter
   const filteredExercises = filter === 'all' 
@@ -159,7 +169,7 @@ export default function ExercisesAdminPage() {
               <div>
                 <span className="font-medium">Max Level:</span>{' '}
                 <span className="font-bold">
-                  {Math.max(...exercises.map(ex => ex.progressionLevel || 0))}
+                  {Math.max(...exercises.map(ex => ex.progressionLevel || 0), 0)}
                 </span>
               </div>
             </div>

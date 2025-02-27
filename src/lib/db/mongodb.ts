@@ -28,7 +28,6 @@ let cached = global.mongoose;
 
 async function dbConnect() {
   if (cached.conn) {
-    console.log('Using cached mongoose connection');
     return cached.conn;
   }
 
@@ -42,10 +41,31 @@ async function dbConnect() {
       family: 4         // Use IPv4, avoids IPv6 issues on some networks
     };
 
-    console.log('Creating new mongoose connection');
+    console.log(`Connecting to MongoDB: ${MONGODB_URI?.substring(0, 20)}...`);
+    
+    // Set up mongoose connection events for better monitoring
+    mongoose.connection.on('connected', () => {
+      console.log('MongoDB connected successfully');
+    });
+    
+    mongoose.connection.on('error', (err) => {
+      console.error('MongoDB connection error:', err);
+    });
+    
+    mongoose.connection.on('disconnected', () => {
+      console.log('MongoDB disconnected');
+    });
+    
+    // Handle process termination
+    process.on('SIGINT', async () => {
+      await mongoose.connection.close();
+      console.log('MongoDB connection closed due to app termination');
+      process.exit(0);
+    });
+
     cached.promise = mongoose.connect(MONGODB_URI, opts)
       .then((mongoose) => {
-        console.log('Connected to MongoDB successfully');
+        console.log(`Connected to MongoDB: ${mongoose.connection.name}`);
         return mongoose;
       })
       .catch((error) => {
