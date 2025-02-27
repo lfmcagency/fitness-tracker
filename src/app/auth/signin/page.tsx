@@ -7,8 +7,8 @@ import Link from 'next/link'
 
 export default function SignIn() {
   const router = useRouter()
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const [email, setEmail] = useState('test@example.com') // Pre-fill test email
+  const [password, setPassword] = useState('password') // Pre-fill test password
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   
@@ -20,11 +20,6 @@ export default function SignIn() {
     try {
       console.log('Signing in with:', { email, password });
       
-      // For development, show a message when using test credentials
-      if (email === 'test@example.com' && password === 'password') {
-        console.log('Using test credentials');
-      }
-      
       const result = await signIn('credentials', {
         redirect: false,
         email,
@@ -33,16 +28,24 @@ export default function SignIn() {
       
       if (result?.error) {
         console.error('Sign-in error:', result.error);
-        setError('Invalid email or password')
-        return
+        setError(`Authentication failed: ${result.error}`);
+        setIsLoading(false);
+        return;
       }
       
-      router.push('/dashboard')
+      if (result?.ok) {
+        console.log('Sign-in successful');
+        router.push('/dashboard');
+        return;
+      }
+      
+      setError('Unknown error occurred during sign-in');
+      setIsLoading(false);
+      
     } catch (error) {
       console.error('Authentication error:', error);
-      setError('Something went wrong. Please try again.')
-    } finally {
-      setIsLoading(false)
+      setError('Something went wrong with the authentication system. Please try again.');
+      setIsLoading(false);
     }
   }
   
@@ -94,7 +97,7 @@ export default function SignIn() {
           </div>
           
           {error && (
-            <div className="text-red-500 text-sm text-center">{error}</div>
+            <div className="bg-red-50 p-3 rounded text-red-600 text-sm">{error}</div>
           )}
           
           <div>
@@ -105,6 +108,10 @@ export default function SignIn() {
             >
               {isLoading ? 'Signing in...' : 'Sign in'}
             </button>
+          </div>
+          
+          <div className="text-center text-sm text-gray-600">
+            <p>For development: test@example.com / password</p>
           </div>
         </form>
       </div>

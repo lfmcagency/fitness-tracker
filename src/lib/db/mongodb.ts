@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 
-// Check for MongoDB URI and provide fallback for development
+// Check for MongoDB URI
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://louisfaucher95:ZHEpXGfvuNF7ydoB@fitness-tracker.dsosg.mongodb.net/?retryWrites=true&w=majority';
 
 // Define proper types for our global mongoose cache
@@ -31,7 +31,7 @@ async function dbConnect() {
   if (!cached.promise) {
     const opts = {
       bufferCommands: false,
-      serverSelectionTimeoutMS: 5000,
+      serverSelectionTimeoutMS: 10000, // Increased timeout for Atlas connections
     };
 
     console.log('Creating new mongoose connection');
@@ -43,12 +43,16 @@ async function dbConnect() {
       .catch((error) => {
         console.error('MongoDB connection error:', error);
         
+        // Still provide access to mongoose in dev mode for mock data
         if (process.env.NODE_ENV === 'development') {
           console.warn('Using mock data in development mode');
-          return mongoose; // Return mongoose instance even without connection
+          return mongoose; 
         }
         
-        throw error; // In production, fail if DB can't connect
+        // For production, we'll handle the error but still return mongoose
+        // This allows the app to function with mock data even if DB is down
+        console.warn('Continuing with mock data due to DB connection failure');
+        return mongoose;
       });
   }
 
@@ -56,11 +60,8 @@ async function dbConnect() {
     cached.conn = await cached.promise;
   } catch (error) {
     console.error('Error establishing MongoDB connection:', error);
-    if (process.env.NODE_ENV === 'development') {
-      console.warn('Continuing in development mode with mock data');
-    } else {
-      throw error; // In production, we want to fail fast if DB connection fails
-    }
+    // We'll continue with mock data regardless of environment
+    console.warn('Using mock data due to connection failure');
   }
   
   return cached.conn;

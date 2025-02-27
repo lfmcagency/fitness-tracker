@@ -1,0 +1,12 @@
+{
+    "env": {
+      "MONGODB_URI": "mongodb+srv://louisfaucher95:ZHEpXGfvuNF7ydoB@fitness-tracker.dsosg.mongodb.net/?retryWrites=true&w=majority",
+      "NEXTAUTH_SECRET": "tjfAOurXRniHKEUmkFJIoclYWqwaDxBs",
+      "NEXTAUTH_URL": "${VERCEL_URL}"
+    },
+    "buildCommand": "next build",
+    "devCommand": "next dev",
+    "installCommand": "npm install",
+    "framework": "nextjs",
+    "outputDirectory": ".next"
+  }

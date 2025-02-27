@@ -11,8 +11,9 @@ const authOptions: NextAuthOptions = {
         password: { label: "Password", type: "password" }
       },
       async authorize(credentials) {
-        // For development purposes, accept a hardcoded test user
+        // Always accept test credentials regardless of DB status
         if (credentials?.email === "test@example.com" && credentials?.password === "password") {
+          console.log("Using test credentials login");
           return {
             id: "1",
             name: "Test User",
@@ -20,18 +21,36 @@ const authOptions: NextAuthOptions = {
           };
         }
         
-        // Any other credentials will fail
+        // In a production app, you'd validate against DB records here
+        // But for now, we'll only accept the test user
         return null;
       }
     }),
   ],
   session: {
-    strategy: "jwt" as const, // Use 'as const' to ensure correct type
+    strategy: "jwt",
+    maxAge: 30 * 24 * 60 * 60, // 30 days
   },
   pages: {
     signIn: "/auth/signin",
   },
+  // Ensure secret is set - this is critical for JWT signing
   secret: process.env.NEXTAUTH_SECRET || "development-secret-key",
+  // Debug mode in development only
+  debug: process.env.NODE_ENV === "development",
+  callbacks: {
+    // Add user ID to the session
+    session: ({ session, token }) => {
+      if (session?.user) {
+        session.user.id = token.sub || "1";
+      }
+      return session;
+    },
+    // You can customize JWT creation here if needed
+    jwt: ({ token }) => {
+      return token;
+    }
+  },
 };
 
 const handler = NextAuth(authOptions);
