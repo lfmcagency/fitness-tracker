@@ -1,69 +1,78 @@
-import mongoose from 'mongoose';
+import mongoose, { Schema, Document } from 'mongoose';
 
-const ExerciseSchema = new mongoose.Schema({
-  name: {
-    type: String,
-    required: true,
-    trim: true
-  },
-  category: {
-    type: String,
-    enum: ['core', 'push', 'pull', 'legs'],
-    required: true,
+export interface IExercise extends Document {
+  name: string;
+  category: string;
+  subcategory?: string;
+  progressionLevel: number;
+  description?: string;
+  primaryMuscleGroup?: string;
+  secondaryMuscleGroup?: string[];
+  difficulty: 'beginner' | 'intermediate' | 'advanced' | 'elite';
+  instructions?: string;
+  prerequisites?: mongoose.Types.ObjectId[];
+  nextProgressions?: mongoose.Types.ObjectId[];
+  xpValue: number;
+  importedFrom?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const ExerciseSchema = new Schema<IExercise>({
+  name: { 
+    type: String, 
+    required: [true, 'Exercise name is required'], 
+    trim: true,
     index: true
   },
-  subcategory: {
-    type: String,
-    trim: true
-  },
-  description: {
-    type: String,
-    trim: true
-  },
-  progressionLevel: {
-    type: Number,
-    default: 1,
+  category: { 
+    type: String, 
+    required: [true, 'Category is required'], 
     index: true
   },
-  previousExercise: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Exercise'
-  },
-  nextExercise: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Exercise'
-  },
-  unlockRequirements: {
-    reps: Number,
-    sets: Number,
-    holdTime: Number,
-    description: String
-  },
-  difficulty: {
+  subcategory: { 
     type: String,
-    enum: ['beginner', 'intermediate', 'advanced'],
+    index: true
+  },
+  progressionLevel: { 
+    type: Number, 
+    default: 0,
+    index: true 
+  },
+  description: String,
+  primaryMuscleGroup: String,
+  secondaryMuscleGroup: [String],
+  difficulty: { 
+    type: String, 
+    enum: ['beginner', 'intermediate', 'advanced', 'elite'],
     default: 'beginner'
   },
-  tags: [String],
-  video: String,
-  image: String
+  instructions: String,
+  prerequisites: [{ 
+    type: Schema.Types.ObjectId, 
+    ref: 'Exercise' 
+  }],
+  nextProgressions: [{ 
+    type: Schema.Types.ObjectId,
+    ref: 'Exercise' 
+  }],
+  xpValue: { 
+    type: Number, 
+    default: 10 
+  },
+  importedFrom: String
 }, { 
   timestamps: true,
   toJSON: { virtuals: true },
   toObject: { virtuals: true }
 });
 
-// Add virtual fields and methods
-ExerciseSchema.virtual('calculatedDifficulty').get(function() {
-  const level = this.progressionLevel || 1;
-  if (level <= 5) return 'beginner';
-  if (level <= 10) return 'intermediate';
-  return 'advanced';
+// Create compound index for uniqueness
+ExerciseSchema.index({ name: 1, category: 1 }, { unique: true });
+
+// Add virtual for full description
+ExerciseSchema.virtual('fullDescription').get(function() {
+  return `${this.name} - Level ${this.progressionLevel} ${this.category} exercise`;
 });
 
-// Create indexes for better performance
-ExerciseSchema.index({ category: 1, progressionLevel: 1 });
-ExerciseSchema.index({ name: 'text', description: 'text' });
-
-// Only create the model if it doesn't already exist
-export default mongoose.models.Exercise || mongoose.model('Exercise', ExerciseSchema);
+export default mongoose.models.Exercise || mongoose.model<IExercise>('Exercise', ExerciseSchema);

@@ -1,97 +1,64 @@
+import { MongoClient } from 'mongodb';
 import mongoose from 'mongoose';
-import dbConnect from './mongodb';
+import { NextResponse } from 'next/server';
 
-export interface DatabaseHealthStatus {
-  connected: boolean;
-  state: string;
-  host?: string;
-  database?: string;
-  models: string[];
-  collections?: Record<string, number>;
-  error?: string;
-}
-
-export async function checkDatabaseHealth(): Promise<{
-  success: boolean;
-  status: DatabaseHealthStatus;
-}> {
+export async function checkDatabaseHealth() {
   try {
-    await dbConnect();
-    
-    const connectionState = mongoose.connection.readyState;
-    const stateMap = {
-      0: 'disconnected',
-      1: 'connected',
-      2: 'connecting',
-      3: 'disconnecting'
-    };
-    
-    // Get collection stats if connected
-    let collections = {};
-    if (connectionState === 1 && mongoose.connection.db) {
-      const collectionList = await mongoose.connection.db.listCollections().toArray();
-      
-      // Get document counts for each collection
-      for (const collection of collectionList) {
-        const count = await mongoose.connection.db.collection(collection.name).countDocuments();
-        collections[collection.name] = count;
-      }
-    }
-    
-    const status: DatabaseHealthStatus = {
-      connected: connectionState === 1,
-      state: stateMap[connectionState as keyof typeof stateMap] || 'unknown',
-      host: mongoose.connection.host,
-      database: mongoose.connection.db?.databaseName,
-      models: Object.keys(mongoose.models),
-      collections: connectionState === 1 ? collections : undefined
-    };
-    
-    return {
-      success: status.connected,
-      status
-    };
-  } catch (error) {
-    return {
-      success: false,
-      status: {
-        connected: false,
-        state: 'error',
-        models: Object.keys(mongoose.models),
-        error: error instanceof Error ? error.message : 'Unknown error'
-      }
-    };
-  }
-}
-
-export async function getCollectionStats(): Promise<Record<string, any>> {
-  try {
-    await dbConnect();
-    
-    const stats: Record<string, any> = {};
-    
-    // Get stats for each model
-    for (const modelName of Object.keys(mongoose.models)) {
-      const model = mongoose.models[modelName];
-      
-      stats[modelName] = {
-        count: await model.countDocuments(),
-        indexes: []
+    // Check if mongoose is connected
+    if (mongoose.connection.readyState !== 1) {
+      return {
+        status: 'error',
+        message: 'MongoDB not connected',
+        details: {
+          readyState: mongoose.connection.readyState
+        }
       };
-      
-      // Get index information
-      if (mongoose.connection.db) {
-        const indexInfo = await mongoose.connection.db
-          .collection(model.collection.name)
-          .indexes();
-        
-        stats[modelName].indexes = indexInfo;
-      }
     }
+
+    // Get database stats
+    const dbStats = await mongoose.connection.db.stats();
     
-    return stats;
+    // Get collection stats
+    const collections = await mongoose.connection.db.listCollections().toArray();
+    const collectionList = collections.map(collection => ({
+      name: collection.name,
+      type: collection.type
+    }));
+
+    // Count documents in each collection
+    const collectionCounts: Record<string, number> = {}; // Add this type definition
+    
+    for (const collection of collectionList) {
+      const count = await mongoose.connection.db.collection(collection.name).countDocuments();
+      collectionCounts[collection.name] = count;
+    }
+
+    return {
+      status: 'connected',
+      message: 'MongoDB connection healthy',
+      details: {
+        readyState: mongoose.connection.readyState,
+        dbName: mongoose.connection.db.databaseName,
+        dbStats,
+        collections: collectionCounts
+      }
+    };
   } catch (error) {
-    console.error('Error getting collection stats:', error);
-    return { error: error instanceof Error ? error.message : 'Unknown error' };
+    console.error('Database health check error:', error);
+    return {
+      status: 'error',
+      message: 'Error checking database health',
+      details: {
+        error: error instanceof Error ? error.message : String(error)
+      }
+    };
   }
+}
+
+export async function GET() {
+  const healthStatus = await checkDatabaseHealth();
+  
+  return NextResponse.json(healthStatus, {
+    status: healthStatus.status === 'connected' ? 200 : 500
+  });
 }

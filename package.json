@@ -6,7 +6,8 @@
         "dev": "next dev",
         "build": "next build",
         "start": "next start",
-        "lint": "next lint"
+        "lint": "next lint",
+        "import-exercises": "node -r esm scripts/enhanced-import-exercises.js"
     },
     "dependencies": {
         "@auth/mongodb-adapter": "^2.0.12",

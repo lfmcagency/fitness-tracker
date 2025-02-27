@@ -1,323 +1,141 @@
-require('dotenv').config({ path: '.env.local' });
-const mongoose = require('mongoose');
-const fs = require('fs');
-const path = require('path');
-const XLSX = require('xlsx');
+import fs from 'fs';
+import path from 'path';
+import { MongoClient } from 'mongodb';
+import { read, utils } from 'xlsx';
+import dotenv from 'dotenv';
 
-// Use the same schema as in the application
-const ExerciseSchema = new mongoose.Schema({
-  name: {
-    type: String,
-    required: true,
-    trim: true
-  },
-  category: {
-    type: String,
-    enum: ['core', 'push', 'pull', 'legs'],
-    required: true
-  },
-  subcategory: {
-    type: String,
-    trim: true,
-    default: ''
-  },
-  description: {
-    type: String,
-    trim: true,
-    default: ''
-  },
-  progressionLevel: {
-    type: Number,
-    default: 1
-  },
-  previousExercise: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Exercise'
-  },
-  nextExercise: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Exercise'
-  },
-  unlockRequirements: {
-    reps: Number,
-    sets: Number,
-    holdTime: Number,
-    description: String
-  },
-  difficulty: {
-    type: String,
-    enum: ['beginner', 'intermediate', 'advanced'],
-    default: 'beginner'
-  },
-  tags: [String],
-  video: String,
-  image: String
-}, { timestamps: true });
-
-// Create indexes for better performance
-ExerciseSchema.index({ category: 1, progressionLevel: 1 });
-ExerciseSchema.index({ name: 'text', description: 'text' });
-
-const Exercise = mongoose.model('Exercise', ExerciseSchema);
+// Load environment variables
+dotenv.config({ path: '.env.local' });
 
 // Configuration
-const CONFIG = {
-  dataDir: path.join(__dirname, '../public/data'),
-  logLevel: 'info', // 'debug', 'info', 'warn', 'error'
-  dryRun: false,     // Set to true to test without saving
-  clearExisting: true // Remove existing exercises before import
-};
+const MONGODB_URI = process.env.MONGODB_URI;
+const DB_NAME = 'fitness-tracker';
+const COLLECTION_NAME = 'exercises';
+const ODS_DIR = path.join(process.cwd(), 'data', 'exercises');
 
-// Logger utility
-const logger = {
-  debug: (...args) => CONFIG.logLevel === 'debug' && console.log('[DEBUG]', ...args),
-  info: (...args) => ['debug', 'info'].includes(CONFIG.logLevel) && console.log('[INFO]', ...args),
-  warn: (...args) => ['debug', 'info', 'warn'].includes(CONFIG.logLevel) && console.warn('[WARNING]', ...args),
-  error: (...args) => console.error('[ERROR]', ...args),
-};
-
-// More robust ODS file parsing with validation
-async function parseOdsFile(filePath, category, subcategory) {
-  logger.info(`Processing ${path.basename(filePath)}...`);
+// MongoDB Connection with retry
+async function connectToMongoDB(retries = 5, backoff = 1500) {
+  let lastError;
   
-  try {
-    const workbook = XLSX.readFile(filePath, {
-      cellStyles: true,
-      cellFormulas: true,
-      cellDates: true
-    });
-    
-    const sheetName = workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[sheetName];
-    
-    // Get all column headers to find available fields
-    const range = XLSX.utils.decode_range(worksheet['!ref']);
-    const headers = [];
-    for(let C = range.s.c; C <= range.e.c; ++C) {
-      const cell = worksheet[XLSX.utils.encode_cell({r:0, c:C})];
-      if(cell && cell.v) headers[C] = cell.v;
-    }
-    
-    // Map header indexes for easy access
-    const headerMap = headers.reduce((map, header, index) => {
-      if (header) map[header.toLowerCase()] = index;
-      return map;
-    }, {});
-    
-    logger.debug(`File columns: ${headers.filter(Boolean).join(', ')}`);
-    
-    // Convert sheet to JSON with all columns
-    const data = XLSX.utils.sheet_to_json(worksheet);
-    
-    logger.info(`Found ${data.length} exercises in ${path.basename(filePath)}`);
-    
-    // Validate required fields
-    const validatedData = data.filter((row, index) => {
-      const name = row.Name || row.name;
-      if (!name) {
-        logger.warn(`Row ${index + 2} skipped: Missing name`);
-        return false;
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      console.log(`Connecting to MongoDB (attempt ${attempt})...`);
+      const client = new MongoClient(MONGODB_URI);
+      await client.connect();
+      console.log('Successfully connected to MongoDB');
+      return client;
+    } catch (error) {
+      console.error(`Connection attempt ${attempt} failed:`, error.message);
+      lastError = error;
+      
+      if (attempt < retries) {
+        const delay = backoff * attempt;
+        console.log(`Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
       }
-      return true;
-    });
-    
-    // Map data to Exercise model format with more fields
-    return validatedData.map((row, index) => {
-      // Determine difficulty based on progression level
-      const level = row.ProgressionLevel || row.Level || index + 1;
-      let difficulty = 'beginner';
-      if (level > 5) difficulty = 'intermediate';
-      if (level > 10) difficulty = 'advanced';
-      
-      // Extract unlock requirements if available
-      const unlockRequirements = {};
-      if (row.RequiredReps) unlockRequirements.reps = parseInt(row.RequiredReps);
-      if (row.RequiredSets) unlockRequirements.sets = parseInt(row.RequiredSets);
-      if (row.RequiredHoldTime) unlockRequirements.holdTime = parseInt(row.RequiredHoldTime);
-      if (row.UnlockDescription) unlockRequirements.description = row.UnlockDescription;
-      
-      // Build tags array
-      const tags = [];
-      if (category) tags.push(category);
-      if (subcategory) tags.push(subcategory);
-      
-      // Map to model
-      return {
-        name: row.Name || row.name || `Unknown Exercise ${index + 1}`,
-        category,
-        subcategory,
-        description: row.Description || row.description || '',
-        progressionLevel: level,
-        difficulty,
-        unlockRequirements: Object.keys(unlockRequirements).length > 0 ? unlockRequirements : undefined,
-        tags,
-        video: row.Video || row.video || '',
-        image: row.Image || row.image || ''
-      };
-    });
-  } catch (error) {
-    logger.error(`Error parsing ${filePath}:`, error);
-    return [];
+    }
   }
+  
+  throw new Error(`Failed to connect after ${retries} attempts: ${lastError.message}`);
 }
 
-// Main import function
-async function importExerciseData() {
+// Process ODS files
+async function processODSFiles() {
   try {
-    logger.info('Connecting to MongoDB...');
-    await mongoose.connect(process.env.MONGODB_URI, {
-      maxPoolSize: 10,
-      serverSelectionTimeoutMS: 5000,
-      socketTimeoutMS: 45000,
-    });
-    logger.info('Connected to MongoDB');
-    
-    // Check if data directory exists
-    if (!fs.existsSync(CONFIG.dataDir)) {
-      logger.error(`Data directory not found: ${CONFIG.dataDir}`);
-      return;
-    }
+    // Connect to MongoDB
+    const client = await connectToMongoDB();
+    const db = client.db(DB_NAME);
+    const collection = db.collection(COLLECTION_NAME);
     
     // Get list of ODS files
-    const files = fs.readdirSync(CONFIG.dataDir).filter(file => file.endsWith('.ods'));
+    const files = fs.readdirSync(ODS_DIR)
+      .filter(file => file.endsWith('.ods'))
+      .map(file => path.join(ODS_DIR, file));
     
-    if (files.length === 0) {
-      logger.error('No ODS files found in data directory');
-      return;
-    }
-    
-    logger.info(`Found ${files.length} ODS files to process`);
-    
-    // Clear existing exercises if configured
-    if (CONFIG.clearExisting && !CONFIG.dryRun) {
-      logger.info('Clearing existing exercise data...');
-      await Exercise.deleteMany({});
-    }
+    console.log(`Found ${files.length} ODS files to process`);
     
     // Process each file
-    const exercisesByCategory = {
-      core: [],
-      push: [],
-      pull: [],
-      legs: []
-    };
-    
-    // Map filenames to categories and subcategories
     for (const file of files) {
-      let category = 'core';
-      let subcategory = '';
+      const filename = path.basename(file);
+      console.log(`Processing ${filename}...`);
       
-      const filename = file.toLowerCase();
+      // Extract category from filename
+      const category = filename.replace('progressions.ods', '').replace('exercises.ods', '');
       
-      // Determine category
-      if (filename.includes('push')) {
-        category = 'push';
-      } else if (filename.includes('pull')) {
-        category = 'pull';
-      } else if (filename.includes('leg') || filename.includes('squat')) {
-        category = 'legs';
+      // Read ODS file
+      const workbook = read(fs.readFileSync(file), { type: 'buffer' });
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      
+      // Convert to JSON
+      const data = utils.sheet_to_json(worksheet);
+      
+      if (data.length === 0) {
+        console.warn(`No data found in ${filename}`);
+        continue;
       }
       
-      // Determine subcategory
-      if (filename.includes('hollowbody')) {
-        subcategory = 'hollow body';
-      } else if (filename.includes('legraises')) {
-        subcategory = 'leg raises';
-      } else if (filename.includes('lsit')) {
-        subcategory = 'l-sit';
-      } else if (filename.includes('plank')) {
-        subcategory = 'plank';
-      } else if (filename.includes('coreextension')) {
-        subcategory = 'core extension';
-      } else if (filename.includes('crunch')) {
-        subcategory = 'crunch';
-      } else if (filename.includes('rotation')) {
-        subcategory = 'rotation';
-      } else if (filename.includes('push')) {
-        subcategory = 'push';
-      } else if (filename.includes('pull')) {
-        subcategory = 'pull';
-      } else if (filename.includes('squat')) {
-        subcategory = 'squat';
-      }
+      console.log(`Found ${data.length} exercises in ${filename}`);
       
-      logger.info(`Categorizing ${file} as ${category}/${subcategory || 'general'}`);
-      
-      const exercises = await parseOdsFile(path.join(CONFIG.dataDir, file), category, subcategory);
-      
-      if (exercises.length > 0) {
-        exercisesByCategory[category] = [...exercisesByCategory[category], ...exercises];
-      } else {
-        logger.warn(`No valid exercises found in ${file}`);
-      }
-    }
-    
-    // Import exercises
-    if (!CONFIG.dryRun) {
-      // Insert new exercises by category
-      for (const [category, exercises] of Object.entries(exercisesByCategory)) {
-        if (exercises.length > 0) {
-          logger.info(`Importing ${exercises.length} ${category} exercises...`);
-          await Exercise.insertMany(exercises);
-        }
-      }
-      
-      // Link progression exercises
-      logger.info('Linking exercise progressions...');
-      for (const category of Object.keys(exercisesByCategory)) {
-        // First link within subcategories
-        const subcategories = [...new Set(
-          (await Exercise.find({ category })).map(e => e.subcategory)
-        )];
+      // Clean and transform data
+      const exercises = data.map(row => {
+        // Create a standardized exercise object
+        const exercise = {
+          name: row.Name || row.Exercise || row.Progression || '',
+          category: category || 'general',
+          subcategory: row.Category || row.Type || category || '',
+          progressionLevel: parseInt(row.Level || row.Progression || '0', 10) || 0,
+          description: row.Description || '',
+          primaryMuscleGroup: row.PrimaryMuscle || row['Primary Muscle'] || '',
+          secondaryMuscleGroup: row.SecondaryMuscle || row['Secondary Muscle'] || '',
+          difficulty: row.Difficulty || 'beginner',
+          instructions: row.Instructions || row.Notes || '',
+          prerequisites: row.Prerequisites || [],
+          nextProgressions: row.NextProgressions || row['Next Progression'] || [],
+          xpValue: parseInt(row.XP || '10', 10) || 10,
+          importedFrom: filename,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
         
-        for (const subcategory of subcategories) {
-          const exercises = await Exercise.find({ category, subcategory })
-            .sort({ progressionLevel: 1 });
-          
-          logger.debug(`Linking ${exercises.length} exercises in ${category}/${subcategory || 'general'}`);
-          
-          for (let i = 0; i < exercises.length; i++) {
-            const prev = i > 0 ? exercises[i-1]._id : null;
-            const next = i < exercises.length - 1 ? exercises[i+1]._id : null;
-            
-            if (prev || next) {
-              await Exercise.findByIdAndUpdate(exercises[i]._id, {
-                previousExercise: prev,
-                nextExercise: next
-              });
-            }
+        // Clean up empty values
+        Object.keys(exercise).forEach(key => {
+          if (exercise[key] === '') {
+            delete exercise[key];
           }
-        }
-      }
-    } else {
-      logger.info('DRY RUN: No data was saved to the database');
+        });
+        
+        return exercise;
+      });
       
-      // Show exercise counts
-      for (const [category, exercises] of Object.entries(exercisesByCategory)) {
-        logger.info(`${category}: ${exercises.length} exercises`);
+      // Use bulk operations for better performance
+      if (exercises.length > 0) {
+        // Create a unique index for deduplication
+        await collection.createIndex({ name: 1, category: 1 }, { unique: true, background: true });
         
-        // Group by subcategory for detailed reporting
-        const subcategoryCounts = {};
-        exercises.forEach(ex => {
-          const sub = ex.subcategory || 'uncategorized';
-          subcategoryCounts[sub] = (subcategoryCounts[sub] || 0) + 1;
-        });
+        // Prepare bulk operations
+        const operations = exercises.map(exercise => ({
+          updateOne: {
+            filter: { name: exercise.name, category: exercise.category },
+            update: { $set: exercise },
+            upsert: true
+          }
+        }));
         
-        Object.entries(subcategoryCounts).forEach(([sub, count]) => {
-          logger.debug(`  ${sub}: ${count} exercises`);
-        });
+        // Execute bulk operation
+        const result = await collection.bulkWrite(operations);
+        console.log(`Imported ${result.upsertedCount} new exercises, updated ${result.modifiedCount} existing exercises from ${filename}`);
       }
     }
     
-    logger.info('Exercise data import process completed!');
-    
+    console.log('All ODS files processed successfully');
+    await client.close();
+    console.log('MongoDB connection closed');
   } catch (error) {
-    logger.error('Error importing exercise data:', error);
-  } finally {
-    await mongoose.disconnect();
-    logger.info('Disconnected from MongoDB');
+    console.error('Error processing ODS files:', error);
+    process.exit(1);
   }
 }
 
-// Run the import
-importExerciseData();
+// Execute the script
+processODSFiles();
