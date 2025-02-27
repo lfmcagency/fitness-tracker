@@ -1,7 +1,11 @@
 import mongoose from 'mongoose';
 
-// Check for MongoDB URI
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://louisfaucher95:ZHEpXGfvuNF7ydoB@fitness-tracker.dsosg.mongodb.net/?retryWrites=true&w=majority';
+// Use environment variable for connection string
+const MONGODB_URI = process.env.MONGODB_URI;
+
+if (!MONGODB_URI) {
+  throw new Error('Please define the MONGODB_URI environment variable');
+}
 
 // Define proper types for our global mongoose cache
 interface MongooseCache {
@@ -31,7 +35,11 @@ async function dbConnect() {
   if (!cached.promise) {
     const opts = {
       bufferCommands: false,
-      serverSelectionTimeoutMS: 10000, // Increased timeout for Atlas connections
+      serverSelectionTimeoutMS: 10000,
+      maxPoolSize: 10, // Connection pooling - limit concurrent connections
+      minPoolSize: 5,   // Keep minimum connections open for performance
+      socketTimeoutMS: 45000, // Longer timeout for operations
+      family: 4         // Use IPv4, avoids IPv6 issues on some networks
     };
 
     console.log('Creating new mongoose connection');
@@ -42,29 +50,25 @@ async function dbConnect() {
       })
       .catch((error) => {
         console.error('MongoDB connection error:', error);
-        
-        // Still provide access to mongoose in dev mode for mock data
-        if (process.env.NODE_ENV === 'development') {
-          console.warn('Using mock data in development mode');
-          return mongoose; 
-        }
-        
-        // For production, we'll handle the error but still return mongoose
-        // This allows the app to function with mock data even if DB is down
-        console.warn('Continuing with mock data due to DB connection failure');
-        return mongoose;
+        throw error; // Re-throw to handle properly at the caller level
       });
   }
 
   try {
     cached.conn = await cached.promise;
+    return cached.conn;
   } catch (error) {
     console.error('Error establishing MongoDB connection:', error);
-    // We'll continue with mock data regardless of environment
-    console.warn('Using mock data due to connection failure');
+    
+    // In development, we can continue without DB for UI work
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('DEVELOPMENT MODE: Proceeding without database connection');
+      return mongoose; // Return mongoose instance even without connection
+    }
+    
+    // In production, we should propagate the error
+    throw error;
   }
-  
-  return cached.conn;
 }
 
 export default dbConnect;
