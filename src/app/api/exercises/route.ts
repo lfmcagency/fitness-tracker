@@ -1,59 +1,51 @@
-// Mark as dynamic
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/db/mongodb';
-import { getAuth } from '@/lib/auth';
+import mongoose from 'mongoose';
+import Exercise from '@/models/Exercise';
 
 export async function GET(req: NextRequest) {
   try {
-    // Comment out DB connection temporarily to avoid errors
     await dbConnect();
     
     const searchParams = req.nextUrl.searchParams;
     const category = searchParams.get('category');
     const subcategory = searchParams.get('subcategory');
     
-    // Mock data for development
-    const mockExercises = [
-      { id: 1, name: "Push-ups", category: "push", progressionLevel: 1 },
-      { id: 2, name: "Pull-ups", category: "pull", progressionLevel: 2 },
-      { id: 3, name: "Squats", category: "legs", progressionLevel: 1 }
-    ];
+    // Build query
+    const query: any = {};
+    if (category) query.category = category;
+    if (subcategory) query.subcategory = subcategory;
     
-    // Filter by category if provided
-    let exercises = mockExercises;
-    if (category) {
-      exercises = exercises.filter(ex => ex.category === category);
+    // Use direct mongoose query for troubleshooting
+    if (!mongoose.models.Exercise) {
+      console.error('Exercise model not found!');
+      return NextResponse.json({ 
+        success: false,
+        message: 'Error: Exercise model not found' 
+      }, { status: 500 });
     }
     
-    return NextResponse.json({ success: true, data: exercises });
-  } catch (error) {
-    console.error("Error in GET /api/exercises:", error);
-    return NextResponse.json({ success: false, message: 'Error fetching exercises' }, { status: 400 });
-  }
-}
-
-export async function POST(req: NextRequest) {
-  try {
-    await dbConnect();
+    // First check if we can find any exercises at all
+    const count = await Exercise.countDocuments({});
+    console.log(`Found ${count} exercises in database`);
     
-    const session = await getAuth();
+    // Load exercises with simple query
+    const exercises = await Exercise.find(query).limit(50).lean();
     
-    // Check if user is authenticated
-    if (!session && process.env.NODE_ENV === 'production') {
-      return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
-    }
-    
-    const body = await req.json();
-    
-    // Mock response for development
     return NextResponse.json({ 
       success: true, 
-      data: { id: Date.now(), ...body } 
-    }, { status: 201 });
+      data: exercises,
+      count: exercises.length,
+      totalCount: count
+    });
   } catch (error) {
-    console.error("Error in POST /api/exercises:", error);
-    return NextResponse.json({ success: false, message: 'Error creating exercise' }, { status: 400 });
+    console.error("Error in GET /api/exercises:", error);
+    return NextResponse.json({ 
+      success: false, 
+      message: 'Error fetching exercises',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
 }
