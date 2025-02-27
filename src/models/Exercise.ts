@@ -14,13 +14,11 @@ const ExerciseSchema = new mongoose.Schema({
   },
   subcategory: {
     type: String,
-    trim: true,
-    default: ''
+    trim: true
   },
   description: {
     type: String,
-    trim: true,
-    default: ''
+    trim: true
   },
   progressionLevel: {
     type: Number,
@@ -29,13 +27,11 @@ const ExerciseSchema = new mongoose.Schema({
   },
   previousExercise: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Exercise',
-    default: null
+    ref: 'Exercise'
   },
   nextExercise: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Exercise',
-    default: null
+    ref: 'Exercise'
   },
   unlockRequirements: {
     reps: Number,
@@ -48,6 +44,7 @@ const ExerciseSchema = new mongoose.Schema({
     enum: ['beginner', 'intermediate', 'advanced'],
     default: 'beginner'
   },
+  tags: [String],
   video: String,
   image: String
 }, { 
@@ -56,7 +53,7 @@ const ExerciseSchema = new mongoose.Schema({
   toObject: { virtuals: true }
 });
 
-// Add a virtual field for automatic difficulty calculation based on progression level
+// Add virtual fields and methods
 ExerciseSchema.virtual('calculatedDifficulty').get(function() {
   const level = this.progressionLevel || 1;
   if (level <= 5) return 'beginner';
@@ -68,16 +65,5 @@ ExerciseSchema.virtual('calculatedDifficulty').get(function() {
 ExerciseSchema.index({ category: 1, progressionLevel: 1 });
 ExerciseSchema.index({ name: 'text', description: 'text' });
 
-// Create a method to get next exercises in the progression
-ExerciseSchema.methods.getProgression = async function() {
-  const Exercise = mongoose.model('Exercise');
-  const currentLevel = this.progressionLevel;
-  const category = this.category;
-  
-  return await Exercise.find({
-    category,
-    progressionLevel: { $gt: currentLevel }
-  }).sort({ progressionLevel: 1 }).limit(3);
-};
-
+// Only create the model if it doesn't already exist
 export default mongoose.models.Exercise || mongoose.model('Exercise', ExerciseSchema);
