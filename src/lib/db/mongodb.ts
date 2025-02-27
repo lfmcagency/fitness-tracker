@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 
-// Check for MongoDB URI and provide fallback for development
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/fitness-tracker';
+// Use the environment variable with your Atlas connection string as fallback
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://louisfaucher95:ZHEpXGfvuNF7ydoB@fitness-tracker.dsosg.mongodb.net/?retryWrites=true&w=majority';
 
 let cached = global.mongoose;
 
@@ -11,6 +11,7 @@ if (!cached) {
 
 async function dbConnect() {
   if (cached.conn) {
+    console.log('Using cached MongoDB connection');
     return cached.conn;
   }
 
@@ -20,10 +21,12 @@ async function dbConnect() {
       serverSelectionTimeoutMS: 5000,
     };
 
+    console.log('Connecting to MongoDB with URI:', MONGODB_URI);
+    
     // Add proper error handling
     cached.promise = mongoose.connect(MONGODB_URI, opts)
       .then(mongoose => {
-        console.log('Connected to MongoDB');
+        console.log('Successfully connected to MongoDB');
         return mongoose;
       })
       .catch(error => {
@@ -41,7 +44,12 @@ async function dbConnect() {
   try {
     cached.conn = await cached.promise;
   } catch (error) {
-    console.error('Failed to connect to MongoDB, using mock data');
+    console.error('Failed to connect to MongoDB:', error);
+    if (process.env.NODE_ENV === 'production') {
+      throw error;
+    } else {
+      console.warn('Using mock data in development mode');
+    }
   }
   
   return cached.conn;

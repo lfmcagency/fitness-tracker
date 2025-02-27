@@ -5,7 +5,7 @@ import { Timer } from 'lucide-react';
 interface MealModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (meal: { name: string; time: string }) => void;
+  onSave: (meal: { name: string; time: string; foods: any[] }) => void;
 }
 
 const MealModal: React.FC<MealModalProps> = ({ isOpen, onClose, onSave }) => {
@@ -15,7 +15,8 @@ const MealModal: React.FC<MealModalProps> = ({ isOpen, onClose, onSave }) => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (name && time) {
-      onSave({ name, time });
+      // Added empty foods array here
+      onSave({ name, time, foods: [] });
       setName('');
       setTime('');
       onClose();
