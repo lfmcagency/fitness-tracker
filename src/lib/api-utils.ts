@@ -1,3 +1,4 @@
+// New file: src/lib/api-utils.ts
 import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 
