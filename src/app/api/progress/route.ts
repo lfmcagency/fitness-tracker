@@ -1,13 +1,19 @@
+export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/db/mongodb';
 import { getAuth } from '@/lib/auth';
+
+// Mark this route as dynamic to avoid static generation errors
+export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
   try {
     await dbConnect();
     const session = await getAuth();
     
-    if (!session) {
+    // For development, use mock data even if not authenticated
+    // In production, we would require authentication
+    if (!session && process.env.NODE_ENV === 'production') {
       return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
     }
     
@@ -38,18 +44,6 @@ export async function GET(req: NextRequest) {
       success: true, 
       data: mockProgressData 
     });
-    
-    // In production, we'd get this from MongoDB
-    // const user = await User.findById(session.user.id);
-    // const workouts = await Workout.find({ user: session.user.id })
-    //   .sort({ date: -1 })
-    //   .limit(7);
-    // 
-    // const weightHistory = user.bodyweight.slice(-7);
-    // 
-    // // Calculate metrics based on real data
-    // 
-    // return NextResponse.json({ success: true, data: calculatedData });
   } catch (error) {
     console.error('Error in GET /api/progress:', error);
     return NextResponse.json({ 
