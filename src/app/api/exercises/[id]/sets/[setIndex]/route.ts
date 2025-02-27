@@ -1,10 +1,9 @@
-export const dynamic = 'force-dynamic'
+// Mark this route as dynamic to avoid static generation errors
+export const dynamic = 'force-dynamic';
+
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/db/mongodb';
 import { getAuth } from '@/lib/auth';
-
-// Mark this route as dynamic to avoid static generation errors
-export const dynamic = 'force-dynamic';
 
 export async function PATCH(
   req: NextRequest,

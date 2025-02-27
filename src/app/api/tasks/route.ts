@@ -1,4 +1,6 @@
-export const dynamic = 'force-dynamic'
+// Mark as dynamic
+export const dynamic = 'force-dynamic';
+
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/db/mongodb';
 import Task from '@/models/Task';
@@ -9,7 +11,8 @@ export async function GET(req: NextRequest) {
     await dbConnect();
     const session = await getAuth();
     
-    if (!session) {
+    // For development, allow access even without authentication
+    if (!session && process.env.NODE_ENV === 'production') {
       return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
     }
     
@@ -38,7 +41,8 @@ export async function POST(req: NextRequest) {
     await dbConnect();
     const session = await getAuth();
     
-    if (!session) {
+    // For development, allow access even without authentication
+    if (!session && process.env.NODE_ENV === 'production') {
       return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
     }
     
