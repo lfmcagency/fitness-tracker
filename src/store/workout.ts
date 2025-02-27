@@ -12,14 +12,14 @@ interface WorkoutState {
   updateCurrentWeight: (weight: string) => void;
 }
 
-export const useWorkoutStore = create<WorkoutState>((set, get) => ({
+export const useWorkoutStore = create<WorkoutState>((setState, getState) => ({
   exercises: [],
   currentWeight: '75.5',
   isLoading: false,
   error: null,
 
   fetchExercises: async () => {
-    set({ isLoading: true, error: null });
+    setState({ isLoading: true, error: null });
     try {
       const response = await fetch('/api/exercises');
       
@@ -30,7 +30,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       const data = await response.json();
       
       if (data.success) {
-        set({ 
+        setState({ 
           exercises: data.data,
           isLoading: false
         });
@@ -39,7 +39,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       }
     } catch (error) {
       console.error('Error fetching exercises:', error);
-      set({ 
+      setState({ 
         error: error instanceof Error ? error.message : 'Failed to fetch exercises', 
         isLoading: false 
       });
@@ -48,10 +48,10 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
 
   updateExercise: (exerciseId, updates) => {
     // Store original exercise
-    const originalExercise = get().exercises.find(e => e.id === exerciseId);
+    const originalExercise = getState().exercises.find(e => e.id === exerciseId);
     
     // Optimistic update
-    set((state) => ({
+    setState((state) => ({
       exercises: state.exercises.map(exercise =>
         exercise.id === exerciseId
           ? { ...exercise, ...updates }
@@ -75,7 +75,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
         console.error('Error updating exercise:', error);
         // Revert on error
         if (originalExercise) {
-          set((state) => ({
+          setState((state) => ({
             exercises: state.exercises.map(e =>
               e.id === exerciseId ? originalExercise : e
             ),
@@ -86,7 +86,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   },
 
   toggleSet: (exerciseId, setIndex) => {
-    set((state) => {
+    setState((state) => {
       const updatedExercises = state.exercises.map(exercise => {
         if (exercise.id === exerciseId) {
           const updatedSets = [...exercise.sets];
@@ -102,7 +102,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     });
     
     // Then sync with the API
-    const exercise = get().exercises.find(e => e.id === exerciseId);
+    const exercise = getState().exercises.find(e => e.id === exerciseId);
     if (!exercise) return;
 
     const set = exercise.sets[setIndex];
@@ -119,7 +119,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   },
 
   updateCurrentWeight: (weight) => {
-    set({ currentWeight: weight });
+    setState({ currentWeight: weight });
     
     // Optionally, send to API to update user's current weight
     fetch('/api/user/weight', {
