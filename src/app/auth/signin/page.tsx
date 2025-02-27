@@ -34,8 +34,11 @@ export default function SignIn() {
       }
       
       if (result?.ok) {
-        console.log('Sign-in successful');
-        router.push('/dashboard');
+        console.log('Sign-in successful, redirecting to dashboard');
+        // Force a small delay to ensure the session is properly set
+        setTimeout(() => {
+          router.push('/dashboard');
+        }, 500);
         return;
       }
       
