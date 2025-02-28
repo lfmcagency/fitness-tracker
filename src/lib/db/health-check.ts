@@ -15,7 +15,18 @@ export async function checkDatabaseHealth() {
       };
     }
 
-    // Get database stats
+    // Make sure db is defined before trying to access it
+    if (!mongoose.connection.db) {
+      return {
+        status: 'error',
+        message: 'MongoDB database not initialized',
+        details: {
+          readyState: mongoose.connection.readyState
+        }
+      };
+    }
+
+    // Get database stats - now TypeScript knows db is defined
     const dbStats = await mongoose.connection.db.stats();
     
     // Get collection stats
@@ -26,7 +37,7 @@ export async function checkDatabaseHealth() {
     }));
 
     // Count documents in each collection
-    const collectionCounts: Record<string, number> = {}; // Add this type definition
+    const collectionCounts: Record<string, number> = {}; 
     
     for (const collection of collectionList) {
       const count = await mongoose.connection.db.collection(collection.name).countDocuments();
