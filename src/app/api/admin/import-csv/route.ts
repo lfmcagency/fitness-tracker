@@ -1,4 +1,3 @@
-// src/app/api/admin/import-csv/route.ts
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -34,7 +33,12 @@ async function importFromCsv() {
   
   // FIRST PASS: Import all exercises
   const exerciseMap = new Map();  // Store unique_id -> MongoDB _id mapping
-  const importStats = {
+  const importStats: {
+    total: number;
+    updated: number;
+    new: number;
+    categories: Record<string, number>;
+  } = {
     total: 0,
     updated: 0,
     new: 0,
@@ -76,9 +80,8 @@ async function importFromCsv() {
         categoryValue = String(row.category).toLowerCase();
       }
 
-      if (!importStats.categories[categoryValue]) {
-        importStats.categories[categoryValue] = 0;
-      }
+      // Initialize this category count if it doesn't exist yet
+      importStats.categories[categoryValue] = importStats.categories[categoryValue] || 0;
       
       const exercise = {
         uniqueId: row.unique_id,

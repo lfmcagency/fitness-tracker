@@ -82,7 +82,7 @@ async function importCsvExercises() {
     const exerciseMap = new Map();  // Store unique_id -> MongoDB _id mapping
     const importStats = {
       total: 0,
-      categories: {}
+      categories: {} as Record<string, number>
     };
     
     for (const file of files) {
@@ -123,9 +123,8 @@ async function importCsvExercises() {
           categoryValue = String(row.category).toLowerCase();
         }
         
-        if (!importStats.categories[categoryValue]) {
-          importStats.categories[categoryValue] = 0;
-        }
+        // Initialize this category count if it doesn't exist yet
+        importStats.categories[categoryValue] = importStats.categories[categoryValue] || 0;
         
         const exercise = {
           uniqueId: row.unique_id,
