@@ -32,16 +32,19 @@ async function getMongoStatus() {
       };
     }
     
+    // At this point we know db is defined
+    const db = mongoose.connection.db;
+    
     // Get database stats
-    const dbName = mongoose.connection.db.databaseName;
+    const dbName = db.databaseName;
     const host = mongoose.connection.host || 'unknown';
-    const stats = await mongoose.connection.db.stats();
+    const stats = await db.stats();
     
     // Get collections and counts
-    const collections = await mongoose.connection.db.listCollections().toArray();
+    const collections = await db.listCollections().toArray();
     const collectionStats = await Promise.all(
       collections.map(async (collection) => {
-        const count = await mongoose.connection.db.collection(collection.name).countDocuments();
+        const count = await db.collection(collection.name).countDocuments();
         return {
           name: collection.name,
           count,
