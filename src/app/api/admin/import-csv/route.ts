@@ -1,3 +1,4 @@
+// src/app/api/admin/import-csv/route.ts
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -70,27 +71,30 @@ async function importFromCsv() {
       }
       
       // Create category stat entry if it doesn't exist
-      if (!row.category) row.category = 'uncategorized';
-      const category = row.category.toLowerCase();
-      if (!importStats.categories[category]) {
-        importStats.categories[category] = 0;
+      let categoryValue = 'uncategorized';
+      if (typeof row === 'object' && row !== null && 'category' in row && row.category) {
+        categoryValue = String(row.category).toLowerCase();
+      }
+
+      if (!importStats.categories[categoryValue]) {
+        importStats.categories[categoryValue] = 0;
       }
       
       const exercise = {
         uniqueId: row.unique_id,
         name: row.name,
-        category: category,
-        subcategory: row.subcategory ? row.subcategory.toLowerCase() : '',
-        progressionLevel: row.progressionLevel || 0,
-        description: row.description || '',
-        relPrev: row.rel_prev || null,
-        relNext: row.rel_next || null,
-        xpValue: row.xp_value || 10,
-        unlockRequirements: row.unlock_requirements || '',
-        formCues: row.form_cues || '',
-        primaryMuscleGroup: row.primary_muscle_group || '',
-        secondaryMuscleGroups: row.secondary_muscle_groups || '',
-        difficulty: row.difficulty || 'beginner'
+        category: categoryValue,
+        subcategory: typeof row.subcategory === 'string' ? row.subcategory.toLowerCase() : '',
+        progressionLevel: typeof row.progressionLevel === 'number' ? row.progressionLevel : 0,
+        description: typeof row.description === 'string' ? row.description : '',
+        relPrev: typeof row.rel_prev === 'string' ? row.rel_prev : null,
+        relNext: typeof row.rel_next === 'string' ? row.rel_next : null,
+        xpValue: typeof row.xp_value === 'number' ? row.xp_value : 10,
+        unlockRequirements: typeof row.unlock_requirements === 'string' ? row.unlock_requirements : '',
+        formCues: typeof row.form_cues === 'string' ? row.form_cues : '',
+        primaryMuscleGroup: typeof row.primary_muscle_group === 'string' ? row.primary_muscle_group : '',
+        secondaryMuscleGroups: typeof row.secondary_muscle_groups === 'string' ? row.secondary_muscle_groups : '',
+        difficulty: typeof row.difficulty === 'string' ? row.difficulty : 'beginner'
       };
       
       try {
@@ -112,7 +116,7 @@ async function importFromCsv() {
         }
         
         importStats.total++;
-        importStats.categories[category] = (importStats.categories[category] || 0) + 1;
+        importStats.categories[categoryValue] = (importStats.categories[categoryValue] || 0) + 1;
         
         // Store the mapping
         exerciseMap.set(exercise.uniqueId, result._id);
