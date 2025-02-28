@@ -8,6 +8,11 @@ import path from 'path';
 import fs from 'fs';
 import Papa from 'papaparse';
 
+// Simple interface for parsed rows
+interface CsvRow {
+  [key: string]: any;
+}
+
 // Function to import from CSV data
 async function importFromCsv() {
   // Get list of CSV files
@@ -31,77 +36,79 @@ async function importFromCsv() {
     };
   }
   
-  // FIRST PASS: Import all exercises
-  const exerciseMap = new Map();  // Store unique_id -> MongoDB _id mapping
-  const importStats: {
+  // Stats for tracking import progress
+  const stats: {
     total: number;
     updated: number;
     new: number;
+    relationshipsUpdated: number;
     categories: Record<string, number>;
   } = {
     total: 0,
     updated: 0,
     new: 0,
+    relationshipsUpdated: 0,
     categories: {}
   };
+  
+  // FIRST PASS: Import all exercises
+  const exerciseMap = new Map();
   
   for (const file of files) {
     console.log(`Processing ${path.basename(file)}`);
     
     // Read and parse CSV
     const content = fs.readFileSync(file, 'utf8');
-    const { data, errors } = Papa.parse(content, { 
+    const parseResult = Papa.parse<CsvRow>(content, { 
       header: true, 
       skipEmptyLines: true,
       dynamicTyping: true
     });
     
-    if (errors.length > 0) {
-      console.warn('Parse errors:', errors);
+    if (parseResult.errors.length > 0) {
+      console.warn('Parse errors:', parseResult.errors);
     }
     
+    const rows = parseResult.data;
+    
     // Import exercises
-    for (const row of data) {
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      
       // Skip rows without a unique_id or name
-      if (
-        typeof row !== 'object' || 
-        row === null || 
-        !('unique_id' in row) || 
-        !('name' in row) || 
-        !row.unique_id || 
-        !row.name
-      ) {
+      if (!row || typeof row !== 'object' || !row.unique_id || !row.name) {
         continue;
       }
       
-      // Create category stat entry if it doesn't exist
+      // Get category safely
       let categoryValue = 'uncategorized';
-      if (typeof row === 'object' && row !== null && 'category' in row && row.category) {
-        categoryValue = String(row.category).toLowerCase();
+      if (row.category && typeof row.category === 'string') {
+        categoryValue = row.category.toLowerCase();
       }
-
-      // Initialize this category count if it doesn't exist yet
-      importStats.categories[categoryValue] = importStats.categories[categoryValue] || 0;
       
+      // Update category stats
+      stats.categories[categoryValue] = (stats.categories[categoryValue] || 0) + 1;
+      
+      // Create exercise object with type safety
       const exercise = {
-        uniqueId: row.unique_id,
-        name: row.name,
+        uniqueId: String(row.unique_id),
+        name: String(row.name),
         category: categoryValue,
-        subcategory: typeof row.subcategory === 'string' ? row.subcategory.toLowerCase() : '',
+        subcategory: row.subcategory && typeof row.subcategory === 'string' ? row.subcategory.toLowerCase() : '',
         progressionLevel: typeof row.progressionLevel === 'number' ? row.progressionLevel : 0,
-        description: typeof row.description === 'string' ? row.description : '',
-        relPrev: typeof row.rel_prev === 'string' ? row.rel_prev : null,
-        relNext: typeof row.rel_next === 'string' ? row.rel_next : null,
+        description: row.description && typeof row.description === 'string' ? row.description : '',
+        relPrev: row.rel_prev && typeof row.rel_prev === 'string' ? row.rel_prev : null,
+        relNext: row.rel_next && typeof row.rel_next === 'string' ? row.rel_next : null,
         xpValue: typeof row.xp_value === 'number' ? row.xp_value : 10,
-        unlockRequirements: typeof row.unlock_requirements === 'string' ? row.unlock_requirements : '',
-        formCues: typeof row.form_cues === 'string' ? row.form_cues : '',
-        primaryMuscleGroup: typeof row.primary_muscle_group === 'string' ? row.primary_muscle_group : '',
-        secondaryMuscleGroups: typeof row.secondary_muscle_groups === 'string' ? row.secondary_muscle_groups : '',
-        difficulty: typeof row.difficulty === 'string' ? row.difficulty : 'beginner'
+        unlockRequirements: row.unlock_requirements && typeof row.unlock_requirements === 'string' ? row.unlock_requirements : '',
+        formCues: row.form_cues && typeof row.form_cues === 'string' ? row.form_cues : '',
+        primaryMuscleGroup: row.primary_muscle_group && typeof row.primary_muscle_group === 'string' ? row.primary_muscle_group : '',
+        secondaryMuscleGroups: row.secondary_muscle_groups && typeof row.secondary_muscle_groups === 'string' ? row.secondary_muscle_groups : '',
+        difficulty: row.difficulty && typeof row.difficulty === 'string' ? row.difficulty : 'beginner'
       };
       
       try {
-        // Check if exercise exists
+        // Check if it exists already
         const existingExercise = await Exercise.findOne({ uniqueId: exercise.uniqueId });
         
         // Upsert the exercise
@@ -112,16 +119,14 @@ async function importFromCsv() {
         );
         
         // Update stats
+        stats.total++;
         if (existingExercise) {
-          importStats.updated++;
+          stats.updated++;
         } else {
-          importStats.new++;
+          stats.new++;
         }
         
-        importStats.total++;
-        importStats.categories[categoryValue] = (importStats.categories[categoryValue] || 0) + 1;
-        
-        // Store the mapping
+        // Store mapping between uniqueId and MongoDB _id
         exerciseMap.set(exercise.uniqueId, result._id);
       } catch (error) {
         console.error(`Error importing exercise ${exercise.name}:`, error);
@@ -129,48 +134,39 @@ async function importFromCsv() {
     }
   }
   
-  // SECOND PASS: Establish relationships
-  console.log('Starting second pass to establish relationships');
-  
+  // SECOND PASS: Establish relationships between exercises
   const exercises = await Exercise.find({ uniqueId: { $exists: true, $ne: null } });
-  let relationshipsUpdated = 0;
   
   for (const exercise of exercises) {
-    const updates = {};
+    const updates: any = {};
     
-    // Set previous exercise reference
+    // Set previous exercise reference if it exists
     if (exercise.relPrev && exerciseMap.has(exercise.relPrev)) {
       updates.previousExercise = exerciseMap.get(exercise.relPrev);
     }
     
-    // Set next exercise reference
+    // Set next exercise reference if it exists
     if (exercise.relNext && exerciseMap.has(exercise.relNext)) {
       updates.nextExercise = exerciseMap.get(exercise.relNext);
     }
     
-    // Apply updates if needed
+    // Apply updates if we have any
     if (Object.keys(updates).length > 0) {
       await Exercise.findByIdAndUpdate(exercise._id, updates);
-      relationshipsUpdated++;
+      stats.relationshipsUpdated++;
     }
   }
   
   return {
     success: true,
     message: `CSV import completed successfully`,
-    stats: {
-      total: importStats.total,
-      new: importStats.new,
-      updated: importStats.updated,
-      relationshipsUpdated,
-      categories: importStats.categories
-    }
+    stats
   };
 }
 
 export async function POST(req: NextRequest) {
   try {
-    // Optional authentication check (remove in development if needed)
+    // Optional authentication check for production
     const session = await getAuth();
     
     if (!session && process.env.NODE_ENV === 'production') {

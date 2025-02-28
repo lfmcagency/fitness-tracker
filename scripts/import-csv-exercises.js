@@ -19,7 +19,6 @@ async function connectToMongoDB() {
 }
 
 // Define the Exercise schema inline to avoid import issues
-// We'll reuse the same fields as in your Exercise model
 const ExerciseSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   category: { type: String, required: true },
@@ -82,7 +81,7 @@ async function importCsvExercises() {
     const exerciseMap = new Map();  // Store unique_id -> MongoDB _id mapping
     const importStats = {
       total: 0,
-      categories: {} as Record<string, number>
+      categories: {}
     };
     
     for (const file of files) {
@@ -103,44 +102,40 @@ async function importCsvExercises() {
       console.log(`Found ${data.length} exercises in ${path.basename(file)}`);
       
       // Import exercises
-      for (const row of data) {
+      for (let i = 0; i < data.length; i++) {
+        const row = data[i];
+        
         // Skip rows without a unique_id or name
-        if (
-          typeof row !== 'object' || 
-          row === null || 
-          !('unique_id' in row) || 
-          !('name' in row) || 
-          !row.unique_id || 
-          !row.name
-        ) {
-          console.warn('Skipping row without unique_id or name:', row);
+        if (!row || typeof row !== 'object' || !row.unique_id || !row.name) {
+          console.warn('Skipping invalid row at index', i);
           continue;
         }
         
-        // Create category stat entry if it doesn't exist
+        // Get category safely
         let categoryValue = 'uncategorized';
-        if (typeof row === 'object' && row !== null && 'category' in row && row.category) {
-          categoryValue = String(row.category).toLowerCase();
+        if (row.category && typeof row.category === 'string') {
+          categoryValue = row.category.toLowerCase();
         }
         
         // Initialize this category count if it doesn't exist yet
         importStats.categories[categoryValue] = importStats.categories[categoryValue] || 0;
         
+        // Create the exercise object with safe type checks
         const exercise = {
-          uniqueId: row.unique_id,
-          name: row.name,
+          uniqueId: String(row.unique_id),
+          name: String(row.name),
           category: categoryValue,
-          subcategory: typeof row.subcategory === 'string' ? row.subcategory.toLowerCase() : '',
+          subcategory: row.subcategory && typeof row.subcategory === 'string' ? row.subcategory.toLowerCase() : '',
           progressionLevel: typeof row.progressionLevel === 'number' ? row.progressionLevel : 0,
-          description: typeof row.description === 'string' ? row.description : '',
-          relPrev: typeof row.rel_prev === 'string' ? row.rel_prev : null,
-          relNext: typeof row.rel_next === 'string' ? row.rel_next : null,
+          description: row.description && typeof row.description === 'string' ? row.description : '',
+          relPrev: row.rel_prev && typeof row.rel_prev === 'string' ? row.rel_prev : null,
+          relNext: row.rel_next && typeof row.rel_next === 'string' ? row.rel_next : null,
           xpValue: typeof row.xp_value === 'number' ? row.xp_value : 10,
-          unlockRequirements: typeof row.unlock_requirements === 'string' ? row.unlock_requirements : '',
-          formCues: typeof row.form_cues === 'string' ? row.form_cues : '',
-          primaryMuscleGroup: typeof row.primary_muscle_group === 'string' ? row.primary_muscle_group : '',
-          secondaryMuscleGroups: typeof row.secondary_muscle_groups === 'string' ? row.secondary_muscle_groups : '',
-          difficulty: typeof row.difficulty === 'string' ? row.difficulty : 'beginner'
+          unlockRequirements: row.unlock_requirements && typeof row.unlock_requirements === 'string' ? row.unlock_requirements : '',
+          formCues: row.form_cues && typeof row.form_cues === 'string' ? row.form_cues : '',
+          primaryMuscleGroup: row.primary_muscle_group && typeof row.primary_muscle_group === 'string' ? row.primary_muscle_group : '',
+          secondaryMuscleGroups: row.secondary_muscle_groups && typeof row.secondary_muscle_groups === 'string' ? row.secondary_muscle_groups : '',
+          difficulty: row.difficulty && typeof row.difficulty === 'string' ? row.difficulty : 'beginner'
         };
         
         try {
