@@ -1,5 +1,6 @@
-import mongoose, { Schema, Document } from 'mongoose';
+import mongoose, { Schema, Document, Model } from 'mongoose';
 
+// Interface for Exercise document
 export interface IExercise extends Document {
   name: string;
   category: string;
@@ -20,6 +21,12 @@ export interface IExercise extends Document {
   // Virtual methods
   fullDescription: string;
   formattedName: string;
+}
+
+// Interface for Exercise model with static methods
+interface IExerciseModel extends Model<IExercise> {
+  findByDifficulty(difficulty: string): Promise<IExercise[]>;
+  findNextProgressions(exerciseId: mongoose.Types.ObjectId | string): Promise<IExercise[] | null>;
 }
 
 const ExerciseSchema = new Schema<IExercise>({
@@ -117,12 +124,12 @@ ExerciseSchema.index(
 );
 
 // Add virtual for full description
-ExerciseSchema.virtual('fullDescription').get(function() {
+ExerciseSchema.virtual('fullDescription').get(function(this: IExercise) {
   return `${this.name} - Level ${this.progressionLevel} ${this.category} exercise`;
 });
 
 // Add virtual for formatted name (category-specific formatting)
-ExerciseSchema.virtual('formattedName').get(function() {
+ExerciseSchema.virtual('formattedName').get(function(this: IExercise) {
   let prefix = '';
   
   switch(this.category) {
@@ -162,14 +169,14 @@ ExerciseSchema.pre('save', function(next) {
 });
 
 // Add static method to find exercises by difficulty
-ExerciseSchema.statics.findByDifficulty = function(difficulty) {
+ExerciseSchema.statics.findByDifficulty = function(difficulty: string): Promise<IExercise[]> {
   return this.find({ difficulty });
 };
 
 // Add static method to find next progression exercises
-ExerciseSchema.statics.findNextProgressions = function(exerciseId) {
+ExerciseSchema.statics.findNextProgressions = function(exerciseId: mongoose.Types.ObjectId | string): Promise<IExercise[] | null> {
   return this.findById(exerciseId)
-    .then(exercise => {
+    .then((exercise: IExercise | null) => {
       if (!exercise) return null;
       
       return this.find({
@@ -180,6 +187,7 @@ ExerciseSchema.statics.findNextProgressions = function(exerciseId) {
 };
 
 // Register the model if it doesn't exist already
-const Exercise = mongoose.models.Exercise || mongoose.model<IExercise>('Exercise', ExerciseSchema);
+const Exercise = mongoose.models.Exercise as IExerciseModel || 
+  mongoose.model<IExercise, IExerciseModel>('Exercise', ExerciseSchema);
 
 export default Exercise;
