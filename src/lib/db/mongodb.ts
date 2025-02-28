@@ -1,5 +1,8 @@
+// src/lib/db/mongodb.ts
+
 import mongoose from 'mongoose';
 
+// TypeScript requires us to check if MONGODB_URI is defined
 const MONGODB_URI = process.env.MONGODB_URI;
 
 if (!MONGODB_URI) {
@@ -47,7 +50,7 @@ export async function dbConnect() {
       console.log('Connecting to MongoDB...');
     }
     
-    // Store the connection promise
+    // Store the connection promise - MONGODB_URI is now guaranteed to be a string
     global.mongoose.promise = mongoose.connect(MONGODB_URI, opts)
       .then(mongoose => {
         console.log('Connected to MongoDB');

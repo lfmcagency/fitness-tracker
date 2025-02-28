@@ -1,6 +1,8 @@
 require('dotenv').config({ path: '.env.local' });
 const mongoose = require('mongoose');
 const { MongoClient } = require('mongodb');
+const path = require('path');
+const fs = require('fs');
 
 // Colors for terminal output
 const colors = {
@@ -12,24 +14,53 @@ const colors = {
   reset: '\x1b[0m'
 };
 
+// Check paths to find the mongodb module
+function findModulePath() {
+  const possiblePaths = [
+    // Check direct path
+    path.resolve(__dirname, '../src/lib/db/mongodb.js'),
+    // Check in dist folder (if using TypeScript)
+    path.resolve(__dirname, '../dist/lib/db/mongodb.js'),
+    // Check in .next/server folder (Next.js build output)
+    path.resolve(__dirname, '../.next/server/src/lib/db/mongodb.js'),
+    path.resolve(__dirname, '../.next/server/lib/db/mongodb.js'),
+    // Check other common paths
+    path.resolve(__dirname, '../lib/db/mongodb.js')
+  ];
+
+  for (const modulePath of possiblePaths) {
+    if (fs.existsSync(modulePath)) {
+      console.log(`${colors.blue}Found MongoDB module at: ${modulePath}${colors.reset}`);
+      return modulePath;
+    }
+  }
+
+  console.log(`${colors.yellow}Could not find MongoDB module in standard locations. Will try dynamic import.${colors.reset}`);
+  return null;
+}
+
 // Check connection using the project's dbConnect function
 async function testMongooseConnection() {
   console.log(`${colors.cyan}Testing Mongoose connection...${colors.reset}`);
   
   try {
-    // Attempt to import the dbConnect function using path relative to the script location
+    // Try to find the module path
+    const modulePath = findModulePath();
+    
+    // Try different approaches to import the module
     let dbConnect;
-    try {
-      // First try with .js extension
-      const mongodb = require('../src/lib/db/mongodb.js');
+    
+    if (modulePath) {
+      // Use require with the found path
+      const mongodb = require(modulePath);
       dbConnect = mongodb.dbConnect || mongodb.default;
-    } catch (err) {
+    } else {
+      // Try a relative import as fallback
       try {
-        // Then try without extension (Node.js might resolve it)
         const mongodb = require('../src/lib/db/mongodb');
         dbConnect = mongodb.dbConnect || mongodb.default;
-      } catch (innerErr) {
-        console.error(`${colors.red}Could not import dbConnect function:${colors.reset}`, innerErr.message);
+      } catch (err) {
+        console.log(`${colors.yellow}Could not import MongoDB module. Will test direct connection only.${colors.reset}`);
         return false;
       }
     }
@@ -43,11 +74,16 @@ async function testMongooseConnection() {
     
     console.log(`${colors.green}✓ Connected successfully using project's dbConnect!${colors.reset}`);
     console.log(`Connection state: ${mongoose.connection.readyState}`);
-    console.log(`Database: ${mongoose.connection.db.databaseName}`);
     
-    // Test a query to fully verify the connection
-    const collections = await mongoose.connection.db.listCollections().toArray();
-    console.log(`Collections found: ${collections.length > 0 ? collections.map(c => c.name).join(', ') : 'none'}`);
+    if (mongoose.connection.db) {
+      console.log(`Database: ${mongoose.connection.db.databaseName}`);
+      
+      // Test a query to fully verify the connection
+      const collections = await mongoose.connection.db.listCollections().toArray();
+      console.log(`Collections found: ${collections.length > 0 ? collections.map(c => c.name).join(', ') : 'none'}`);
+    } else {
+      console.log(`${colors.yellow}Connection established but database not selected.${colors.reset}`);
+    }
     
     // Disconnect using the proper method
     if (mongoose.connection.readyState !== 0) {
@@ -118,8 +154,7 @@ async function runTests() {
     console.log(`- Direct MongoDB connection: ${colors.green}Success${colors.reset}`);
     console.log(`- Project's dbConnect: ${colors.red}Failed${colors.reset}`);
     console.log(`\n${colors.yellow}This suggests there's an issue with the project's connection logic, not with MongoDB itself.${colors.reset}`);
-    console.log(`Check the mongodb.ts file and ensure it's being correctly transpiled to mongodb.js.`);
-    console.log(`Try running \`npm run build\` or the appropriate build command first.`);
+    console.log(`Try running \`npm run build\` or the appropriate build command first to ensure the mongodb.js file is properly transpiled.`);
   } else if (!directConnectionSuccess) {
     console.log(`${colors.red}Connection tests failed!${colors.reset} There appears to be an issue with the MongoDB connection string or network access.`);
     console.log(`\nPossible solutions:`);
