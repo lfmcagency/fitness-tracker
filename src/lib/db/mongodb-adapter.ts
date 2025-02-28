@@ -1,5 +1,5 @@
 import { MongoClient } from 'mongodb';
-import dbConnect from './mongodb';
+import { dbConnect } from '@/lib/db/mongodb';
 
 if (!process.env.MONGODB_URI) {
   throw new Error('Please define the MONGODB_URI environment variable');
