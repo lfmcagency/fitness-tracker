@@ -1,53 +1,111 @@
-// Mark this route as dynamic to avoid static generation errors
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { dbConnect } from '@/lib/db/mongodb';
+import UserProgress from '@/models/UserProgress';
 import { getAuth } from '@/lib/auth';
+import { apiResponse, handleApiError } from '@/lib/api-utils';
 
+// GET - Fetch user progress
 export async function GET(req: NextRequest) {
   try {
     await dbConnect();
     const session = await getAuth();
     
-    // For development, use mock data even if not authenticated
-    // In production, we would require authentication
-    if (!session && process.env.NODE_ENV === 'production') {
-      return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
+    // For demo purposes, allow access without auth
+    const userId = session?.user?.id || '000000000000000000000000';
+    
+    // Fetch or create user progress
+    let userProgress = await UserProgress.findOne({ userId });
+    
+    if (!userProgress) {
+      // Create initial progress for new users
+      userProgress = await UserProgress.create({
+        userId,
+        globalLevel: 1,
+        globalXp: 0,
+        categoryProgress: {
+          core: { level: 1, xp: 0, unlockedExercises: [] },
+          push: { level: 1, xp: 0, unlockedExercises: [] },
+          pull: { level: 1, xp: 0, unlockedExercises: [] },
+          legs: { level: 1, xp: 0, unlockedExercises: [] }
+        },
+        achievements: []
+      });
     }
     
-    // Mock data for development
-    const mockProgressData = {
-      performanceData: [
-        { date: "02/10", pushups: 18, pullups: 10, weight: 76.2 },
-        { date: "02/12", pushups: 20, pullups: 11, weight: 75.8 },
-        { date: "02/14", pushups: 19, pullups: 12, weight: 75.5 },
-        { date: "02/16", pushups: 22, pullups: 12, weight: 75.2 },
-        { date: "02/17", pushups: 23, pullups: 13, weight: 75.5 },
-      ],
-      achievements: [
-        { id: 1, title: "20+ Push-ups", date: "Feb 12", type: "strength" },
-        { id: 2, title: "Sub 76kg Weight", date: "Feb 14", type: "weight" },
-        { id: 3, title: "10+ Pull-ups", date: "Feb 10", type: "strength" },
-      ],
-      metrics: {
-        currentWeight: 75.5,
-        weightChange: -0.7,
-        maxPushups: 23,
-        pushupChange: 3,
-        trainingDays: 5
-      }
-    };
+    return apiResponse(userProgress);
+  } catch (error) {
+    return handleApiError(error, 'Error fetching user progress');
+  }
+}
+
+// POST - Update user progress (add XP, etc.)
+export async function POST(req: NextRequest) {
+  try {
+    await dbConnect();
+    const session = await getAuth();
     
-    return NextResponse.json({ 
-      success: true, 
-      data: mockProgressData 
+    // For demo purposes, allow access without auth
+    const userId = session?.user?.id || '000000000000000000000000';
+    
+    const { xp, category, source } = await req.json();
+    
+    // Validate xp is a positive number
+    if (typeof xp !== 'number' || xp <= 0) {
+      return apiResponse({ success: false }, 'XP must be a positive number', 400);
+    }
+    
+    // Fetch user progress
+    let userProgress = await UserProgress.findOne({ userId });
+    
+    if (!userProgress) {
+      // Create initial progress for new users
+      userProgress = await UserProgress.create({
+        userId,
+        globalLevel: 1,
+        globalXp: 0,
+        categoryProgress: {
+          core: { level: 1, xp: 0, unlockedExercises: [] },
+          push: { level: 1, xp: 0, unlockedExercises: [] },
+          pull: { level: 1, xp: 0, unlockedExercises: [] },
+          legs: { level: 1, xp: 0, unlockedExercises: [] }
+        },
+        achievements: []
+      });
+    }
+    
+    // Add XP to global
+    userProgress.globalXp += xp;
+    
+    // Calculate new global level
+    // Using a formula: level = 1 + floor(globalXp / 100)^0.8
+    // This creates a progression curve that slows down at higher levels
+    userProgress.globalLevel = Math.floor(1 + Math.pow(userProgress.globalXp / 100, 0.8));
+    
+    // If category is specified, add XP to that category too
+    if (category && ['core', 'push', 'pull', 'legs'].includes(category)) {
+      userProgress.categoryProgress[category].xp += xp;
+      
+      // Calculate new category level
+      // Simpler formula for category levels
+      userProgress.categoryProgress[category].level = 
+        Math.floor(1 + Math.pow(userProgress.categoryProgress[category].xp / 50, 0.7));
+    }
+    
+    // Save progress
+    await userProgress.save();
+    
+    return apiResponse({
+      globalXp: userProgress.globalXp,
+      globalLevel: userProgress.globalLevel,
+      category: category ? {
+        name: category,
+        xp: userProgress.categoryProgress[category].xp,
+        level: userProgress.categoryProgress[category].level
+      } : null
     });
   } catch (error) {
-    console.error('Error in GET /api/progress:', error);
-    return NextResponse.json({ 
-      success: false, 
-      message: 'Error fetching progress data' 
-    }, { status: 500 });
+    return handleApiError(error, 'Error updating user progress');
   }
 }
