@@ -13,16 +13,16 @@ async function safelyDropIndexes(model: mongoose.Model<any>, indexNames: string[
       try {
         await model.collection.dropIndex(indexName);
         console.log(`Dropped index ${indexName} on ${model.collection.name}`);
-      } catch (error: any) {
+      } catch (error) {
         // Ignore error if index doesn't exist
-        if (error.code !== 27) {  // Index not found error code
-          console.warn(`Warning dropping index ${indexName}:`, error.message);
+        if (error instanceof Error && 'code' in error && (error as any).code !== 27) {  // Index not found error code
+          console.warn(`Warning dropping index ${indexName}:`, error instanceof Error ? error.message : String(error));
         }
       }
     }
     return true;
   } catch (error) {
-    console.error('Error dropping indexes:', error);
+    console.error('Error dropping indexes:', error instanceof Error ? error.message : String(error));
     return false;
   }
 }
@@ -68,7 +68,7 @@ export async function initDatabase() {
       );
       console.log('Created Exercise text search index');
     } catch (e) {
-      console.log('Exercise text search index error:', e.message);
+      console.log('Exercise text search index error:', e instanceof Error ? e.message : String(e));
     }
     
     try {
@@ -104,11 +104,11 @@ export async function initDatabase() {
       collections: collectionNames
     };
   } catch (error) {
-    console.error('Error initializing database:', error);
+    console.error('Error initializing database:', error instanceof Error ? error.message : String(error));
     return {
       success: false,
       message: 'Failed to initialize database',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : String(error)
     };
   }
 }
@@ -130,11 +130,11 @@ export async function clearDatabase() {
       message: 'Database cleared successfully'
     };
   } catch (error) {
-    console.error('Error clearing database:', error);
+    console.error('Error clearing database:', error instanceof Error ? error.message : String(error));
     return {
       success: false,
       message: 'Failed to clear database',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : String(error)
     };
   }
 }
@@ -196,11 +196,11 @@ export async function seedDatabase() {
       message: `Seeded database with ${basicExercises.length} basic exercises`
     };
   } catch (error) {
-    console.error('Error seeding database:', error);
+    console.error('Error seeding database:', error instanceof Error ? error.message : String(error));
     return {
       success: false,
       message: 'Failed to seed database',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : String(error)
     };
   }
 }
