@@ -34,3 +34,67 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+# Fitness Tracker App - Backend Documentation
+
+## Overview
+
+This document outlines the database and API functionality of the Fitness Tracker app.
+
+## Database Architecture
+
+The app uses MongoDB with the following collections:
+
+- **Users**: User accounts and preferences
+- **Exercises**: Exercise database with progression relationships
+- **Workouts**: User workout logs
+- **Meals**: Nutrition tracking
+- **Tasks**: Daily routine items
+
+## API Endpoints
+
+### Exercise Endpoints
+
+- `GET /api/exercises`: Fetch all exercises
+  - Query parameters:
+    - `category`: Filter by category (core, push, pull, legs)
+    - `limit`: Number of items to return
+    - `page`: Page number for pagination
+
+- `GET /api/exercises/[id]`: Get specific exercise details
+
+- `GET /api/exercises/search`: Search exercises
+  - Query parameters:
+    - `q`: Search term
+    - `category`: Filter by category
+
+### Admin Endpoints
+
+- `POST /api/admin/import-exercises`: Import exercise data
+- `POST /api/admin/init-db`: Initialize database indexes and settings
+
+### Debug Endpoints
+
+- `GET /api/debug/db`: Check database status
+- `GET /api/debug/health`: Full health check with detailed information
+
+## Admin Interface
+
+The app includes admin interfaces for database management:
+
+- `/admin/database`: Database status and management
+- `/admin/exercises`: Exercise data browser
+
+## Setup Instructions
+
+1. **Environment Variables**:
+   - `MONGODB_URI`: MongoDB connection string
+   - `NEXTAUTH_SECRET`: Secret for authentication
+   - `NEXTAUTH_URL`: Base URL for authentication
+
+2. **Database Initialization**:
+   - Visit `/admin/database` in your browser
+   - Click "Initialize Indexes" to set up the database structure
+   - Click "Import Exercises" to populate exercise data
+
+3. **Development**:
