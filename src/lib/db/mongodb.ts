@@ -31,7 +31,6 @@ if (!global.mongoose) {
 export async function dbConnect() {
   // If we already have a connection, return it
   if (global.mongoose.conn) {
-    console.log('Using existing MongoDB connection');
     return global.mongoose.conn;
   }
 
@@ -53,35 +52,53 @@ export async function dbConnect() {
       console.log('Connecting to MongoDB...');
     }
     
-    // Use connectionString which is properly typed as string
     global.mongoose.promise = mongoose.connect(connectionString, opts)
       .then(mongoose => {
-        console.log('Connected to MongoDB');
+        console.log('Connected to MongoDB successfully');
         return mongoose;
       })
       .catch(error => {
         console.error('MongoDB connection error:', error);
+        // Clear the promise so we can retry on next request
         global.mongoose.promise = null;
         throw error;
       });
-  } else if (process.env.NODE_ENV !== 'production') {
-    console.log('Reusing existing MongoDB connection promise');
   }
 
   try {
     // Wait for the connection
     global.mongoose.conn = await global.mongoose.promise;
   } catch (e) {
-    // Clear the promise on error so we can retry
+    // Clear the promise on error to allow retry on next request
     global.mongoose.promise = null;
+    // Log the error with more context for debugging
+    console.error('MongoDB connection failed, will retry on next request:', e);
     throw e;
   }
 
   return global.mongoose.conn;
 }
 
+// Add a function to explicitly handle connection errors in serverless environments
+export async function ensureDbConnected() {
+  try {
+    return await dbConnect();
+  } catch (error) {
+    console.error('Error ensuring database connection:', error);
+    
+    // Try one more time with a clean connection
+    global.mongoose = { conn: null, promise: null };
+    try {
+      return await dbConnect();
+    } catch (retryError) {
+      console.error('Retry failed, database connection is unavailable:', retryError);
+      throw retryError;
+    }
+  }
+}
+
 export async function dbDisconnect() {
-  if (global.mongoose.conn) {
+  if (global.mongoose?.conn) {
     await mongoose.disconnect();
     global.mongoose.conn = null;
     global.mongoose.promise = null;

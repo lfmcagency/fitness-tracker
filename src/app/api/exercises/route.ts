@@ -1,6 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+export const dynamic = 'force-dynamic';
+
+import { NextRequest } from 'next/server';
 import { dbConnect } from '@/lib/db/mongodb';
 import Exercise from '@/models/Exercise';
+import { apiResponse, handleApiError } from '@/lib/api-utils';
 
 export async function GET(req: NextRequest) {
   try {
@@ -30,8 +33,7 @@ export async function GET(req: NextRequest) {
     // Get total count for pagination
     const total = await Exercise.countDocuments(query);
     
-    return NextResponse.json({
-      success: true,
+    return apiResponse({
       data: exercises,
       pagination: {
         total,
@@ -41,11 +43,7 @@ export async function GET(req: NextRequest) {
       }
     });
   } catch (error) {
-    console.error('Error fetching exercises:', error);
-    return NextResponse.json(
-      { success: false, message: 'Error fetching exercises' },
-      { status: 500 }
-    );
+    return handleApiError(error, 'Error fetching exercises');
   }
 }
 
@@ -57,37 +55,22 @@ export async function POST(req: NextRequest) {
     
     // Validate required fields
     if (!body.name || !body.category) {
-      return NextResponse.json(
-        { success: false, message: 'Name and category are required' },
-        { status: 400 }
+      return apiResponse(
+        null,
+        'Name and category are required',
+        400
       );
     }
     
     // Create new exercise
     const exercise = await Exercise.create(body);
     
-    return NextResponse.json(
-      { success: true, data: exercise },
-      { status: 201 }
+    return apiResponse(
+      exercise,
+      'Exercise created successfully',
+      201
     );
-  } catch (error: any) { // Explicitly type as any for safer property access
-    console.error('Error creating exercise:', error);
-    
-    // Handle duplicate key error
-    if (error.code === 11000) {
-      return NextResponse.json(
-        { success: false, message: 'Exercise with this name and category already exists' },
-        { status: 409 }
-      );
-    }
-    
-    return NextResponse.json(
-      { 
-        success: false, 
-        message: 'Error creating exercise',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined
-      },
-      { status: 500 }
-    );
+  } catch (error) {
+    return handleApiError(error, 'Error creating exercise');
   }
 }

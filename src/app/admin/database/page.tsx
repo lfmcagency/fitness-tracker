@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { DbAdminPanel } from '@/components/DbAdminPanel'
 
 // Define proper types for the API response
 interface DatabaseInfo {
@@ -35,13 +36,13 @@ export default function DatabaseAdminPage() {
       try {
         // Get database info
         const dbResponse = await fetch('/api/debug/db')
-        const dbData: { success: boolean; database?: any } = await dbResponse.json()
+        const dbData = await dbResponse.json()
         setDbInfo(dbData)
         setLoading(false)
         
         // Get exercises
         const exercisesResponse = await fetch('/api/exercises')
-        const exercisesData: { success: boolean; data?: Exercise[] } = await exercisesResponse.json()
+        const exercisesData = await exercisesResponse.json()
         setExercises(exercisesData.data || [])
         setExercisesLoading(false)
       } catch (err) {
@@ -65,6 +66,8 @@ export default function DatabaseAdminPage() {
   return (
     <div className="p-8 max-w-4xl mx-auto">
       <h1 className="text-2xl font-bold mb-6">Database Admin</h1>
+      
+      <DbAdminPanel />
       
       <div className="grid gap-6 mb-8">
         <Card>
