@@ -1,5 +1,3 @@
-// src/lib/db/mongodb.ts
-
 import mongoose from 'mongoose';
 
 const MONGODB_URI = process.env.MONGODB_URI;
@@ -8,56 +6,82 @@ if (!MONGODB_URI) {
   throw new Error('Please define the MONGODB_URI environment variable');
 }
 
-let cached = global.mongoose;
+// Define type for the global cache
+interface MongooseCache {
+  conn: typeof mongoose | null;
+  promise: Promise<typeof mongoose> | null;
+}
 
-if (!cached) {
-  cached = global.mongoose = { conn: null, promise: null };
+// Add the cache to the global object
+declare global {
+  var mongoose: MongooseCache;
+}
+
+// Initialize the cache
+if (!global.mongoose) {
+  global.mongoose = { conn: null, promise: null };
 }
 
 export async function dbConnect() {
-  if (cached.conn) {
-    return cached.conn;
+  // If we already have a connection, return it
+  if (global.mongoose.conn) {
+    console.log('Using existing MongoDB connection');
+    return global.mongoose.conn;
   }
 
-  if (!cached.promise) {
+  // If a connection is in progress, wait for it
+  if (!global.mongoose.promise) {
     const opts = {
       bufferCommands: true,
       maxPoolSize: 10,
       minPoolSize: 5,
-      serverSelectionTimeoutMS: 5000,
+      serverSelectionTimeoutMS: 10000,  // Increased timeout
       socketTimeoutMS: 45000,
-      family: 4
+      family: 4  // Use IPv4, skip trying IPv6
     };
 
     mongoose.set('strictQuery', true);
     
-    cached.promise = mongoose.connect(MONGODB_URI, opts)
+    // Log connection attempt but avoid excessive logging in production
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('Connecting to MongoDB...');
+    }
+    
+    // Store the connection promise
+    global.mongoose.promise = mongoose.connect(MONGODB_URI, opts)
       .then(mongoose => {
         console.log('Connected to MongoDB');
         return mongoose;
       })
       .catch(error => {
         console.error('MongoDB connection error:', error);
-        cached.promise = null;
+        global.mongoose.promise = null;
         throw error;
       });
+  } else if (process.env.NODE_ENV !== 'production') {
+    console.log('Reusing existing MongoDB connection promise');
   }
 
   try {
-    cached.conn = await cached.promise;
+    // Wait for the connection
+    global.mongoose.conn = await global.mongoose.promise;
   } catch (e) {
-    cached.promise = null;
+    // Clear the promise on error so we can retry
+    global.mongoose.promise = null;
     throw e;
   }
 
-  return cached.conn;
+  return global.mongoose.conn;
 }
 
 export async function dbDisconnect() {
-  if (cached.conn) {
+  if (global.mongoose.conn) {
     await mongoose.disconnect();
-    cached.conn = null;
-    cached.promise = null;
+    global.mongoose.conn = null;
+    global.mongoose.promise = null;
     console.log('Disconnected from MongoDB');
   }
 }
+
+// Export a default function for backwards compatibility
+export default dbConnect;

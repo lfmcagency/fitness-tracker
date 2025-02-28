@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
       { success: true, data: exercise },
       { status: 201 }
     );
-  } catch (error) {
+  } catch (error: any) { // Explicitly type as any for safer property access
     console.error('Error creating exercise:', error);
     
     // Handle duplicate key error
@@ -82,7 +82,11 @@ export async function POST(req: NextRequest) {
     }
     
     return NextResponse.json(
-      { success: false, message: 'Error creating exercise' },
+      { 
+        success: false, 
+        message: 'Error creating exercise',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      },
       { status: 500 }
     );
   }

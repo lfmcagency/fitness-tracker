@@ -17,9 +17,22 @@ async function testMongooseConnection() {
   console.log(`${colors.cyan}Testing Mongoose connection...${colors.reset}`);
   
   try {
-    // Import dbConnect with dynamic import to handle both export types
-    const mongodb = await import('../src/lib/db/mongodb.js');
-    const dbConnect = mongodb.dbConnect || mongodb.default;
+    // Attempt to import the dbConnect function using path relative to the script location
+    let dbConnect;
+    try {
+      // First try with .js extension
+      const mongodb = require('../src/lib/db/mongodb.js');
+      dbConnect = mongodb.dbConnect || mongodb.default;
+    } catch (err) {
+      try {
+        // Then try without extension (Node.js might resolve it)
+        const mongodb = require('../src/lib/db/mongodb');
+        dbConnect = mongodb.dbConnect || mongodb.default;
+      } catch (innerErr) {
+        console.error(`${colors.red}Could not import dbConnect function:${colors.reset}`, innerErr.message);
+        return false;
+      }
+    }
     
     if (!dbConnect) {
       throw new Error('dbConnect function not found in module');
@@ -36,12 +49,10 @@ async function testMongooseConnection() {
     const collections = await mongoose.connection.db.listCollections().toArray();
     console.log(`Collections found: ${collections.length > 0 ? collections.map(c => c.name).join(', ') : 'none'}`);
     
-    if (mongodb.dbDisconnect) {
-      await mongodb.dbDisconnect();
-      console.log(`${colors.blue}Successfully disconnected using project's dbDisconnect method${colors.reset}`);
-    } else {
+    // Disconnect using the proper method
+    if (mongoose.connection.readyState !== 0) {
       await mongoose.disconnect();
-      console.log(`${colors.blue}Disconnected using mongoose.disconnect()${colors.reset}`);
+      console.log(`${colors.blue}Disconnected from MongoDB${colors.reset}`);
     }
     
     return true;
@@ -107,7 +118,8 @@ async function runTests() {
     console.log(`- Direct MongoDB connection: ${colors.green}Success${colors.reset}`);
     console.log(`- Project's dbConnect: ${colors.red}Failed${colors.reset}`);
     console.log(`\n${colors.yellow}This suggests there's an issue with the project's connection logic, not with MongoDB itself.${colors.reset}`);
-    console.log(`Check the mongodb.ts file and ensure imports are being handled correctly.`);
+    console.log(`Check the mongodb.ts file and ensure it's being correctly transpiled to mongodb.js.`);
+    console.log(`Try running \`npm run build\` or the appropriate build command first.`);
   } else if (!directConnectionSuccess) {
     console.log(`${colors.red}Connection tests failed!${colors.reset} There appears to be an issue with the MongoDB connection string or network access.`);
     console.log(`\nPossible solutions:`);
