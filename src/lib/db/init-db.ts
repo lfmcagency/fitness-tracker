@@ -6,21 +6,93 @@ import Workout from '@/models/Workout';
 import Task from '@/models/Task';
 import Meal from '@/models/Meal';
 
+// Safely drop indexes (ignoring errors if they don't exist)
+async function safelyDropIndexes(model: mongoose.Model<any>, indexNames: string[]) {
+  try {
+    for (const indexName of indexNames) {
+      try {
+        await model.collection.dropIndex(indexName);
+        console.log(`Dropped index ${indexName} on ${model.collection.name}`);
+      } catch (error: any) {
+        // Ignore error if index doesn't exist
+        if (error.code !== 27) {  // Index not found error code
+          console.warn(`Warning dropping index ${indexName}:`, error.message);
+        }
+      }
+    }
+    return true;
+  } catch (error) {
+    console.error('Error dropping indexes:', error);
+    return false;
+  }
+}
+
 export async function initDatabase() {
   try {
     await dbConnect();
     console.log('Connected to MongoDB, initializing database...');
     
-    // Create indexes for better query performance
-    await User.collection.createIndex({ email: 1 }, { unique: true });
-    await Exercise.collection.createIndex({ category: 1 });
-    await Exercise.collection.createIndex({ progressionLevel: 1 });
-    await Exercise.collection.createIndex({ 'name': 'text', 'description': 'text' });
-    await Workout.collection.createIndex({ user: 1, date: -1 });
-    await Task.collection.createIndex({ user: 1, date: -1 });
-    await Meal.collection.createIndex({ user: 1, date: -1 });
+    // First drop any conflicting indexes
+    await safelyDropIndexes(Exercise, ['text_search_index', 'name_text_description_text']);
     
-    // Create a database initialization endpoint
+    // Create indexes for better query performance
+    try {
+      await User.collection.createIndex({ email: 1 }, { unique: true });
+      console.log('Created User email index');
+    } catch (e) {
+      console.log('User email index already exists');
+    }
+    
+    try {
+      await Exercise.collection.createIndex({ category: 1 });
+      console.log('Created Exercise category index');
+    } catch (e) {
+      console.log('Exercise category index already exists');
+    }
+    
+    try {
+      await Exercise.collection.createIndex({ progressionLevel: 1 });
+      console.log('Created Exercise progressionLevel index');
+    } catch (e) {
+      console.log('Exercise progressionLevel index already exists');
+    }
+    
+    try {
+      // Create text index with specific weights
+      await Exercise.collection.createIndex(
+        { name: 'text', description: 'text', instructions: 'text' },
+        { 
+          weights: { name: 10, description: 5, instructions: 3 },
+          name: 'text_search_index'
+        }
+      );
+      console.log('Created Exercise text search index');
+    } catch (e) {
+      console.log('Exercise text search index error:', e.message);
+    }
+    
+    try {
+      await Workout.collection.createIndex({ user: 1, date: -1 });
+      console.log('Created Workout user/date index');
+    } catch (e) {
+      console.log('Workout user/date index already exists');
+    }
+    
+    try {
+      await Task.collection.createIndex({ user: 1, date: -1 });
+      console.log('Created Task user/date index');
+    } catch (e) {
+      console.log('Task user/date index already exists');
+    }
+    
+    try {
+      await Meal.collection.createIndex({ user: 1, date: -1 });
+      console.log('Created Meal user/date index');
+    } catch (e) {
+      console.log('Meal user/date index already exists');
+    }
+    
+    // Get database information
     const collections = mongoose.connection.collections;
     const collectionNames = Object.keys(collections);
     
@@ -36,6 +108,32 @@ export async function initDatabase() {
     return {
       success: false,
       message: 'Failed to initialize database',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
+}
+
+export async function clearDatabase() {
+  try {
+    await dbConnect();
+    console.log('Connected to MongoDB, clearing database...');
+    
+    // Drop only data, keep collections
+    await User.deleteMany({});
+    await Exercise.deleteMany({});
+    await Workout.deleteMany({});
+    await Task.deleteMany({});
+    await Meal.deleteMany({});
+    
+    return {
+      success: true,
+      message: 'Database cleared successfully'
+    };
+  } catch (error) {
+    console.error('Error clearing database:', error);
+    return {
+      success: false,
+      message: 'Failed to clear database',
       error: error instanceof Error ? error.message : 'Unknown error'
     };
   }
