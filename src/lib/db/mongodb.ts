@@ -1,13 +1,16 @@
-// src/lib/db/mongodb.ts
-
 import mongoose from 'mongoose';
 
-// TypeScript requires us to check if MONGODB_URI is defined
+// Get the MongoDB URI from environment variables
 const MONGODB_URI = process.env.MONGODB_URI;
 
+// Check if MONGODB_URI is defined
 if (!MONGODB_URI) {
   throw new Error('Please define the MONGODB_URI environment variable');
 }
+
+// Store the validated URI in a properly typed variable
+// This ensures TypeScript knows it's a string throughout the file
+const connectionString: string = MONGODB_URI;
 
 // Define type for the global cache
 interface MongooseCache {
@@ -50,8 +53,8 @@ export async function dbConnect() {
       console.log('Connecting to MongoDB...');
     }
     
-    // Store the connection promise - MONGODB_URI is now guaranteed to be a string
-    global.mongoose.promise = mongoose.connect(MONGODB_URI, opts)
+    // Use connectionString which is properly typed as string
+    global.mongoose.promise = mongoose.connect(connectionString, opts)
       .then(mongoose => {
         console.log('Connected to MongoDB');
         return mongoose;
