@@ -25,13 +25,16 @@ export default function ExercisesAdminPage() {
         const response = await fetch('/api/exercises')
         const data: { success: boolean; data?: Exercise[]; message?: string } = await response.json()
         
-        if (data.success && data.data) {
+        if (data.success && Array.isArray(data.data)) {
           setExercises(data.data)
         } else {
-          setError(data.message || 'Failed to fetch exercises')
+          setError(data.message || 'Failed to fetch exercises or data is not in expected format')
+          // Initialize with empty array if data isn't valid
+          setExercises([])
         }
       } catch (err) {
         setError('Error fetching exercises: ' + ((err as Error)?.message || String(err)))
+        setExercises([]) // Ensure exercises is always an array
       } finally {
         setLoading(false)
       }
@@ -40,40 +43,43 @@ export default function ExercisesAdminPage() {
     fetchExercises()
   }, [])
 
+  // Ensure we have an array before using reduce
+  const exercisesToDisplay = Array.isArray(exercises) ? exercises : [];
+
   // Group exercises by category
-  const exercisesByCategory = exercises.reduce<Record<string, Exercise[]>>((acc, exercise) => {
-    const category = exercise.category || 'uncategorized'
+  const exercisesByCategory = exercisesToDisplay.reduce<Record<string, Exercise[]>>((acc, exercise) => {
+    const category = exercise.category || 'uncategorized';
     if (!acc[category]) {
-      acc[category] = []
+      acc[category] = [];
     }
-    acc[category].push(exercise)
-    return acc
-  }, {})
+    acc[category].push(exercise);
+    return acc;
+  }, {});
 
   // Group exercises by subcategory
-  const exercisesBySubcategory = exercises.reduce<Record<string, Exercise[]>>((acc, exercise) => {
-    const subcategory = exercise.subcategory || 'uncategorized'
+  const exercisesBySubcategory = exercisesToDisplay.reduce<Record<string, Exercise[]>>((acc, exercise) => {
+    const subcategory = exercise.subcategory || 'uncategorized';
     if (!acc[subcategory]) {
-      acc[subcategory] = []
+      acc[subcategory] = [];
     }
-    acc[subcategory].push(exercise)
-    return acc
-  }, {})
+    acc[subcategory].push(exercise);
+    return acc;
+  }, {});
 
   // Get counts by progression level
-  const countsByLevel = exercises.reduce<Record<number, number>>((acc, exercise) => {
-    const level = exercise.progressionLevel || 0
+  const countsByLevel = exercisesToDisplay.reduce<Record<number, number>>((acc, exercise) => {
+    const level = exercise.progressionLevel || 0;
     if (!acc[level]) {
-      acc[level] = 0
+      acc[level] = 0;
     }
-    acc[level]++
-    return acc
-  }, {})
+    acc[level]++;
+    return acc;
+  }, {});
 
   // Filter exercises based on selected filter
   const filteredExercises = filter === 'all' 
-    ? exercises 
-    : exercises.filter(ex => ex.category === filter)
+    ? exercisesToDisplay 
+    : exercisesToDisplay.filter(ex => ex.category === filter);
 
   if (loading) {
     return <div className="p-8">Loading exercises data...</div>
@@ -104,7 +110,7 @@ export default function ExercisesAdminPage() {
               <div className="mt-4 pt-2 border-t">
                 <div className="flex justify-between font-bold">
                   <span>Total:</span>
-                  <span>{exercises.length}</span>
+                  <span>{exercisesToDisplay.length}</span>
                 </div>
               </div>
             </div>
@@ -156,7 +162,7 @@ export default function ExercisesAdminPage() {
             <div className="space-y-4">
               <div>
                 <span className="font-medium">Total Exercises:</span>{' '}
-                <span className="font-bold text-lg">{exercises.length}</span>
+                <span className="font-bold text-lg">{exercisesToDisplay.length}</span>
               </div>
               <div>
                 <span className="font-medium">Categories:</span>{' '}
@@ -169,7 +175,7 @@ export default function ExercisesAdminPage() {
               <div>
                 <span className="font-medium">Max Level:</span>{' '}
                 <span className="font-bold">
-                  {Math.max(...exercises.map(ex => ex.progressionLevel || 0), 0)}
+                  {Math.max(...exercisesToDisplay.map(ex => ex.progressionLevel || 0), 0)}
                 </span>
               </div>
             </div>

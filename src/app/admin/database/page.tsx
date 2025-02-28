@@ -43,12 +43,20 @@ export default function DatabaseAdminPage() {
         // Get exercises
         const exercisesResponse = await fetch('/api/exercises')
         const exercisesData = await exercisesResponse.json()
-        setExercises(exercisesData.data || [])
+        
+        // Ensure exercises is an array before setting state
+        if (Array.isArray(exercisesData.data)) {
+          setExercises(exercisesData.data)
+        } else {
+          console.error('Exercises data is not an array:', exercisesData)
+          setExercises([])
+        }
         setExercisesLoading(false)
       } catch (err) {
         console.error('Error fetching data:', err)
         setError('Failed to fetch data: ' + ((err as Error)?.message || String(err)))
         setLoading(false)
+        setExercisesLoading(false)
       }
     }
     
@@ -62,6 +70,9 @@ export default function DatabaseAdminPage() {
   if (error) {
     return <div className="p-8 text-red-600">{error}</div>
   }
+
+  // Ensure exercises is an array before rendering
+  const exercisesToDisplay = Array.isArray(exercises) ? exercises : [];
 
   return (
     <div className="p-8 max-w-4xl mx-auto">
@@ -120,12 +131,12 @@ export default function DatabaseAdminPage() {
         
         <Card>
           <CardHeader>
-            <CardTitle>Exercises ({exercisesLoading ? 'Loading...' : exercises.length})</CardTitle>
+            <CardTitle>Exercises ({exercisesLoading ? 'Loading...' : exercisesToDisplay.length})</CardTitle>
           </CardHeader>
           <CardContent>
             {exercisesLoading ? (
               <p>Loading exercises...</p>
-            ) : exercises.length === 0 ? (
+            ) : exercisesToDisplay.length === 0 ? (
               <p>No exercises found</p>
             ) : (
               <div className="overflow-x-auto">
@@ -139,7 +150,7 @@ export default function DatabaseAdminPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {exercises.slice(0, 10).map((exercise) => (
+                    {exercisesToDisplay.slice(0, 10).map((exercise) => (
                       <tr key={exercise._id} className="border-b">
                         <td className="border p-2">{exercise.name}</td>
                         <td className="border p-2">{exercise.category}</td>
@@ -147,10 +158,10 @@ export default function DatabaseAdminPage() {
                         <td className="border p-2">{exercise.description || '-'}</td>
                       </tr>
                     ))}
-                    {exercises.length > 10 && (
+                    {exercisesToDisplay.length > 10 && (
                       <tr>
                         <td colSpan={4} className="p-2 text-center text-gray-500">
-                          ... and {exercises.length - 10} more exercises
+                          ... and {exercisesToDisplay.length - 10} more exercises
                         </td>
                       </tr>
                     )}
