@@ -1,0 +1,11 @@
+unique_id,name,category,subcategory,progressionLevel,description,rel_prev,rel_next,xp_value,unlock_requirements,form_cues,primary_muscle_group,secondary_muscle_groups,difficulty
+LLG001,Assisted Lunge,legs,lunge,1,"Lunge with hand support for balance",,LLG002,5,"","Front knee tracks toes, back knee toward floor",quads,"glutes, hamstrings",beginner
+LLG002,Static Lunge,legs,lunge,2,"Stationary lunge in place",LLG001,LLG003,10,"10 reps each leg x 3 sets of Assisted Lunge","90° front knee, upright torso",quads,"glutes, hamstrings, core",beginner
+LLG003,Walking Lunge,legs,lunge,3,"Lunging forward with each step",LLG002,LLG004,15,"12 reps each leg x 3 sets of Static Lunge","Step naturally, maintain balance",quads,"glutes, hamstrings, core",beginner
+LLG004,Reverse Lunge,legs,lunge,4,"Lunge stepping backward",LLG003,LLG005,20,"20 steps x 3 sets of Walking Lunge","Control descent, maintain alignment",quads,"glutes, hamstrings, core",intermediate
+LLG005,Lateral Lunge,legs,lunge,5,"Lunge to the side",LLG004,LLG006,25,"10 reps each leg x 3 sets of Reverse Lunge","Keep lunging leg aligned, hinge at hip",adductors,"quads, glutes, hamstrings",intermediate
+LLG006,Split Squat,legs,lunge,6,"Static lunge with deeper range of motion",LLG005,LLG007,30,"10 reps each side x 3 sets of Lateral Lunge","Vertical torso, front heel planted",quads,"glutes, hamstrings, core",intermediate
+LLG007,Bulgarian Split Squat,legs,lunge,7,"Split squat with rear foot elevated",LLG006,LLG008,40,"10 reps each leg x 3 sets of Split Squat","Balance on front leg, back foot for support",quads,"glutes, hamstrings, core",advanced
+LLG008,Walking Lunge with Overhead Reach,legs,lunge,8,"Walking lunge with arms extended overhead",LLG007,LLG009,50,"8 reps each leg x 3 sets of Bulgarian Split Squat","Core engaged, shoulders active",quads,"glutes, hamstrings, core, shoulders",advanced
+LLG009,Jumping Lunge,legs,lunge,9,"Explosive switch between lunge positions",LLG008,LLG010,60,"10 steps x 3 sets of Walking Lunge with Overhead Reach","Power through front leg, soft landing",quads,"glutes, hamstrings, core, cardiovascular",advanced
+LLG010,Deficit Bulgarian Split Squat,legs,lunge,10,"Bulgarian split squat with front foot on deficit",LLG009,,70,"10 reps each leg x 3 sets of Jumping Lunge","Greater range of motion, control throughout",quads,"glutes, hamstrings, core, balance",elite

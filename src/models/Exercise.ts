@@ -1,3 +1,4 @@
+// src/models/Exercise.ts
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
 // Interface for Exercise document
@@ -8,19 +9,23 @@ export interface IExercise extends Document {
   progressionLevel: number;
   description?: string;
   primaryMuscleGroup?: string;
-  secondaryMuscleGroup?: string[];
+  secondaryMuscleGroups?: string;
   difficulty: 'beginner' | 'intermediate' | 'advanced' | 'elite';
-  instructions?: string;
-  prerequisites?: mongoose.Types.ObjectId[];
-  nextProgressions?: mongoose.Types.ObjectId[];
+  
+  // New fields for CSV import
+  uniqueId?: string;
+  relPrev?: string;
+  relNext?: string;
   xpValue: number;
-  importedFrom?: string;
+  unlockRequirements?: string;
+  formCues?: string;
+  
+  // Relationship references
+  previousExercise?: mongoose.Types.ObjectId;
+  nextExercise?: mongoose.Types.ObjectId;
+  
   createdAt: Date;
   updatedAt: Date;
-  
-  // Virtual methods
-  fullDescription: string;
-  formattedName: string;
 }
 
 // Interface for Exercise model with static methods
@@ -35,7 +40,6 @@ const ExerciseSchema = new Schema<IExercise>({
     required: [true, 'Exercise name is required'], 
     trim: true,
     maxlength: [100, 'Name cannot be more than 100 characters'],
-    minlength: [2, 'Name must be at least 2 characters'],
     index: true
   },
   category: { 
@@ -54,17 +58,34 @@ const ExerciseSchema = new Schema<IExercise>({
   },
   progressionLevel: { 
     type: Number, 
-    default: 0,
+    default: 1,
     min: [0, 'Progression level cannot be negative'],
-    max: [20, 'Progression level cannot exceed 20'],
     index: true 
   },
   description: {
     type: String,
     maxlength: [1000, 'Description cannot exceed 1000 characters']
   },
+  
+  // New fields for CSV import
+  uniqueId: { 
+    type: String, 
+    unique: true, 
+    sparse: true,  // Allows null values while maintaining uniqueness
+    index: true
+  },
+  relPrev: { type: String },
+  relNext: { type: String },
+  xpValue: { 
+    type: Number, 
+    default: 10,
+    min: [1, 'XP value must be at least 1']
+  },
+  unlockRequirements: String,
+  formCues: String,
   primaryMuscleGroup: String,
-  secondaryMuscleGroup: [String],
+  secondaryMuscleGroups: String,
+  
   difficulty: { 
     type: String, 
     enum: {
@@ -73,100 +94,26 @@ const ExerciseSchema = new Schema<IExercise>({
     },
     default: 'beginner'
   },
-  instructions: {
-    type: String,
-    maxlength: [2000, 'Instructions cannot exceed 2000 characters']
-  },
-  prerequisites: [{ 
-    type: Schema.Types.ObjectId, 
-    ref: 'Exercise' 
-  }],
-  nextProgressions: [{ 
-    type: Schema.Types.ObjectId,
-    ref: 'Exercise' 
-  }],
-  xpValue: { 
-    type: Number, 
-    default: 10,
-    min: [1, 'XP value must be at least 1'],
-    max: [100, 'XP value cannot exceed 100']
-  },
-  importedFrom: String
+  
+  // Relationship references as ObjectIds
+  previousExercise: { type: Schema.Types.ObjectId, ref: 'Exercise' },
+  nextExercise: { type: Schema.Types.ObjectId, ref: 'Exercise' }
 }, { 
-  timestamps: true,
-  toJSON: { virtuals: true },
-  toObject: { virtuals: true }
+  timestamps: true
 });
-
-// Create compound index for uniqueness with error message
-ExerciseSchema.index(
-  { name: 1, category: 1 }, 
-  { 
-    unique: true,
-    name: 'name_category_unique',
-    background: true,
-    // Custom error message
-    collation: { locale: 'en', strength: 2 } // Case-insensitive
-  }
-);
 
 // Create text index for search functionality
 ExerciseSchema.index(
-  { name: 'text', description: 'text', instructions: 'text' },
+  { name: 'text', description: 'text', formCues: 'text' },
   { 
     weights: { 
       name: 10,
       description: 5,
-      instructions: 3
+      formCues: 3
     },
     name: 'text_search_index'
   }
 );
-
-// Add virtual for full description
-ExerciseSchema.virtual('fullDescription').get(function(this: IExercise) {
-  return `${this.name} - Level ${this.progressionLevel} ${this.category} exercise`;
-});
-
-// Add virtual for formatted name (category-specific formatting)
-ExerciseSchema.virtual('formattedName').get(function(this: IExercise) {
-  let prefix = '';
-  
-  switch(this.category) {
-    case 'core':
-      prefix = '💪 ';
-      break;
-    case 'push':
-      prefix = '👐 ';
-      break;
-    case 'pull':
-      prefix = '💫 ';
-      break;
-    case 'legs':
-      prefix = '🦵 ';
-      break;
-    default:
-      prefix = '';
-  }
-  
-  return `${prefix}${this.name} (L${this.progressionLevel})`;
-});
-
-// Add pre-save middleware to ensure proper formatting
-ExerciseSchema.pre('save', function(next) {
-  // Ensure name is properly capitalized
-  if (this.name) {
-    this.name = this.name.trim();
-    this.name = this.name.charAt(0).toUpperCase() + this.name.slice(1);
-  }
-  
-  // Ensure subcategory is properly formatted
-  if (this.subcategory) {
-    this.subcategory = this.subcategory.trim().toLowerCase();
-  }
-  
-  next();
-});
 
 // Add static method to find exercises by difficulty
 ExerciseSchema.statics.findByDifficulty = function(difficulty: string): Promise<IExercise[]> {
@@ -179,14 +126,19 @@ ExerciseSchema.statics.findNextProgressions = function(exerciseId: mongoose.Type
     .then((exercise: IExercise | null) => {
       if (!exercise) return null;
       
+      if (exercise.nextExercise) {
+        return this.find({ _id: exercise.nextExercise });
+      }
+      
       return this.find({
         category: exercise.category,
+        subcategory: exercise.subcategory,
         progressionLevel: exercise.progressionLevel + 1
       });
     });
 };
 
-// Register the model if it doesn't exist already
+// Use this pattern to avoid model recompilation errors
 const Exercise = mongoose.models.Exercise as IExerciseModel || 
   mongoose.model<IExercise, IExerciseModel>('Exercise', ExerciseSchema);
 

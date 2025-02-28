@@ -1,0 +1,11 @@
+unique_id,name,category,subcategory,progressionLevel,description,rel_prev,rel_next,xp_value,unlock_requirements,form_cues,primary_muscle_group,secondary_muscle_groups,difficulty
+PLK001,Incline Plank,core,plank,1,"Plank position with hands elevated on bench or table",,PLK002,5,"","Straight line from head to heels, engage core",core,"shoulders, chest",beginner
+PLK002,Knee Plank,core,plank,2,"Standard plank but with knees on ground",PLK001,PLK003,10,"30s hold of Incline Plank","Keep hips level, engage glutes",core,"shoulders, chest",beginner
+PLK003,Standard Plank,core,plank,3,"Forearm plank with body straight from head to heels",PLK002,PLK004,15,"45s hold of Knee Plank","Neutral spine, avoid sagging hips",core,"shoulders, chest, glutes",beginner
+PLK004,Single-Arm Plank,core,plank,4,"Standard plank with one arm raised",PLK003,PLK005,20,"60s hold of Standard Plank","Resist rotation, keep hips level",core,"shoulders, obliques",intermediate
+PLK005,Single-Leg Plank,core,plank,5,"Standard plank with one leg raised",PLK004,PLK006,25,"30s hold each side of Single-Arm Plank","Maintain hip position, avoid tilting",core,"glutes, hip flexors, shoulders",intermediate
+PLK006,RKC Plank,core,plank,6,"High-tension plank with maximum engagement of all muscles",PLK005,PLK007,30,"30s hold each leg of Single-Leg Plank","Forearms press down, squeeze everything",core,"shoulders, glutes, quads",intermediate
+PLK007,Long-Lever Plank,core,plank,7,"Plank with arms extended forward beyond head",PLK006,PLK008,40,"45s hold of RKC Plank","Maintain straight body line despite increased leverage",core,"shoulders, chest, serratus anterior",advanced
+PLK008,Feet-Elevated Plank,core,plank,8,"Standard plank with feet elevated on bench",PLK007,PLK009,45,"30s hold of Long-Lever Plank","Higher elevation increases shoulder demand",core,"shoulders, chest, upper back",advanced
+PLK009,Ring Plank,core,plank,9,"Plank with forearms or hands on gymnastics rings",PLK008,PLK010,55,"45s hold of Feet-Elevated Plank","Stabilize against ring movement, maintain position",core,"shoulders, stabilizers, serratus anterior",advanced
+PLK010,Ring Rollout,core,plank,10,"From kneeling, roll rings forward maintaining plank position",PLK009,,65,"30s hold of Ring Plank","Control extension and return, maintain hollow body",core,"shoulders, lats, hip flexors, serratus anterior",elite

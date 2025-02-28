@@ -1,7 +1,8 @@
+// src/components/DbAdminPanel.tsx (UPDATE)
 'use client'
 
 import { useState } from 'react'
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 export function DbAdminPanel() {
   const [loading, setLoading] = useState(false)
@@ -34,6 +35,25 @@ export function DbAdminPanel() {
     
     try {
       const response = await fetch('/api/admin/import-exercises', {
+        method: 'POST'
+      })
+      
+      const data = await response.json()
+      setResult(data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error')
+    } finally {
+      setLoading(false)
+    }
+  }
+  
+  const importCsvExercises = async () => {
+    setLoading(true)
+    setError(null)
+    setResult(null)
+    
+    try {
+      const response = await fetch('/api/admin/import-csv', {
         method: 'POST'
       })
       
@@ -85,6 +105,14 @@ export function DbAdminPanel() {
             className="px-4 py-2 bg-purple-100 text-purple-800 rounded hover:bg-purple-200"
           >
             Import Exercises
+          </button>
+          
+          <button
+            onClick={importCsvExercises}
+            disabled={loading}
+            className="px-4 py-2 bg-indigo-100 text-indigo-800 rounded hover:bg-indigo-200"
+          >
+            Import CSV Exercises
           </button>
           
           {isDevelopment && (

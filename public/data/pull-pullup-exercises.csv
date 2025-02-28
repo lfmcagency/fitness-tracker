@@ -1,0 +1,11 @@
+unique_id,name,category,subcategory,progressionLevel,description,rel_prev,rel_next,xp_value,unlock_requirements,form_cues,primary_muscle_group,secondary_muscle_groups,difficulty
+PPL001,Negative Pull-ups,pull,pullup,1,"Jump to top position and lower slowly","PHN004",PPL002,20,"30s hold of Arch Hangs","Controlled 4-second descent, full extension",lats,"biceps, traps, forearms",beginner
+PPL002,Chin-up,pull,pullup,2,"Pull-up with palms facing towards you",PPL001,PPL003,25,"5 reps x 3 sets of Negative Pull-ups","Pull from shoulders, chin over bar",biceps,"lats, forearms",beginner
+PPL003,Pull-up Eccentrics,pull,pullup,3,"Slower negative pull-ups with focus on control",PPL002,PPL004,30,"5 reps x 3 sets of Chin-up","Hold positions at top, middle, bottom",lats,"biceps, traps, forearms",intermediate
+PPL004,Pull-up,pull,pullup,4,"Standard pull-up with proper form",PPL003,PPL005,35,"8 reps x 3 sets of Pull-up Eccentrics","Pull from shoulders not arms, chest to bar",lats,"biceps, traps, forearms",intermediate
+PPL005,Wide Grip Pull-up,pull,pullup,5,"Pull-up with hands wider than shoulder width",PPL004,PPL006,40,"5 reps x 3 sets of Pull-up","Engage lats fully, control movement",lats,"upper back, biceps, forearms",intermediate
+PPL006,Commando Pull-up,pull,pullup,6,"Pull-up with body parallel to bar",PPL005,PPL007,45,"5 reps x 3 sets of Wide Grip Pull-up","Rotate through movement, controlled form",lats,"biceps, shoulders, core",intermediate
+PPL007,L-sit Pull-up,pull,pullup,7,"Pull-up performed with legs extended straight out",PPL006,PPL008,50,"5 reps x 3 sets of Commando Pull-up","Maintain L position, pull chest to bar",lats,"biceps, core, hip flexors",advanced
+PPL008,Archer Pull-up,pull,pullup,8,"Pull-up with one arm pulling, other arm extended",PPL007,PPL009,60,"5 reps x 3 sets of L-sit Pull-up","Extend one arm fully, maintain body position",lats,"biceps, forearms, core",advanced
+PPL009,One Arm Pull-up Negative,pull,pullup,9,"Controlled one-arm lowering from top position",PPL008,PPL010,70,"3 reps each side x 3 sets of Archer Pull-up","Controlled descent, avoid rotation",lats,"biceps, traps, core, obliques",advanced
+PPL010,One Arm Pull-up,pull,pullup,10,"Complete pull-up using only one arm",PPL009,,90,"3 negatives each arm x 3 sets of One Arm Pull-up Negative","Engage lat fully, avoid twisting",lats,"biceps, forearms, entire upper body",elite
