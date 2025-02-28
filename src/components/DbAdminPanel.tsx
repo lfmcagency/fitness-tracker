@@ -46,6 +46,8 @@ export function DbAdminPanel() {
     }
   }
 
+  const isDevelopment = process.env.NODE_ENV !== 'production';
+
   return (
     <Card className="mb-6">
       <CardHeader>
@@ -85,7 +87,7 @@ export function DbAdminPanel() {
             Import Exercises
           </button>
           
-          {process.env.NODE_ENV !== 'production' && (
+          {isDevelopment && (
             <button
               onClick={() => runAction('clear')}
               disabled={loading}
@@ -107,7 +109,7 @@ export function DbAdminPanel() {
         {result && (
           <div className="mt-4 border rounded p-4 bg-gray-50">
             <div className="font-bold mb-2">Result:</div>
-            <pre className="whitespace-pre-wrap text-sm">{JSON.stringify(result, null, 2)}</pre>
+            <pre className="whitespace-pre-wrap text-sm overflow-auto max-h-64">{JSON.stringify(result, null, 2)}</pre>
           </div>
         )}
       </CardContent>

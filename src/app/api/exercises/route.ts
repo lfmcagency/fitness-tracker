@@ -1,9 +1,8 @@
 export const dynamic = 'force-dynamic';
 
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { dbConnect } from '@/lib/db/mongodb';
 import Exercise from '@/models/Exercise';
-import { apiResponse, handleApiError } from '@/lib/api-utils';
 
 export async function GET(req: NextRequest) {
   try {
@@ -23,18 +22,26 @@ export async function GET(req: NextRequest) {
     // Pagination
     const skip = (page - 1) * limit;
     
-    // Fetch exercises
+    // Fetch exercises - adding debug logs
+    console.log('Fetching exercises with query:', JSON.stringify(query));
+    
+    // Check if the Exercise model is registered
+    console.log('Registered models:', Object.keys(require('mongoose').models));
+    
     const exercises = await Exercise.find(query)
-      .select('name category subcategory progressionLevel difficulty xpValue')
+      .select('name category subcategory progressionLevel difficulty description')
       .sort({ category: 1, progressionLevel: 1 })
       .skip(skip)
       .limit(limit);
     
+    console.log(`Found ${exercises.length} exercises`);
+    
     // Get total count for pagination
     const total = await Exercise.countDocuments(query);
     
-    return apiResponse({
-      data: exercises,
+    return NextResponse.json({
+      success: true,
+      data: exercises || [], // Ensure data is always an array
       pagination: {
         total,
         page,
@@ -43,34 +50,14 @@ export async function GET(req: NextRequest) {
       }
     });
   } catch (error) {
-    return handleApiError(error, 'Error fetching exercises');
-  }
-}
-
-export async function POST(req: NextRequest) {
-  try {
-    await dbConnect();
-    
-    const body = await req.json();
-    
-    // Validate required fields
-    if (!body.name || !body.category) {
-      return apiResponse(
-        null,
-        'Name and category are required',
-        400
-      );
-    }
-    
-    // Create new exercise
-    const exercise = await Exercise.create(body);
-    
-    return apiResponse(
-      exercise,
-      'Exercise created successfully',
-      201
+    console.error('Error fetching exercises:', error);
+    return NextResponse.json(
+      { 
+        success: false, 
+        message: 'Error fetching exercises',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      },
+      { status: 500 }
     );
-  } catch (error) {
-    return handleApiError(error, 'Error creating exercise');
   }
 }

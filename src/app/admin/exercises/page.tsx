@@ -18,23 +18,36 @@ export default function ExercisesAdminPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState('all')
+  const [debug, setDebug] = useState<any>(null)
 
   useEffect(() => {
     async function fetchExercises() {
       try {
         const response = await fetch('/api/exercises')
-        const data: { success: boolean; data?: Exercise[]; message?: string } = await response.json()
         
-        if (data.success && Array.isArray(data.data)) {
+        // Log the response status
+        console.log('API Response status:', response.status)
+        
+        // Try to parse the response to JSON
+        const data = await response.json()
+        
+        // Store the raw data for debugging
+        setDebug(data)
+        
+        console.log('API Response data:', data)
+        
+        if (data.success === true && Array.isArray(data.data)) {
           setExercises(data.data)
+          setError(null)
         } else {
-          setError(data.message || 'Failed to fetch exercises or data is not in expected format')
-          // Initialize with empty array if data isn't valid
+          console.error('Invalid data format:', data)
+          setError(`API returned unexpected format. Check console for details.`)
           setExercises([])
         }
       } catch (err) {
+        console.error('Error fetching exercises:', err)
         setError('Error fetching exercises: ' + ((err as Error)?.message || String(err)))
-        setExercises([]) // Ensure exercises is always an array
+        setExercises([])
       } finally {
         setLoading(false)
       }
@@ -85,13 +98,35 @@ export default function ExercisesAdminPage() {
     return <div className="p-8">Loading exercises data...</div>
   }
 
-  if (error) {
-    return <div className="p-8 text-red-600">{error}</div>
-  }
-
   return (
     <div className="p-8 max-w-6xl mx-auto">
       <h1 className="text-2xl font-bold mb-6">Exercise Data</h1>
+      
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-md mb-6">
+          <h3 className="font-bold mb-2">Error:</h3>
+          <p>{error}</p>
+          
+          {debug && (
+            <details className="mt-2">
+              <summary className="cursor-pointer text-sm font-medium">Show debug info</summary>
+              <pre className="mt-2 p-3 bg-red-100 rounded text-xs overflow-auto max-h-48">
+                {JSON.stringify(debug, null, 2)}
+              </pre>
+            </details>
+          )}
+          
+          <div className="mt-4">
+            <p className="text-sm font-medium">Try importing exercise data:</p>
+            <button 
+              onClick={() => fetch('/api/admin/import-exercises', { method: 'POST' }).then(r => r.json()).then(() => window.location.reload())}
+              className="mt-2 px-4 py-2 bg-purple-100 text-purple-800 rounded hover:bg-purple-200"
+            >
+              Import Exercises
+            </button>
+          </div>
+        </div>
+      )}
       
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         {/* Category counts card */}
@@ -117,7 +152,7 @@ export default function ExercisesAdminPage() {
           </CardContent>
         </Card>
 
-        {/* Subcategory counts card */}
+                {/* Subcategory counts card */}
         <Card>
           <CardHeader>
             <CardTitle>Subcategories</CardTitle>
