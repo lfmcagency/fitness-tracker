@@ -145,48 +145,27 @@ const SkillTreeView: React.FC = () => {
           if (!category) return null;
           
           return (
-            <div key={categoryName} className="border rounded-lg overflow-hidden">
-              <div 
-                className="flex items-center justify-between p-4 bg-gray-50 border-b cursor-pointer"
-                onClick={() => toggleCategory(categoryName)}
-              >
-                <h2 className="text-lg font-medium capitalize">{categoryName} Exercises</h2>
-                {category.expanded ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
-              </div>
-              
-              {category.expanded && (
-                <div className="p-4 space-y-4">
-                  {Object.keys(category.subcategories).map(subcategoryName => (
-                    <div key={subcategoryName} className="ml-4">
-                      <h3 className="text-md font-medium mb-2 capitalize">{subcategoryName}</h3>
-                      <div className="ml-4 space-y-2">
-                        {category.subcategories[subcategoryName].map((exercise) => (
-                          <div 
-                            key={exercise._id}
-                            className={`flex items-center p-2 rounded-md cursor-pointer ${
-                              exercise.unlocked ? "hover:bg-blue-50" : "hover:bg-gray-50 opacity-70"
-                            }`}
-                            onClick={() => handleExerciseSelect(exercise)}
-                          >
-                            {exercise.unlocked ? (
-                              <CheckCircle2 size={18} className="text-green-500 mr-2" />
-                            ) : (
-                              <Lock size={18} className="text-gray-400 mr-2" />
-                            )}
-                            <span className={`${exercise.unlocked ? "font-medium" : "text-gray-500"}`}>
-                              {exercise.name} (Level {exercise.progressionLevel})
-                            </span>
-                            <span className="ml-auto text-xs px-2 py-1 rounded-full bg-gray-100">
-                              {exercise.difficulty}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
+            <CategoryNode 
+              key={categoryName}
+              name={categoryName}
+              expanded={category.expanded}
+              onToggle={() => toggleCategory(categoryName)}
+            >
+              {Object.keys(category.subcategories).map(subcategoryName => (
+                <div key={subcategoryName} className="ml-4">
+                  <h3 className="text-md font-medium mb-2 capitalize">{subcategoryName}</h3>
+                  <div className="ml-4 space-y-2">
+                    {category.subcategories[subcategoryName].map((exercise) => (
+                      <ProgressionNode 
+                        key={exercise._id}
+                        exercise={exercise}
+                        onClick={() => handleExerciseSelect(exercise)}
+                      />
+                    ))}
+                  </div>
                 </div>
-              )}
-            </div>
+              ))}
+            </CategoryNode>
           );
         })}
       </div>
