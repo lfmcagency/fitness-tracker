@@ -58,7 +58,14 @@ async function importFromCsv() {
     // Import exercises
     for (const row of data) {
       // Skip rows without a unique_id or name
-      if (!row.unique_id || !row.name) {
+      if (
+        typeof row !== 'object' || 
+        row === null || 
+        !('unique_id' in row) || 
+        !('name' in row) || 
+        !row.unique_id || 
+        !row.name
+      ) {
         continue;
       }
       
