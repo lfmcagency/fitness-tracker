@@ -1,3 +1,36 @@
+# Fitness Tracker Application
+
+## Project Overview
+A comprehensive fitness tracking application focusing on training, nutrition, routine management, and progress tracking with a unique gamification approach to calisthenics progression.
+
+## Tech Stack
+- **Frontend**: Next.js (App Router), React, Tailwind CSS, shadcn/ui components
+- **State Management**: Zustand
+- **Backend**: Next.js API routes
+- **Database**: MongoDB with Mongoose
+- **Authentication**: NextAuth.js
+- **Data Visualization**: Recharts
+
+## Project Structure
+- `/src/app` - Next.js application routes
+- `/src/components` - React components
+- `/src/lib` - Utilities, database connection, API helpers
+- `/src/store` - Zustand state management
+- `/public` - Static assets
+
+## Core Modules
+1. **Training Module** - Exercise tracking with progression system
+2. **Nutrition Tracker** - Macro tracking and meal management
+3. **Daily Routine Manager** - Habit tracking and task management
+4. **Progress Dashboard** - Visualization of metrics and achievements
+
+## Development Guidelines
+- Component-first architecture
+- Mobile-responsive design
+- MongoDB for data persistence
+- Type safety with TypeScript
+
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
