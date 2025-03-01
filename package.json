@@ -7,7 +7,11 @@
         "build": "next build",
         "start": "next start",
         "lint": "next lint",
-        "import-csv": "node scripts/import-csv-exercises.js"
+        "import-csv": "node scripts/import-csv-exercises-enhanced.js",
+        "import-csv:dry-run": "node scripts/import-csv-exercises-enhanced.js --dry-run",
+        "import-csv:verbose": "node scripts/import-csv-exercises-enhanced.js --verbose",
+        "fix-csv": "node scripts/fix-csv-exercise-data.js",
+        "fix-csv:dry-run": "node scripts/fix-csv-exercise-data.js --dry-run"
     },
     "dependencies": {
         "@auth/mongodb-adapter": "^2.0.12",

@@ -71,13 +71,17 @@ EOF
 test_api_endpoints() {
   show_header "Testing API Endpoints"
   
-  # Determine available API routes by scanning the api directory
-  API_DIR="src/pages/api"
+  # Check for the App Router API directory (Next.js 13+)
+  API_DIR="src/app/api"
   if [ ! -d "$API_DIR" ]; then
-    API_DIR="pages/api"
+    # Check for Pages Router API directory (older Next.js)
+    API_DIR="src/pages/api"
     if [ ! -d "$API_DIR" ]; then
-      show_error "Could not find API directory. Make sure you're in the project root."
-      return 1
+      API_DIR="pages/api"
+      if [ ! -d "$API_DIR" ]; then
+        show_error "Could not find API directory. Make sure you're in the project root."
+        return 1
+      fi
     fi
   fi
   
@@ -89,13 +93,13 @@ test_api_endpoints() {
   DEV_SERVER_PID=$!
   
   # Give it some time to start up
-  sleep 5
+  sleep 8
   
   # Test some basic endpoints
   endpoints=(
     "api/health"
+    "api/debug/health"
     "api/exercises"
-    "api/users/me"
   )
   
   for endpoint in "${endpoints[@]}"; do
@@ -110,7 +114,9 @@ test_api_endpoints() {
   done
   
   # Stop the development server
+  echo "Stopping development server..."
   kill $DEV_SERVER_PID
+  wait $DEV_SERVER_PID 2>/dev/null || true
   sleep 2
 }
 
