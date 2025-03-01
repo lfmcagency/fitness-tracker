@@ -1,11 +1,11 @@
-unique_id,name,category,subcategory,progressionLevel,description,rel_prev,rel_next,xp_value,unlock_requirements,form_cues,primary_muscle_group,secondary_muscle_groups,difficulty
-PHN001,Dead Hang,pull,hanging,1,"Hanging from bar with arms straight",,PHN002,5,"","Active shoulders, engaged grip",grip,"forearms, shoulders",beginner
-PHN002,Active Hang,pull,hanging,2,"Dead hang with shoulders engaged (depressed and retracted)",PHN001,PHN003,10,"30s hold of Dead Hang","Pull shoulders down away from ears",grip,"forearms, lats, traps",beginner
-PHN003,Scapular Pulls,pull,hanging,3,"Hanging from bar, pull shoulder blades down without bending arms",PHN002,PHN004,15,"30s hold of Active Hang","Depress shoulder blades, maintain hang",lats,"traps, rhomboids",beginner
-PHN004,Arch Hangs,pull,hanging,4,"Hang from bar with shoulders active and body in slight arch",PHN003,PHN005,20,"10 reps x 3 sets of Scapular Pulls","Pull chest to bar, keep shoulders active",lats,"traps, rhomboids, biceps",beginner
-PHN005,Flex Hang,pull,hanging,5,"Hanging with arms flexed at 90°",PHN004,PHN006,25,"30s hold of Arch Hangs","Maintain elbow angle, active shoulders",biceps,"forearms, lats, shoulders",intermediate
-PHN006,Chin-up Hold,pull,hanging,6,"Hold at top of chin-up position",PHN005,PHN007,30,"20s hold of Flex Hang","Chin over bar, shoulders down",biceps,"lats, forearms, shoulders",intermediate
-PHN007,One-Arm Dead Hang,pull,hanging,7,"Hanging from bar with one arm",PHN006,PHN008,40,"30s hold of Chin-up Hold","Maintain shoulder engagement, controlled position",grip,"lats, forearm, shoulder",advanced
-PHN008,One-Arm Active Hang,pull,hanging,8,"One-arm hang with active shoulder engagement",PHN007,PHN009,50,"20s hold each arm of One-Arm Dead Hang","Depress shoulder blade, maintain alignment",lats,"grip, forearm, shoulder stabilizers",advanced
-PHN009,One-Arm Flex Hang,pull,hanging,9,"One-arm hang with arm flexed at 90°",PHN008,PHN010,60,"15s hold each arm of One-Arm Active Hang","Controlled position, active shoulder",biceps,"lats, forearm, shoulder stabilizers",advanced
-PHN010,Swing Progression,pull,hanging,10,"Controlled swinging in hanging position",PHN009,,70,"10s hold each arm of One-Arm Flex Hang","Rhythmic controlled movement, core engaged",lats,"grip, core, shoulders, timing",elite
+unique_id;name;category;subcategory;progressionLevel;description;rel_prev;rel_next;xp_value;unlock_requirements;form_cues;primary_muscle_group;secondary_muscle_groups;difficulty
+PHN001;Dead Hang;pull;hanging;1;Hanging from bar with arms straight;;PHN002;5;;Active shoulders, engaged grip;grip;forearms, shoulders;beginner
+PHN002;Active Hang;pull;hanging;2;Dead hang with shoulders engaged (depressed and retracted);PHN001;PHN003;10;30s hold of Dead Hang;Pull shoulders down away from ears;grip;forearms, lats, traps;beginner
+PHN003;Scapular Pulls;pull;hanging;3;Hanging from bar, pull shoulder blades down without bending arms;PHN002;PHN004;15;30s hold of Active Hang;Depress shoulder blades, maintain hang;lats;traps, rhomboids;beginner
+PHN004;Arch Hangs;pull;hanging;4;Hang from bar with shoulders active and body in slight arch;PHN003;PHN005;20;10 reps x 3 sets of Scapular Pulls;Pull chest to bar, keep shoulders active;lats;traps, rhomboids, biceps;beginner
+PHN005;Flex Hang;pull;hanging;5;Hanging with arms flexed at 90°;PHN004;PHN006;25;30s hold of Arch Hangs;Maintain elbow angle, active shoulders;biceps;forearms, lats, shoulders;intermediate
+PHN006;Chin-up Hold;pull;hanging;6;Hold at top of chin-up position;PHN005;PHN007;30;20s hold of Flex Hang;Chin over bar, shoulders down;biceps;lats, forearms, shoulders;intermediate
+PHN007;One-Arm Dead Hang;pull;hanging;7;Hanging from bar with one arm;PHN006;PHN008;40;30s hold of Chin-up Hold;Maintain shoulder engagement, controlled position;grip;lats, forearm, shoulder;advanced
+PHN008;One-Arm Active Hang;pull;hanging;8;One-arm hang with active shoulder engagement;PHN007;PHN009;50;20s hold each arm of One-Arm Dead Hang;Depress shoulder blade, maintain alignment;lats;grip, forearm, shoulder stabilizers;advanced
+PHN009;One-Arm Flex Hang;pull;hanging;9;One-arm hang with arm flexed at 90°;PHN008;PHN010;60;15s hold each arm of One-Arm Active Hang;Controlled position, active shoulder;biceps;lats, forearm, shoulder stabilizers;advanced
+PHN010;Swing Progression;pull;hanging;10;Controlled swinging in hanging position;PHN009;;70;10s hold each arm of One-Arm Flex Hang;Rhythmic controlled movement, core engaged;lats;grip, core, shoulders, timing;elite

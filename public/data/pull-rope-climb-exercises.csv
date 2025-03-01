@@ -1,7 +1,7 @@
-unique_id,name,category,subcategory,progressionLevel,description,rel_prev,rel_next,xp_value,unlock_requirements,form_cues,primary_muscle_group,secondary_muscle_groups,difficulty
-PRC001,Dead Hang on Rope,pull,rope climb,1,"Hanging from rope with arms straight","PPL003, PRW005",PRC002,30,"8 reps x 3 sets of Pull-up Eccentrics, 10 reps x 3 sets of Ring Row","Firm grip, engage shoulders",grip,"forearms, lats",intermediate
-PRC002,Rope Flex Hang,pull,rope climb,2,"Hanging from rope with arms flexed",PRC001,PRC003,35,"30s hold of Dead Hang on Rope","Maintain flexed position, no slipping",biceps,"grip, forearms, lats",intermediate
-PRC003,Rope Pull-up,pull,rope climb,3,"Pull-up performed on rope",PRC002,PRC004,40,"20s hold of Rope Flex Hang","Pull from back, squeeze rope firmly",lats,"biceps, forearms, grip",intermediate
-PRC004,Rope Climb Negatives,pull,rope climb,4,"Climbing up rope with legs, lowering without legs",PRC003,PRC005,45,"5 reps x 3 sets of Rope Pull-up","Controlled descent, maintain grip",lats,"biceps, grip, core",intermediate
-PRC005,Rope Climb with Legs,pull,rope climb,5,"Full rope climb using legs for assistance",PRC004,PRC006,50,"5 negatives x 3 sets of Rope Climb Negatives","Proper foot lock technique, coordinated movement",lats,"biceps, grip, legs, core",advanced
-PRC006,Rope Climb Progression,pull,rope climb,6,"Climbing with minimal leg assistance",PRC005,PRC007,60,"2 climbs x 3 
+unique_id;name;category;subcategory;progressionLevel;description;rel_prev;rel_next;xp_value;unlock_requirements;form_cues;primary_muscle_group;secondary_muscle_groups;difficulty
+PRC001;Dead Hang on Rope;pull;rope climb;1;Hanging from rope with arms straight;PPL003, PRW005;PRC002;30;8 reps x 3 sets of Pull-up Eccentrics, 10 reps x 3 sets of Ring Row;Firm grip, engage shoulders;grip;forearms, lats;intermediate
+PRC002;Rope Flex Hang;pull;rope climb;2;Hanging from rope with arms flexed;PRC001;PRC003;35;30s hold of Dead Hang on Rope;Maintain flexed position, no slipping;biceps;grip, forearms, lats;intermediate
+PRC003;Rope Pull-up;pull;rope climb;3;Pull-up performed on rope;PRC002;PRC004;40;20s hold of Rope Flex Hang;Pull from back, squeeze rope firmly;lats;biceps, forearms, grip;intermediate
+PRC004;Rope Climb Negatives;pull;rope climb;4;Climbing up rope with legs, lowering without legs;PRC003;PRC005;45;5 reps x 3 sets of Rope Pull-up;Controlled descent, maintain grip;lats;biceps, grip, core;intermediate
+PRC005;Rope Climb with Legs;pull;rope climb;5;Full rope climb using legs for assistance;PRC004;PRC006;50;5 negatives x 3 sets of Rope Climb Negatives;Proper foot lock technique, coordinated movement;lats;biceps, grip, legs, core;advanced
+PRC006;Rope Climb Progression;pull;rope climb;6;Climbing with minimal leg assistance;PRC005;PRC007;60;2 climbs x 3 ;;lats;biceps, grip, legs, core;advanced
