@@ -38,28 +38,9 @@ test_db_connection() {
     return 1
   fi
   
-  # Simple Node.js script to test MongoDB connection
-  node << EOF
-const mongoose = require('mongoose');
-require('dotenv').config({ path: '.env.local' });
-
-async function testConnection() {
-  try {
-    console.log('Attempting to connect to MongoDB...');
-    await mongoose.connect(process.env.MONGODB_URI);
-    console.log('Successfully connected to MongoDB!');
-    await mongoose.connection.close();
-    console.log('Connection closed.');
-    process.exit(0);
-  } catch (error) {
-    console.error('Failed to connect to MongoDB:', error.message);
-    process.exit(1);
-  }
-}
-
-testConnection();
-EOF
-
+  # Use our dedicated test script
+  node scripts/test-mongodb-connection.js
+  
   if [ $? -eq 0 ]; then
     show_success "Database connection successful!"
   else
@@ -190,11 +171,32 @@ git_quick_commit() {
   fi
 }
 
+# Test authentication system
+test_auth_system() {
+  show_header "Testing Authentication System"
+  
+  # Check for the environment file
+  if [ ! -f .env.local ]; then
+    show_error "No .env.local file found. Please create one with your MongoDB connection string."
+    return 1
+  fi
+  
+  # Use our dedicated auth test script
+  node scripts/test-auth-flow.js
+  
+  if [ $? -eq 0 ]; then
+    show_success "Authentication system is working properly!"
+  else
+    show_error "Authentication system test failed. Check the logs for details."
+  fi
+}
+
 # Run all checks
 run_all_checks() {
   show_header "Running All Checks"
   
   test_db_connection
+  test_auth_system
   test_api_endpoints
   lint_and_build_check
   
@@ -219,6 +221,7 @@ show_usage() {
   echo ""
   echo "Commands:"
   echo "  db          Test database connection"
+  echo "  auth        Test authentication system"
   echo "  api         Test API endpoints"
   echo "  lint        Run linting and build check"
   echo "  commit      Quick git add, commit, and push"
@@ -236,6 +239,9 @@ fi
 case "$1" in
   db)
     test_db_connection
+    ;;
+  auth)
+    test_auth_system
     ;;
   api)
     test_api_endpoints

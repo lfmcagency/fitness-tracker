@@ -1,20 +1,45 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
 export default function SignIn() {
   const router = useRouter()
-  const [email, setEmail] = useState('test@example.com') // Pre-fill test email
-  const [password, setPassword] = useState('password') // Pre-fill test password
+  
+  // Check URL parameters for email to pre-fill from registration
+  const [email, setEmail] = useState(() => {
+    // Check if we're on client side
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('email') || 'test@example.com';
+    }
+    return 'test@example.com';
+  })
+  const [registered, setRegistered] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('registered') === 'true';
+    }
+    return false;
+  })
+  const [password, setPassword] = useState('') // Don't pre-fill password for security
   const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  
+  // Set success message if user just registered
+  useEffect(() => {
+    if (registered) {
+      setSuccess('Account created successfully! Please sign in with your credentials.');
+    }
+  }, [registered]);
   
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    setSuccess('')
     setIsLoading(true)
     
     try {
@@ -28,7 +53,7 @@ export default function SignIn() {
       
       if (result?.error) {
         console.error('Sign-in error:', result.error);
-        setError(`Authentication failed: ${result.error}`);
+        setError(`Authentication failed. Please check your email and password.`);
         setIsLoading(false);
         return;
       }
@@ -60,10 +85,20 @@ export default function SignIn() {
             Sign in to your account
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
+            Or{' '}
+            <Link href="/auth/signup" className="font-medium text-blue-600 hover:text-blue-500">
+              create a new account
+            </Link>
+          </p>
+          <p className="mt-2 text-center text-sm text-gray-600">
             Use test@example.com / password for development
           </p>
         </div>
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+          {success && (
+            <div className="bg-green-50 p-3 rounded text-green-600 text-sm">{success}</div>
+          )}
+          
           <div className="rounded-md shadow-sm -space-y-px">
             <div>
               <label htmlFor="email-address" className="sr-only">
