@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 import { MongoClient, MongoClientOptions, ServerApiVersion } from 'mongodb';
 
 // Connection configuration
-const MONGODB_URI = process.env.MONGODB_URI;
+const MONGODB_URI = process.env.MONGODB_URI || '';
 const DB_NAME = process.env.DB_NAME || 'fitness-tracker';
 
 // Max number of connection attempts
@@ -126,9 +126,9 @@ export async function checkMongooseConnection() {
   const state = mongoose.connection.readyState;
   
   return {
-    connected: state === ConnectionState.Connected,
+    connected: state === 1, // 1 represents Connected state in mongoose
     state,
-    stateName: ConnectionState[state],
+    stateName: ConnectionState[state as number],
     db: mongoose.connection.db?.databaseName || null,
     host: mongoose.connection.host || null,
     models: Object.keys(mongoose.models),
@@ -150,7 +150,7 @@ export async function connectWithMongoose(
   // If connected and not forcing a new connection, return the existing connection
   if (
     global.mongooseCache.conn &&
-    mongoose.connection.readyState === ConnectionState.Connected &&
+    mongoose.connection.readyState === 1 && // 1 represents Connected state in mongoose
     !forceNew
   ) {
     return global.mongooseCache.conn;
@@ -380,7 +380,7 @@ export async function getDiagnostics() {
       collections,
       environment: {
         nodeEnv: process.env.NODE_ENV,
-        isEdgeRuntime: typeof EdgeRuntime !== 'undefined',
+        isEdgeRuntime: typeof process.env.EDGE_RUNTIME !== 'undefined',
         mongodbUri: MONGODB_URI ? `${MONGODB_URI.split('://')[0]}://${MONGODB_URI.split('@')[1] ? '***:***@' + MONGODB_URI.split('@')[1] : '[uri-without-auth]'}` : 'undefined',
       }
     };

@@ -64,8 +64,8 @@ export async function GET(req: NextRequest) {
     const skip = (page - 1) * limit;
     
     // Prepare sort object
-    const sort: Record<string, number> = {};
-    sort[sortField] = sortOrder;
+    const sort: { [key: string]: 1 | -1 } = {};
+    sort[sortField] = sortOrder as 1 | -1;
     
     // Add secondary sort to ensure consistent ordering
     if (sortField !== 'category') sort.category = 1;
