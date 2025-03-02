@@ -6,7 +6,7 @@ import UserProgress from '@/models/UserProgress';
 import { Types } from 'mongoose';
 import { getAuth } from '@/lib/auth';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
-import { getCategoriesComparison, VALID_CATEGORIES, CATEGORY_METADATA } from '@/lib/category-progress';
+import { getCategoriesComparison, VALID_CATEGORIES, CATEGORY_METADATA, ProgressCategory, isValidCategory } from '@/lib/category-progress';
 
 /**
  * GET /api/progress/categories
@@ -98,20 +98,23 @@ export async function GET(req: NextRequest) {
 function generateRecommendations(balanceScore: number, weakestCategory: string) {
   const recommendations = [];
   
+  // Ensure weakestCategory is a valid category
+  const safeCategory = isValidCategory(weakestCategory) ? weakestCategory : 'core';
+  
   // Balance-based recommendations
   if (balanceScore < 50) {
     recommendations.push({
       type: 'balance',
       priority: 'high',
-      message: `Focus on ${CATEGORY_METADATA[weakestCategory].name} exercises to improve overall balance.`,
-      target: weakestCategory
+      message: `Focus on ${CATEGORY_METADATA[safeCategory].name} exercises to improve overall balance.`,
+      target: safeCategory
     });
   } else if (balanceScore < 75) {
     recommendations.push({
       type: 'balance',
       priority: 'medium',
-      message: `Consider adding more ${CATEGORY_METADATA[weakestCategory].name} exercises to your routine.`,
-      target: weakestCategory
+      message: `Consider adding more ${CATEGORY_METADATA[safeCategory].name} exercises to your routine.`,
+      target: safeCategory
     });
   } else {
     recommendations.push({

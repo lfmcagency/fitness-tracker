@@ -1,4 +1,4 @@
-import mongoose, { Schema, Document, Model, Types } from 'mongoose';
+import mongoose, { Schema, Document, Model, Types, HydratedDocument } from 'mongoose';
 
 // Define XP transaction interface
 export interface XpTransaction {
@@ -34,6 +34,7 @@ export interface CategoryProgress {
 
 // Base interface for UserProgress properties without Document methods
 export interface UserProgressData {
+  _id?: Types.ObjectId;
   userId: Types.ObjectId;
   totalXp: number;
   level: number;
@@ -55,6 +56,7 @@ export interface UserProgressData {
   lastUpdated: Date;
   createdAt: Date;
   updatedAt: Date;
+  __v?: number; // Mongoose version key
 }
 
 // Methods interface for UserProgress document
@@ -69,11 +71,11 @@ export interface UserProgressMethods {
 }
 
 // Combined interface for both data and methods
-export interface IUserProgress extends UserProgressData, UserProgressMethods, Document {}
+export interface IUserProgress extends UserProgressData, UserProgressMethods {}
 
 // Static methods interface
 export interface IUserProgressModel extends Model<IUserProgress, {}, UserProgressMethods> {
-  createInitialProgress(userId: Types.ObjectId): Promise<IUserProgress>;
+  createInitialProgress(userId: Types.ObjectId): Promise<HydratedDocument<IUserProgress>>;
   calculateLevelFromXp(xp: number): number;
 }
 
@@ -143,8 +145,8 @@ UserProgressSchema.statics.calculateLevelFromXp = function(xp: number): number {
 };
 
 // Create initial progress document for new user
-UserProgressSchema.statics.createInitialProgress = async function(userId: Types.ObjectId): Promise<IUserProgress> {
-  const initialProgress = new this({
+UserProgressSchema.statics.createInitialProgress = async function(userId: Types.ObjectId): Promise<HydratedDocument<IUserProgress>> {
+  return await this.create({
     userId,
     totalXp: 0,
     level: 1,
@@ -179,8 +181,6 @@ UserProgressSchema.statics.createInitialProgress = async function(userId: Types.
       }
     }]
   });
-
-  return initialProgress.save();
 };
 
 // Calculate level based on XP

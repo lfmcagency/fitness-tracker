@@ -1,4 +1,4 @@
-import { Types } from 'mongoose';
+import { Types, Document, HydratedDocument } from 'mongoose';
 import Achievement from '@/models/Achievement';
 import { IUserProgress } from '@/models/UserProgress';
 
@@ -251,7 +251,7 @@ export const ACHIEVEMENTS: AchievementDefinition[] = [
  */
 export function meetsRequirements(
   achievement: AchievementDefinition,
-  userProgress: IUserProgress
+  userProgress: HydratedDocument<IUserProgress>
 ): boolean {
   const req = achievement.requirements;
   
@@ -292,7 +292,7 @@ export function meetsRequirements(
  * @returns Promise resolving to array of newly unlocked achievements
  */
 export async function checkAchievements(
-  userProgress: IUserProgress
+  userProgress: HydratedDocument<IUserProgress>
 ): Promise<AchievementDefinition[]> {
   // First, get IDs of achievements the user already has
   const userAchievementIds = userProgress.achievements.map(id => 
@@ -327,9 +327,9 @@ export async function checkAchievements(
  * @returns Promise resolving to { updatedProgress, totalXpAwarded }
  */
 export async function awardAchievements(
-  userProgress: IUserProgress,
+  userProgress: HydratedDocument<IUserProgress>,
   achievements: AchievementDefinition[]
-): Promise<{ updatedProgress: IUserProgress; totalXpAwarded: number }> {
+): Promise<{ updatedProgress: HydratedDocument<IUserProgress>; totalXpAwarded: number }> {
   if (!achievements.length) {
     return { updatedProgress: userProgress, totalXpAwarded: 0 };
   }
@@ -390,8 +390,10 @@ export async function awardAchievements(
     // Update timestamp
     userProgress.lastUpdated = new Date();
     
-    // Save changes
-    await userProgress.save();
+    // Save changes and ensure we maintain the document reference
+    const savedDoc = await userProgress.save();
+    // Return the saved document to ensure all Mongoose properties are preserved
+    userProgress = savedDoc;
   }
   
   return { updatedProgress: userProgress, totalXpAwarded };
@@ -402,7 +404,7 @@ export async function awardAchievements(
  * @param userProgress User progress document (or null if not authenticated)
  * @returns Array of achievements with unlock status
  */
-export async function getAllAchievementsWithStatus(userProgress: IUserProgress | null) {
+export async function getAllAchievementsWithStatus(userProgress: HydratedDocument<IUserProgress> | null) {
   // Get IDs of achievements the user already has
   const userAchievementIds = userProgress
     ? userProgress.achievements.map(id => id.toString())
@@ -424,7 +426,7 @@ export async function getAllAchievementsWithStatus(userProgress: IUserProgress |
  */
 function calculateAchievementProgress(
   achievement: AchievementDefinition,
-  userProgress: IUserProgress | null
+  userProgress: HydratedDocument<IUserProgress> | null
 ): number {
   if (!userProgress) return 0;
   

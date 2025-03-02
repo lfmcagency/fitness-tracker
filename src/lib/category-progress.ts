@@ -1,11 +1,28 @@
 import { IUserProgress, XpTransaction } from '@/models/UserProgress';
 import { AchievementDefinition, ACHIEVEMENTS } from './achievements';
+import { HydratedDocument } from 'mongoose';
 
 export type ProgressCategory = 'core' | 'push' | 'pull' | 'legs';
 export const VALID_CATEGORIES: ProgressCategory[] = ['core', 'push', 'pull', 'legs'];
 
+/**
+ * Type guard to check if a string is a valid category
+ * @param category String to check
+ * @returns True if the string is a valid category
+ */
+export function isValidCategory(category: string): category is ProgressCategory {
+  return VALID_CATEGORIES.includes(category as ProgressCategory);
+}
+
 // Category metadata for UI display and business logic
-export const CATEGORY_METADATA = {
+export const CATEGORY_METADATA: Record<ProgressCategory, {
+  name: string;
+  description: string;
+  icon: string;
+  color: string;
+  primaryMuscles: string[];
+  scaling: number;
+}> = {
   core: {
     name: 'Core',
     description: 'Abdominal and lower back exercises',
@@ -244,7 +261,7 @@ export function getRecentCategoryActivity(
  * @param userProgress User's progress document
  * @returns Comparative statistics for categories
  */
-export function getCategoriesComparison(userProgress: IUserProgress) {
+export function getCategoriesComparison(userProgress: HydratedDocument<IUserProgress>) {
   // Prepare category data
   const categoryData = VALID_CATEGORIES.map(category => {
     const xp = userProgress.categoryXp[category];
@@ -270,7 +287,11 @@ export function getCategoriesComparison(userProgress: IUserProgress) {
   
   // Identify strongest and weakest categories
   const strongest = sortedByXp[0];
-  const weakest = sortedByXp[sortedByXp.length - 1];
+  // Ensure type safety for weakest category
+  const weakest = {
+    ...sortedByXp[sortedByXp.length - 1],
+    category: sortedByXp[sortedByXp.length - 1].category as ProgressCategory
+  };
   
   // Calculate balance score (0-100)
   // Higher score means more balanced distribution of XP across categories
