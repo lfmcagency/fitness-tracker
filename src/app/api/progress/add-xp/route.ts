@@ -3,9 +3,9 @@ export const dynamic = 'force-dynamic';
 import { NextRequest } from 'next/server';
 import { dbConnect } from '@/lib/db/mongodb';
 import { withAuth, AuthLevel } from '@/lib/auth-utils';
-import { apiSuccess, handleApiError } from '@/lib/api-utils-enhanced';
+import { apiSuccess, handleApiError } from '@/lib/api-utils';
 import { validateRequest, schemas } from '@/lib/validation';
-import { awardXp } from '@/lib/xp-manager-improved';
+import { awardXp } from '@/lib/xp-manager';
 
 /**
  * POST /api/progress/add-xp
