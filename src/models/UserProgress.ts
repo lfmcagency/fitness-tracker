@@ -1,4 +1,4 @@
-import mongoose, { Schema, Document, Model } from 'mongoose';
+import mongoose, { Schema, Document, Model, Types } from 'mongoose';
 
 // Define XP transaction interface
 export interface XpTransaction {
@@ -29,11 +29,12 @@ export interface XpDailySummary {
 export interface CategoryProgress {
   level: number;
   xp: number;
-  unlockedExercises: mongoose.Types.ObjectId[];
+  unlockedExercises: Types.ObjectId[];
 }
 
-export interface IUserProgress extends Document {
-  userId: mongoose.Types.ObjectId;
+// Base interface for UserProgress properties without Document methods
+export interface UserProgressData {
+  userId: Types.ObjectId;
   totalXp: number;
   level: number;
   categoryXp: {
@@ -48,14 +49,16 @@ export interface IUserProgress extends Document {
     pull: CategoryProgress;
     legs: CategoryProgress;
   };
-  achievements: mongoose.Types.ObjectId[];
+  achievements: Types.ObjectId[];
   xpHistory: XpTransaction[];
   dailySummaries: XpDailySummary[];
   lastUpdated: Date;
   createdAt: Date;
   updatedAt: Date;
-  
-  // Methods for the document instance
+}
+
+// Methods interface for UserProgress document
+export interface UserProgressMethods {
   calculateLevel(xp: number): number;
   addXp(amount: number, source: string, category?: 'core' | 'push' | 'pull' | 'legs', description?: string): Promise<boolean>;
   getNextLevelXp(): number;
@@ -65,9 +68,12 @@ export interface IUserProgress extends Document {
   purgeOldHistory(olderThan: Date): Promise<number>;
 }
 
+// Combined interface for both data and methods
+export interface IUserProgress extends UserProgressData, UserProgressMethods, Document {}
+
 // Static methods interface
-export interface IUserProgressModel extends Model<IUserProgress> {
-  createInitialProgress(userId: mongoose.Types.ObjectId): Promise<IUserProgress>;
+export interface IUserProgressModel extends Model<IUserProgress, {}, UserProgressMethods> {
+  createInitialProgress(userId: Types.ObjectId): Promise<IUserProgress>;
   calculateLevelFromXp(xp: number): number;
 }
 
@@ -98,7 +104,7 @@ const CategoryProgressSchema = new Schema({
   unlockedExercises: [{ type: Schema.Types.ObjectId, ref: 'Exercise' }]
 });
 
-const UserProgressSchema = new Schema<IUserProgress>({
+const UserProgressSchema = new Schema<IUserProgress, IUserProgressModel, UserProgressMethods>({
   userId: { 
     type: Schema.Types.ObjectId, 
     ref: 'User',
@@ -137,7 +143,7 @@ UserProgressSchema.statics.calculateLevelFromXp = function(xp: number): number {
 };
 
 // Create initial progress document for new user
-UserProgressSchema.statics.createInitialProgress = async function(userId: mongoose.Types.ObjectId): Promise<IUserProgress> {
+UserProgressSchema.statics.createInitialProgress = async function(userId: Types.ObjectId): Promise<IUserProgress> {
   const initialProgress = new this({
     userId,
     totalXp: 0,
@@ -147,6 +153,12 @@ UserProgressSchema.statics.createInitialProgress = async function(userId: mongoo
       push: 0,
       pull: 0,
       legs: 0
+    },
+    categoryProgress: {
+      core: { level: 1, xp: 0, unlockedExercises: [] },
+      push: { level: 1, xp: 0, unlockedExercises: [] },
+      pull: { level: 1, xp: 0, unlockedExercises: [] },
+      legs: { level: 1, xp: 0, unlockedExercises: [] }
     },
     xpHistory: [{
       amount: 0,

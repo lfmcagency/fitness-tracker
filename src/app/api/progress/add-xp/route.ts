@@ -76,6 +76,7 @@ export async function POST(req: NextRequest) {
     let userProgress = await UserProgress.findOne({ userId: userObjectId });
     if (!userProgress) {
       try {
+        // Access static method through model using proper type-safe approach
         userProgress = await UserProgress.createInitialProgress(userObjectId);
       } catch (error) {
         return handleApiError(error, 'Failed to create initial progress record');
@@ -85,12 +86,12 @@ export async function POST(req: NextRequest) {
     // Store previous values to detect changes
     const previousXp = userProgress.totalXp;
     const previousLevel = userProgress.level;
-    let previousCategoryLevel;
-    let previousCategoryXp;
+    let previousCategoryLevel: number | undefined;
+    let previousCategoryXp: number | undefined;
     
     if (category) {
-      previousCategoryLevel = userProgress.categoryProgress[category].level;
-      previousCategoryXp = userProgress.categoryXp[category];
+      previousCategoryLevel = userProgress.categoryProgress[category as ProgressCategory].level;
+      previousCategoryXp = userProgress.categoryXp[category as ProgressCategory];
     }
     
     // Add XP and save changes
@@ -107,7 +108,7 @@ export async function POST(req: NextRequest) {
       
       // Award any newly unlocked achievements
       let achievementXpAwarded = 0;
-      let unlockedAchievements = [];
+      let unlockedAchievements: Array<any> = [];
       
       if (newlyUnlockedAchievements.length > 0) {
         // Award achievements
@@ -116,7 +117,7 @@ export async function POST(req: NextRequest) {
           newlyUnlockedAchievements
         );
         
-        // Update references
+        // Update references with the returned document instance
         userProgress = updatedProgress;
         achievementXpAwarded = totalXpAwarded;
         
@@ -140,7 +141,7 @@ export async function POST(req: NextRequest) {
       );
       
       // Prepare response
-      const response: any = {
+      const response: Record<string, any> = {
         success: true,
         previousXp,
         totalXp: userProgress.totalXp,
@@ -155,13 +156,14 @@ export async function POST(req: NextRequest) {
       };
       
       // Add category-specific information if a category was provided
-      if (category) {
-        const categoryLeveledUp = userProgress.categoryProgress[category].level > previousCategoryLevel;
-        const currentCategoryXp = userProgress.categoryXp[category];
+      if (category && previousCategoryLevel !== undefined && previousCategoryXp !== undefined) {
+        const typedCategory = category as ProgressCategory;
+        const categoryLeveledUp = userProgress.categoryProgress[typedCategory].level > previousCategoryLevel;
+        const currentCategoryXp = userProgress.categoryXp[typedCategory];
         
         // Check for category milestone
         const milestone = checkCategoryMilestone(
-          category as ProgressCategory,
+          typedCategory,
           previousCategoryXp,
           currentCategoryXp
         );
@@ -171,7 +173,7 @@ export async function POST(req: NextRequest) {
           previousXp: previousCategoryXp,
           currentXp: currentCategoryXp,
           previousLevel: previousCategoryLevel,
-          currentLevel: userProgress.categoryProgress[category].level,
+          currentLevel: userProgress.categoryProgress[typedCategory].level,
           leveledUp: categoryLeveledUp,
           milestone: milestone
         };

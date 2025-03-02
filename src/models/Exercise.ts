@@ -139,7 +139,11 @@ ExerciseSchema.statics.findNextProgressions = function(exerciseId: mongoose.Type
 };
 
 // Use this pattern to avoid model recompilation errors
-const Exercise = mongoose.models.Exercise as IExerciseModel || 
+const ExerciseModel = mongoose.models.Exercise as IExerciseModel || 
   mongoose.model<IExercise, IExerciseModel>('Exercise', ExerciseSchema);
 
-export default Exercise;
+// Export the model as named export
+export const Exercise = ExerciseModel;
+
+// Also maintain default export for backward compatibility
+export default ExerciseModel;
