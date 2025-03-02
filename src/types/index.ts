@@ -1,10 +1,48 @@
 // Daily Routine Types
+export type RecurrencePattern = 'daily' | 'weekdays' | 'weekends' | 'weekly' | 'custom';
+export type TaskPriority = 'low' | 'medium' | 'high';
+
+// Legacy Task interface for backward compatibility
 export interface Task {
   id: number;
   name: string;
   time: string;
   completed: boolean;
   streak: number;
+}
+
+// Enhanced Task interfaces
+export interface EnhancedTask {
+  id?: string | number;
+  _id?: string;
+  name: string;
+  scheduledTime: string;
+  completed: boolean;
+  date?: Date | string;
+  recurrencePattern: RecurrencePattern;
+  customRecurrenceDays?: number[];
+  currentStreak: number;
+  bestStreak: number;
+  lastCompletedDate?: Date | string | null;
+  category: string;
+  priority: TaskPriority;
+  user?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface TaskWithHistory extends EnhancedTask {
+  completionHistory: Array<Date | string>;
+}
+
+export interface StreakInfo {
+  taskId: string | number;
+  name: string;
+  currentStreak: number;
+  bestStreak: number;
+  lastCompletedDate?: Date | string | null;
+  isDueToday: boolean;
+  completionHistory?: Array<Date | string>;
 }
 
 // Training Types

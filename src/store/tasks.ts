@@ -1,41 +1,144 @@
 import { create } from 'zustand';
-import type { Task } from '@/types';
+import type { EnhancedTask, ApiResponse, RecurrencePattern, TaskPriority, TaskWithHistory } from '@/types';
+import { TaskStatistics } from '@/lib/task-statistics';
+
+// Task filter parameters interface
+export interface TaskFilter {
+  date?: string;
+  startDate?: string;
+  endDate?: string;
+  today?: boolean;
+  category?: string;
+  completed?: boolean;
+  includeHistory?: boolean;
+  sort?: string;
+  order?: 'asc' | 'desc';
+  page?: number;
+  limit?: number;
+}
+
+// Task creation parameters interface
+export interface CreateTaskParams {
+  name: string;
+  scheduledTime: string;
+  recurrencePattern?: RecurrencePattern;
+  customRecurrenceDays?: number[];
+  category?: string;
+  priority?: TaskPriority;
+  date?: string;
+}
 
 interface TaskState {
-  tasks: Task[];
+  tasks: EnhancedTask[];
+  filteredTasks: EnhancedTask[];
   isLoading: boolean;
   error: string | null;
   completedTasks: number;
-  fetchTasks: () => Promise<void>;
-  toggleTask: (taskId: number) => void;
-  addTask: (task: Omit<Task, 'id'>) => void;
-  removeTask: (taskId: number) => void;
-  updateTask: (taskId: number, updates: Partial<Task>) => void;
+  currentPage: number;
+  totalPages: number;
+  totalTasks: number;
+  currentFilter: TaskFilter;
+  statistics: TaskStatistics | null;
+  isLoadingStats: boolean;
+  
+  // API methods
+  fetchTasks: (filter?: TaskFilter) => Promise<void>;
+  fetchTaskById: (taskId: string | number) => Promise<EnhancedTask | null>;
+  addTask: (task: CreateTaskParams) => Promise<EnhancedTask | null>;
+  updateTask: (taskId: string | number, updates: Partial<EnhancedTask>) => Promise<EnhancedTask | null>;
+  completeTask: (taskId: string | number, date?: string) => Promise<EnhancedTask | null>;
+  deleteTask: (taskId: string | number, skipConfirmation?: boolean) => Promise<boolean>;
+  fetchStatistics: (filter?: TaskFilter) => Promise<TaskStatistics | null>;
+  
+  // Cache and state helpers
+  updateLocalTask: (taskId: string | number, updates: Partial<EnhancedTask>) => void;
+  removeLocalTask: (taskId: string | number) => void;
+  updateTaskFilters: (filter: TaskFilter) => void;
+  clearTaskFilters: () => void;
 }
+
+// Helper functions
+const getTaskId = (taskId: string | number): string => {
+  return typeof taskId === 'number' ? taskId.toString() : taskId;
+};
+
+const buildQueryString = (filter?: TaskFilter): string => {
+  if (!filter) return '';
+  
+  const params = new URLSearchParams();
+  
+  // Add all filter parameters if they exist
+  if (filter.date) params.append('date', filter.date);
+  if (filter.startDate) params.append('startDate', filter.startDate);
+  if (filter.endDate) params.append('endDate', filter.endDate);
+  if (filter.today) params.append('today', 'true');
+  if (filter.category) params.append('category', filter.category);
+  if (filter.completed !== undefined) params.append('completed', filter.completed.toString());
+  if (filter.includeHistory) params.append('includeHistory', 'true');
+  if (filter.sort) params.append('sort', filter.sort);
+  if (filter.order) params.append('order', filter.order);
+  if (filter.page) params.append('page', filter.page.toString());
+  if (filter.limit) params.append('limit', filter.limit.toString());
+  
+  return `?${params.toString()}`;
+};
 
 export const useTaskStore = create<TaskState>((set, get) => ({
   tasks: [],
+  filteredTasks: [],
   isLoading: false,
   error: null,
   completedTasks: 0,
+  currentPage: 1,
+  totalPages: 1,
+  totalTasks: 0,
+  currentFilter: {},
+  statistics: null,
+  isLoadingStats: false,
 
-  fetchTasks: async () => {
+  /**
+   * Fetch tasks with optional filtering
+   */
+  fetchTasks: async (filter?: TaskFilter) => {
     set({ isLoading: true, error: null });
     try {
-      const response = await fetch('/api/tasks');
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch tasks');
+      // Update current filter
+      if (filter) {
+        set({ currentFilter: { ...get().currentFilter, ...filter } });
       }
       
-      const data = await response.json();
+      // Build query string from current filters
+      const queryString = buildQueryString(get().currentFilter);
       
-      if (data.success) {
+      // Fetch tasks from API
+      const response = await fetch(`/api/tasks${queryString}`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch tasks: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json() as ApiResponse<EnhancedTask[]>;
+      
+      if (data.success && data.data) {
+        // Extract pagination information if available
+        const pagination = data.pagination || {
+          total: data.data.length,
+          page: 1,
+          limit: data.data.length,
+          pages: 1
+        };
+        
         set({ 
           tasks: data.data,
-          completedTasks: data.data.filter((task: Task) => task.completed).length,
+          filteredTasks: data.data,
+          completedTasks: data.data.filter((task: EnhancedTask) => task.completed).length,
+          currentPage: pagination.page,
+          totalPages: pagination.pages,
+          totalTasks: pagination.total,
           isLoading: false
         });
+        
+        return;
       } else {
         throw new Error(data.message || 'Failed to fetch tasks');
       }
@@ -48,147 +151,391 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     }
   },
 
-  toggleTask: (taskId) => {
-    // Optimistic update
-    set((state) => {
-      const updatedTasks = state.tasks.map(task =>
-        task.id === taskId 
-          ? { ...task, completed: !task.completed }
-          : task
-      );
-      return {
-        tasks: updatedTasks,
-        completedTasks: updatedTasks.filter(task => task.completed).length
-      };
-    });
+  /**
+   * Fetch a single task by ID
+   */
+  fetchTaskById: async (taskId: string | number) => {
+    const id = getTaskId(taskId);
     
-    // Then send to API
-    const task = get().tasks.find(t => t.id === taskId);
-    if (!task) return;
-    
-    fetch(`/api/tasks/${taskId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ completed: !task.completed })
-    }).catch(error => {
-      console.error('Error toggling task:', error);
-      // Revert on error
-      set((state) => ({
-        tasks: state.tasks.map(t => 
-          t.id === taskId ? { ...t, completed: task.completed } : t
-        ),
-        error: 'Failed to update task'
-      }));
-    });
-  },
-
-  addTask: (task) => {
-    // Generate temporary ID
-    const tempId = Date.now();
-    const newTask = { ...task, id: tempId };
-    
-    // Optimistic update
-    set((state) => ({
-      tasks: [...state.tasks, newTask]
-    }));
-    
-    // Send to API
-    fetch('/api/tasks', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(task)
-    })
-      .then(response => response.json())
-      .then(data => {
-        if (data.success) {
-          // Replace temp task with real one from server
-          set((state) => ({
-            tasks: state.tasks.map(t => 
-              t.id === tempId ? data.data : t
-            )
-          }));
-        } else {
-          throw new Error(data.message);
-        }
-      })
-      .catch(error => {
-        console.error('Error adding task:', error);
-        // Remove the task on error
+    try {
+      // Check if we already have this task in local state
+      const cachedTask = get().tasks.find(t => getTaskId(t.id!) === id);
+      if (cachedTask) return cachedTask;
+      
+      // Otherwise fetch from API
+      const response = await fetch(`/api/tasks/${id}?includeHistory=true`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch task: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json() as ApiResponse<EnhancedTask>;
+      
+      if (data.success && data.data) {
+        // Add to local state
         set((state) => ({
-          tasks: state.tasks.filter(t => t.id !== tempId),
-          error: 'Failed to add task'
+          tasks: [...state.tasks.filter(t => getTaskId(t.id!) !== id), data.data!]
         }));
+        
+        return data.data;
+      } else {
+        throw new Error(data.message || 'Failed to fetch task');
+      }
+    } catch (error) {
+      console.error(`Error fetching task ${id}:`, error);
+      set({ 
+        error: error instanceof Error ? error.message : `Failed to fetch task ${id}` 
       });
+      return null;
+    }
   },
 
-  removeTask: (taskId) => {
-    // Store the task before removing
-    const taskToRemove = get().tasks.find(t => t.id === taskId);
+  /**
+   * Add a new task
+   */
+  addTask: async (taskData: CreateTaskParams) => {
+    // Generate temporary ID for optimistic updates
+    const tempId = `temp-${Date.now()}`;
+    const tempTask: EnhancedTask = {
+      id: tempId,
+      name: taskData.name,
+      scheduledTime: taskData.scheduledTime,
+      completed: false,
+      recurrencePattern: taskData.recurrencePattern || 'daily',
+      customRecurrenceDays: taskData.customRecurrenceDays || [],
+      currentStreak: 0,
+      bestStreak: 0,
+      category: taskData.category || 'general',
+      priority: taskData.priority || 'medium',
+      date: taskData.date || new Date().toISOString(),
+      createdAt: new Date().toISOString()
+    };
     
     // Optimistic update
     set((state) => ({
-      tasks: state.tasks.filter(task => task.id !== taskId),
-      completedTasks: state.tasks.filter(task => task.completed && task.id !== taskId).length
+      tasks: [...state.tasks, tempTask],
+      filteredTasks: [...state.filteredTasks, tempTask],
+      error: null
     }));
     
     // Send to API
-    fetch(`/api/tasks/${taskId}`, {
-      method: 'DELETE'
-    })
-      .then(response => response.json())
-      .then(data => {
-        if (!data.success) {
-          throw new Error(data.message);
-        }
-      })
-      .catch(error => {
-        console.error('Error removing task:', error);
-        // Restore the task on error
-        if (taskToRemove) {
-          set((state) => ({
-            tasks: [...state.tasks, taskToRemove],
-            error: 'Failed to remove task'
-          }));
-        }
+    try {
+      const response = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(taskData)
       });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to add task: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json() as ApiResponse<EnhancedTask>;
+      
+      if (data.success && data.data) {
+        // Replace temp task with real one from server
+        set((state) => ({
+          tasks: state.tasks.map(t => getTaskId(t.id!) === tempId ? data.data! : t),
+          filteredTasks: state.filteredTasks.map(t => getTaskId(t.id!) === tempId ? data.data! : t)
+        }));
+        
+        return data.data;
+      } else {
+        throw new Error(data.message || 'Failed to add task');
+      }
+    } catch (error) {
+      console.error('Error adding task:', error);
+      
+      // Remove the temporary task on error
+      set((state) => ({
+        tasks: state.tasks.filter(t => getTaskId(t.id!) !== tempId),
+        filteredTasks: state.filteredTasks.filter(t => getTaskId(t.id!) !== tempId),
+        error: error instanceof Error ? error.message : 'Failed to add task'
+      }));
+      
+      return null;
+    }
   },
 
-  updateTask: (taskId, updates) => {
-    // Store original task
-    const originalTask = get().tasks.find(t => t.id === taskId);
+  /**
+   * Update a task
+   */
+  updateTask: async (taskId: string | number, updates: Partial<EnhancedTask>) => {
+    const id = getTaskId(taskId);
+    
+    // Store original task for rollback
+    const originalTask = get().tasks.find(t => getTaskId(t.id!) === id);
+    if (!originalTask) {
+      set({ error: `Task with ID ${id} not found` });
+      return null;
+    }
     
     // Optimistic update
-    set((state) => ({
-      tasks: state.tasks.map(task =>
-        task.id === taskId
+    get().updateLocalTask(id, updates);
+    
+    // Send to API
+    try {
+      const response = await fetch(`/api/tasks/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates)
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to update task: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json() as ApiResponse<EnhancedTask>;
+      
+      if (data.success && data.data) {
+        // Update with server data to ensure consistency
+        get().updateLocalTask(id, data.data);
+        return data.data;
+      } else {
+        throw new Error(data.message || 'Failed to update task');
+      }
+    } catch (error) {
+      console.error(`Error updating task ${id}:`, error);
+      
+      // Revert on error
+      if (originalTask) {
+        get().updateLocalTask(id, originalTask);
+      }
+      
+      set({ error: error instanceof Error ? error.message : `Failed to update task ${id}` });
+      return null;
+    }
+  },
+
+  /**
+   * Mark a task as completed
+   */
+  completeTask: async (taskId: string | number, date?: string) => {
+    const id = getTaskId(taskId);
+    
+    // Find task in state
+    const task = get().tasks.find(t => getTaskId(t.id!) === id);
+    if (!task) {
+      set({ error: `Task with ID ${id} not found` });
+      return null;
+    }
+    
+    // Optimistic update
+    get().updateLocalTask(id, { 
+      completed: true,
+      currentStreak: task.currentStreak + 1,
+      lastCompletedDate: date || new Date().toISOString()
+    });
+    
+    // Send to API with optional completion date
+    try {
+      const body: any = { completed: true };
+      if (date) {
+        body.completionDate = date;
+      }
+      
+      const response = await fetch(`/api/tasks/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to complete task: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json() as ApiResponse<EnhancedTask>;
+      
+      if (data.success && data.data) {
+        // Update with server data to ensure streak is calculated correctly
+        get().updateLocalTask(id, data.data);
+        return data.data;
+      } else {
+        throw new Error(data.message || 'Failed to complete task');
+      }
+    } catch (error) {
+      console.error(`Error completing task ${id}:`, error);
+      
+      // Revert on error
+      get().updateLocalTask(id, { 
+        completed: task.completed,
+        currentStreak: task.currentStreak,
+        lastCompletedDate: task.lastCompletedDate
+      });
+      
+      set({ error: error instanceof Error ? error.message : `Failed to complete task ${id}` });
+      return null;
+    }
+  },
+
+  /**
+   * Delete a task
+   */
+  deleteTask: async (taskId: string | number, skipConfirmation = false) => {
+    const id = getTaskId(taskId);
+    
+    // Find task in state
+    const taskToRemove = get().tasks.find(t => getTaskId(t.id!) === id);
+    if (!taskToRemove) {
+      set({ error: `Task with ID ${id} not found` });
+      return false;
+    }
+    
+    // Confirmation (if not skipped)
+    if (!skipConfirmation) {
+      const confirmed = window.confirm(`Are you sure you want to delete task: ${taskToRemove.name}?`);
+      if (!confirmed) return false;
+    }
+    
+    // Optimistic update
+    get().removeLocalTask(id);
+    
+    // Send to API
+    try {
+      const response = await fetch(`/api/tasks/${id}`, {
+        method: 'DELETE'
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to delete task: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json() as ApiResponse<{ id: string }>;
+      
+      if (data.success) {
+        return true;
+      } else {
+        throw new Error(data.message || 'Failed to delete task');
+      }
+    } catch (error) {
+      console.error(`Error deleting task ${id}:`, error);
+      
+      // Restore the task on error
+      set((state) => ({
+        tasks: [...state.tasks, taskToRemove],
+        filteredTasks: [...state.filteredTasks, taskToRemove],
+        error: error instanceof Error ? error.message : `Failed to delete task ${id}`
+      }));
+      
+      return false;
+    }
+  },
+
+  /**
+   * Fetch task statistics
+   */
+  fetchStatistics: async (filter?: TaskFilter) => {
+    set({ isLoadingStats: true, error: null });
+    
+    try {
+      // Build query string from filters
+      const queryString = buildQueryString(filter);
+      
+      // Fetch statistics from API
+      const response = await fetch(`/api/tasks/statistics${queryString}`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch statistics: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json() as ApiResponse<TaskStatistics>;
+      
+      if (data.success && data.data) {
+        set({ 
+          statistics: data.data,
+          isLoadingStats: false
+        });
+        
+        return data.data;
+      } else {
+        throw new Error(data.message || 'Failed to fetch statistics');
+      }
+    } catch (error) {
+      console.error('Error fetching statistics:', error);
+      set({ 
+        error: error instanceof Error ? error.message : 'Failed to fetch statistics', 
+        isLoadingStats: false 
+      });
+      
+      return null;
+    }
+  },
+
+  /**
+   * Update local task in state
+   */
+  updateLocalTask: (taskId: string | number, updates: Partial<EnhancedTask>) => {
+    const id = getTaskId(taskId);
+    
+    set((state) => {
+      // Update in main tasks array
+      const updatedTasks = state.tasks.map(task =>
+        getTaskId(task.id!) === id 
           ? { ...task, ...updates }
           : task
-      )
+      );
+      
+      // Update in filtered tasks array
+      const updatedFilteredTasks = state.filteredTasks.map(task =>
+        getTaskId(task.id!) === id 
+          ? { ...task, ...updates }
+          : task
+      );
+      
+      // Recalculate completed tasks count
+      const completedCount = updatedTasks.filter(task => task.completed).length;
+      
+      return {
+        tasks: updatedTasks,
+        filteredTasks: updatedFilteredTasks,
+        completedTasks: completedCount
+      };
+    });
+  },
+
+  /**
+   * Remove a task from local state
+   */
+  removeLocalTask: (taskId: string | number) => {
+    const id = getTaskId(taskId);
+    
+    set((state) => {
+      // Remove from main tasks array
+      const updatedTasks = state.tasks.filter(task => getTaskId(task.id!) !== id);
+      
+      // Remove from filtered tasks array
+      const updatedFilteredTasks = state.filteredTasks.filter(task => getTaskId(task.id!) !== id);
+      
+      // Recalculate completed tasks count
+      const completedCount = updatedTasks.filter(task => task.completed).length;
+      
+      return {
+        tasks: updatedTasks,
+        filteredTasks: updatedFilteredTasks,
+        completedTasks: completedCount
+      };
+    });
+  },
+
+  /**
+   * Update task filters
+   */
+  updateTaskFilters: (filter: TaskFilter) => {
+    set((state) => ({
+      currentFilter: { ...state.currentFilter, ...filter }
     }));
     
-    // Send to API
-    fetch(`/api/tasks/${taskId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates)
-    })
-      .then(response => response.json())
-      .then(data => {
-        if (!data.success) {
-          throw new Error(data.message);
-        }
-      })
-      .catch(error => {
-        console.error('Error updating task:', error);
-        // Revert on error
-        if (originalTask) {
-          set((state) => ({
-            tasks: state.tasks.map(t =>
-              t.id === taskId ? originalTask : t
-            ),
-            error: 'Failed to update task'
-          }));
-        }
-      });
+    // Reload tasks with new filters
+    get().fetchTasks();
+  },
+
+  /**
+   * Clear all task filters
+   */
+  clearTaskFilters: () => {
+    set({ currentFilter: {} });
+    
+    // Reload tasks without filters
+    get().fetchTasks();
   }
 }));

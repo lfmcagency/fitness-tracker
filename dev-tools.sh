@@ -81,6 +81,7 @@ test_api_endpoints() {
     "api/health"
     "api/debug/health"
     "api/exercises"
+    "api/tasks"
   )
   
   for endpoint in "${endpoints[@]}"; do
@@ -211,6 +212,26 @@ test_nutrition_api() {
   fi
 }
 
+# Test tasks API
+test_tasks_api() {
+  show_header "Testing Tasks API"
+  
+  # Check for the environment file
+  if [ ! -f .env.local ]; then
+    show_error "No .env.local file found. Please create one with your MongoDB connection string."
+    return 1
+  fi
+  
+  # Use our dedicated tasks test script
+  node scripts/test-tasks-api.js
+  
+  if [ $? -eq 0 ]; then
+    show_success "Tasks API is working properly!"
+  else
+    show_error "Tasks API test failed. Check the logs for details."
+  fi
+}
+
 # Run all checks
 run_all_checks() {
   show_header "Running All Checks"
@@ -219,6 +240,7 @@ run_all_checks() {
   test_auth_system
   test_api_endpoints
   test_nutrition_api
+  test_tasks_api
   lint_and_build_check
   
   if [ $? -eq 0 ]; then
@@ -245,6 +267,7 @@ show_usage() {
   echo "  auth        Test authentication system"
   echo "  api         Test API endpoints"
   echo "  nutrition   Test nutrition API"
+  echo "  tasks       Test tasks API"
   echo "  lint        Run linting and build check"
   echo "  commit      Quick git add, commit, and push"
   echo "  all         Run all checks and then commit"
@@ -270,6 +293,9 @@ case "$1" in
     ;;
   nutrition)
     test_nutrition_api
+    ;;
+  tasks)
+    test_tasks_api
     ;;
   lint)
     lint_and_build_check
