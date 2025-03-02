@@ -186,12 +186,21 @@ export async function PATCH(
           // Save the task
           await existingTask.save();
           
-          // Return the updated task
+          // Award XP for completing the task
+          const { handleTaskXpAward } = await import('../task-utils');
+          const xpResult = await handleTaskXpAward(session.user.id, existingTask);
+          
+          // Return the updated task with XP info
           const enhancedTask = convertTaskToEnhancedTask(existingTask);
-          return NextResponse.json<ApiResponse<EnhancedTask>>({ 
+          return NextResponse.json<ApiResponse<EnhancedTask & { xpAward?: any }>>({ 
             success: true, 
-            data: enhancedTask,
-            message: 'Task marked as completed and streak updated' 
+            data: {
+              ...enhancedTask,
+              xpAward: xpResult
+            },
+            message: xpResult?.leveledUp 
+              ? `Task completed! Level up to ${xpResult.newLevel}!` 
+              : 'Task marked as completed and streak updated'
           });
         }
         

@@ -1,5 +1,6 @@
 import { ITask } from '@/models/Task';
 import { EnhancedTask } from '@/types';
+import { awardTaskCompletionXp } from '@/lib/xp-manager';
 
 /**
  * Utility function to convert ITask to EnhancedTask
@@ -33,4 +34,41 @@ export const convertTaskToEnhancedTask = (task: ITask): EnhancedTask => {
     createdAt: createdAt,
     updatedAt: updatedAt
   };
+};
+
+/**
+ * Award XP to user when a task is completed
+ * @param userId - User ID
+ * @param task - Completed task
+ * @returns XP award result with level up information
+ */
+export const handleTaskXpAward = async (userId: string, task: ITask) => {
+  try {
+    // Only award XP if the task has a streakCount and was just completed
+    if (task.completed && task.currentStreak > 0) {
+      const xpResult = await awardTaskCompletionXp(
+        userId,
+        task.name,
+        task.category,
+        task.currentStreak
+      );
+      
+      return {
+        success: true,
+        xpAwarded: xpResult.leveledUp 
+          ? `Awarded ${xpResult.currentXp - xpResult.previousLevel} XP! Level up to ${xpResult.newLevel}!` 
+          : `Awarded XP! ${xpResult.xpToNextLevel} XP until next level.`,
+        leveledUp: xpResult.leveledUp,
+        newLevel: xpResult.newLevel
+      };
+    }
+    
+    return { success: false, xpAwarded: 0 };
+  } catch (error) {
+    console.error('Error awarding XP for task completion:', error);
+    return { 
+      success: false, 
+      error: 'Failed to award XP'
+    };
+  }
 };

@@ -232,6 +232,86 @@ test_tasks_api() {
   fi
 }
 
+# Test XP award system API
+test_xp_award_api() {
+  show_header "Testing XP Award System API"
+  
+  # Check for the environment file
+  if [ ! -f .env.local ]; then
+    show_error "No .env.local file found. Please create one with your MongoDB connection string."
+    return 1
+  fi
+  
+  # Use our dedicated XP award test script
+  node scripts/test-xp-award-api.js
+  
+  if [ $? -eq 0 ]; then
+    show_success "XP Award System API is working properly!"
+  else
+    show_error "XP Award System API test failed. Check the logs for details."
+  fi
+}
+
+# Test Achievements system API
+test_achievements_api() {
+  show_header "Testing Achievements System API"
+  
+  # Check for the environment file
+  if [ ! -f .env.local ]; then
+    show_error "No .env.local file found. Please create one with your MongoDB connection string."
+    return 1
+  fi
+  
+  # Use our dedicated achievements test script
+  node scripts/test-achievements-api.js
+  
+  if [ $? -eq 0 ]; then
+    show_success "Achievements System API is working properly!"
+  else
+    show_error "Achievements System API test failed. Check the logs for details."
+  fi
+}
+
+# Test Progress History API
+test_progress_history_api() {
+  show_header "Testing Progress History API"
+  
+  # Check for the environment file
+  if [ ! -f .env.local ]; then
+    show_error "No .env.local file found. Please create one with your MongoDB connection string."
+    return 1
+  fi
+  
+  # Use our dedicated progress history test script
+  node scripts/test-progress-history-api.js
+  
+  if [ $? -eq 0 ]; then
+    show_success "Progress History API is working properly!"
+  else
+    show_error "Progress History API test failed. Check the logs for details."
+  fi
+}
+
+# Test Category Progress API
+test_category_progress_api() {
+  show_header "Testing Category Progress API"
+  
+  # Check for the environment file
+  if [ ! -f .env.local ]; then
+    show_error "No .env.local file found. Please create one with your MongoDB connection string."
+    return 1
+  fi
+  
+  # Use our dedicated category progress test script
+  node scripts/test-category-progress-api.js
+  
+  if [ $? -eq 0 ]; then
+    show_success "Category Progress API is working properly!"
+  else
+    show_error "Category Progress API test failed. Check the logs for details."
+  fi
+}
+
 # Run all checks
 run_all_checks() {
   show_header "Running All Checks"
@@ -241,6 +321,10 @@ run_all_checks() {
   test_api_endpoints
   test_nutrition_api
   test_tasks_api
+  test_xp_award_api
+  test_achievements_api
+  test_progress_history_api
+  test_category_progress_api
   lint_and_build_check
   
   if [ $? -eq 0 ]; then
@@ -268,6 +352,10 @@ show_usage() {
   echo "  api         Test API endpoints"
   echo "  nutrition   Test nutrition API"
   echo "  tasks       Test tasks API"
+  echo "  xp          Test XP award system API"
+  echo "  achievements Test achievements system API"
+  echo "  history     Test progress history API"
+  echo "  categories  Test category-specific progress APIs"
   echo "  lint        Run linting and build check"
   echo "  commit      Quick git add, commit, and push"
   echo "  all         Run all checks and then commit"
@@ -296,6 +384,18 @@ case "$1" in
     ;;
   tasks)
     test_tasks_api
+    ;;
+  xp)
+    test_xp_award_api
+    ;;
+  achievements)
+    test_achievements_api
+    ;;
+  history)
+    test_progress_history_api
+    ;;
+  categories)
+    test_category_progress_api
     ;;
   lint)
     lint_and_build_check
