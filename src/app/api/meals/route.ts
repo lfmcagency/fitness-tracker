@@ -254,24 +254,29 @@ export async function DELETE(req: NextRequest) {
       return apiError('Meal ID is required', 400);
     }
     
-    // Build query - ensure users can only delete their own meals
-    const query: any = { 
-      _id: id,
-      userId: session.user.id
-    };
-    
-    // Admin can delete any meal
-    if (session.user.role === 'admin') {
-      delete query.userId;
+    try {
+      // First check if the meal exists and belongs to the user
+      const meal = await Meal.findById(id);
+      
+      if (!meal) {
+        return apiError('Meal not found', 404);
+      }
+      
+      // Verify ownership (unless admin)
+      if (session.user.role !== 'admin' && meal.userId.toString() !== session.user.id) {
+        return apiError('You do not have permission to delete this meal', 403);
+      }
+      
+      // Delete the meal
+      await Meal.deleteOne({ _id: id });
+      
+      return apiResponse(null, 'Meal deleted successfully', 200);
+    } catch (dbError) {
+      if (dbError instanceof mongoose.Error.CastError) {
+        return apiError('Invalid meal ID format', 400);
+      }
+      throw dbError; // Let the outer catch handle other errors
     }
-    
-    const result = await Meal.findOneAndDelete(query);
-    
-    if (!result) {
-      return apiError('Meal not found or access denied', 404);
-    }
-    
-    return apiResponse(null, 'Meal deleted successfully');
   } catch (error) {
     return handleApiError(error, 'Error deleting meal');
   }
@@ -302,72 +307,93 @@ export async function PATCH(req: NextRequest) {
       return apiError('Meal ID is required', 400);
     }
     
-    // Ensure date is a valid Date object if provided
-    if (updateData.date) {
-      const dateObj = new Date(updateData.date);
-      if (isNaN(dateObj.getTime())) {
-        return apiError('Invalid date format', 400);
-      }
-      updateData.date = dateObj;
-    }
-    
-    // Validate time format if provided
-    if (updateData.time && !/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(updateData.time)) {
-      return apiError('Time must be in HH:MM format', 400);
-    }
-    
-    // Validate foods array if provided
-    if (updateData.foods) {
-      if (!Array.isArray(updateData.foods)) {
-        return apiError('Foods must be an array', 400);
+    try {
+      // First verify the meal exists and user has permission to update it
+      const existingMeal = await Meal.findById(id);
+      
+      if (!existingMeal) {
+        return apiError('Meal not found', 404);
       }
       
-      // Validate each food item
-      for (const food of updateData.foods) {
-        if (!food.name) {
-          return apiError('Each food item must have a name', 400);
-        }
-        
-        if (typeof food.amount !== 'number' || food.amount < 0) {
-          return apiError('Each food item must have a valid amount', 400);
-        }
-        
-        // Ensure numeric values for macros
-        food.protein = Number(food.protein) || 0;
-        food.carbs = Number(food.carbs) || 0;
-        food.fat = Number(food.fat) || 0;
-        food.calories = Number(food.calories) || 0;
-        
-        // Validate non-negative values
-        if (food.protein < 0 || food.carbs < 0 || food.fat < 0 || food.calories < 0) {
-          return apiError('Nutritional values cannot be negative', 400);
-        }
+      // Check ownership (unless admin)
+      if (session.user.role !== 'admin' && existingMeal.userId.toString() !== session.user.id) {
+        return apiError('You do not have permission to update this meal', 403);
       }
+      
+      // Apply validations to update data
+      
+      // Ensure date is a valid Date object if provided
+      if (updateData.date) {
+        const dateObj = new Date(updateData.date);
+        if (isNaN(dateObj.getTime())) {
+          return apiError('Invalid date format', 400);
+        }
+        updateData.date = dateObj;
+      }
+      
+      // Validate time format if provided
+      if (updateData.time && !/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(updateData.time)) {
+        return apiError('Time must be in HH:MM format', 400);
+      }
+      
+      // Validate foods array if provided
+      if (updateData.foods) {
+        if (!Array.isArray(updateData.foods)) {
+          return apiError('Foods must be an array', 400);
+        }
+        
+        // Validate each food item
+        for (const food of updateData.foods) {
+          if (!food.name) {
+            return apiError('Each food item must have a name', 400);
+          }
+          
+          if (typeof food.amount !== 'number' || food.amount < 0) {
+            return apiError('Each food item must have a valid amount', 400);
+          }
+          
+          // Ensure numeric values for macros
+          food.protein = Number(food.protein) || 0;
+          food.carbs = Number(food.carbs) || 0;
+          food.fat = Number(food.fat) || 0;
+          food.calories = Number(food.calories) || 0;
+          
+          // Validate non-negative values
+          if (food.protein < 0 || food.carbs < 0 || food.fat < 0 || food.calories < 0) {
+            return apiError('Nutritional values cannot be negative', 400);
+          }
+        }
+        
+        // Let the Mongoose middleware handle recalculation of totals
+        // when foods are updated - we don't need to manually calculate here
+      }
+      
+      // Don't allow changing userId to ensure data integrity
+      if (updateData.userId) {
+        delete updateData.userId;
+      }
+      
+      // Update the meal with runValidators to trigger Mongoose validation
+      const updatedMeal = await Meal.findByIdAndUpdate(
+        id,
+        { $set: updateData },
+        { 
+          new: true,           // Return the updated document
+          runValidators: true, // Run model validators on update
+          context: 'query'     // Pass the query context to validators
+        }
+      );
+      
+      return apiResponse(updatedMeal, 'Meal updated successfully');
+    } catch (dbError) {
+      if (dbError instanceof mongoose.Error.CastError) {
+        return apiError('Invalid meal ID format', 400);
+      }
+      if (dbError instanceof mongoose.Error.ValidationError) {
+        return apiError(`Validation error: ${dbError.message}`, 400);
+      }
+      throw dbError; // Let the outer catch handle other errors
     }
-    
-    // Build query - ensure users can only update their own meals
-    const query: any = { 
-      _id: id,
-      userId: session.user.id
-    };
-    
-    // Admin can update any meal
-    if (session.user.role === 'admin') {
-      delete query.userId;
-    }
-    
-    // Update the meal
-    const meal = await Meal.findOneAndUpdate(
-      query,
-      { $set: updateData },
-      { new: true, runValidators: true }
-    );
-    
-    if (!meal) {
-      return apiError('Meal not found or access denied', 404);
-    }
-    
-    return apiResponse(meal, 'Meal updated successfully');
   } catch (error) {
     return handleApiError(error, 'Error updating meal');
   }

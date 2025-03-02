@@ -12,6 +12,8 @@
         "import-csv:verbose": "node scripts/import-csv-exercises-enhanced.js --verbose",
         "fix-csv": "node scripts/fix-csv-exercise-data.js",
         "fix-csv:dry-run": "node scripts/fix-csv-exercise-data.js --dry-run",
+        "seed-foods": "node scripts/seed-foods.js",
+        "seed-foods:reset": "node scripts/seed-foods.js --reset",
         "test:auth": "node scripts/test-auth-flow.js",
         "test:db": "node scripts/test-mongodb-connection.js",
         "test:api": "node scripts/test-api-endpoints.js"

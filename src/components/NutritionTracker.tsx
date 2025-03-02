@@ -7,11 +7,11 @@ import { useNutritionStore } from '@/store/nutrition';
 import MealModal from './MealModal';
 
 const NutritionTracker: React.FC = () => {
-  const { meals, goals, isLoading, error, fetchMeals, addFoodToMeal, addMeal } = useNutritionStore();
+  const { meals, goals, isLoading, error, fetchMeals, addFoodToMeal, addMeal, removeFoodFromMeal } = useNutritionStore();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [showSearch, setShowSearch] = useState<boolean>(false);
   const [searchTerm, setSearchTerm] = useState<string>('');
-  const [activeMealId, setActiveMealId] = useState<number | null>(null);
+  const [activeMealId, setActiveMealId] = useState<string | null>(null);
   const [showFoodModal, setShowFoodModal] = useState<boolean>(false);
   const [showMealModal, setShowMealModal] = useState<boolean>(false);
 
@@ -19,13 +19,23 @@ const NutritionTracker: React.FC = () => {
     fetchMeals(selectedDate.toISOString().split('T')[0]);
   }, [fetchMeals, selectedDate]);
 
-  // Calculate totals
+  // Calculate totals from meal.totals if available, otherwise calculate from foods
   const totals = meals.reduce((acc, meal) => {
+    if (meal.totals) {
+      return {
+        protein: acc.protein + (meal.totals.protein || 0),
+        carbs: acc.carbs + (meal.totals.carbs || 0),
+        fat: acc.fat + (meal.totals.fat || 0),
+        calories: acc.calories + (meal.totals.calories || 0)
+      };
+    }
+    
+    // Fallback to calculating from foods if totals not available
     const mealTotals = meal.foods.reduce((mealAcc, food) => ({
-      protein: mealAcc.protein + food.protein,
-      carbs: mealAcc.carbs + food.carbs,
-      fat: mealAcc.fat + food.fat,
-      calories: mealAcc.calories + food.calories
+      protein: mealAcc.protein + (food.protein || 0),
+      carbs: mealAcc.carbs + (food.carbs || 0),
+      fat: mealAcc.fat + (food.fat || 0),
+      calories: mealAcc.calories + (food.calories || 0)
     }), { protein: 0, carbs: 0, fat: 0, calories: 0 });
     
     return {
@@ -38,16 +48,16 @@ const NutritionTracker: React.FC = () => {
 
   // Sample food database
   const foodDatabase = [
-    { name: "Chicken Breast", amount: 100, protein: 31, carbs: 0, fat: 3.6, calories: 165 },
-    { name: "Oatmeal", amount: 100, protein: 13, carbs: 68, fat: 7, calories: 389 },
-    { name: "Protein Shake", amount: 30, protein: 24, carbs: 3, fat: 2, calories: 120 },
-    { name: "Rice", amount: 100, protein: 7, carbs: 80, fat: 0.6, calories: 365 },
-    { name: "Eggs", amount: 50, protein: 6, carbs: 0.6, fat: 5, calories: 78 },
-    { name: "Broccoli", amount: 100, protein: 2.8, carbs: 7, fat: 0.4, calories: 34 }
+    { name: "Chicken Breast", amount: 100, unit: "g", protein: 31, carbs: 0, fat: 3.6, calories: 165 },
+    { name: "Oatmeal", amount: 100, unit: "g", protein: 13, carbs: 68, fat: 7, calories: 389 },
+    { name: "Protein Shake", amount: 30, unit: "g", protein: 24, carbs: 3, fat: 2, calories: 120 },
+    { name: "Rice", amount: 100, unit: "g", protein: 7, carbs: 80, fat: 0.6, calories: 365 },
+    { name: "Eggs", amount: 50, unit: "g", protein: 6, carbs: 0.6, fat: 5, calories: 78 },
+    { name: "Broccoli", amount: 100, unit: "g", protein: 2.8, carbs: 7, fat: 0.4, calories: 34 }
   ];
 
-  const handleAddFood = (mealId: number) => {
-    setActiveMealId(mealId);
+  const handleAddFood = (mealId: string | number) => {
+    setActiveMealId(mealId.toString());
     setShowFoodModal(true);
     setSearchTerm('');
   };
@@ -63,8 +73,14 @@ const NutritionTracker: React.FC = () => {
   const handleAddMeal = (mealData: { name: string; time: string }) => {
     addMeal({
       ...mealData,
+      date: selectedDate.toISOString().split('T')[0],
       foods: []
     });
+    setShowMealModal(false);
+  };
+
+  const handleRemoveFood = (mealId: string | number, foodIndex: number) => {
+    removeFoodFromMeal(mealId.toString(), foodIndex);
   };
 
   const filteredFoods = searchTerm 
@@ -187,7 +203,7 @@ const NutritionTracker: React.FC = () => {
                 onClick={() => activeMealId && quickAddFood(food)}
               >
                 <span>{food.name}</span>
-                <span className="text-sm text-gray-500">{food.amount}g</span>
+                <span className="text-sm text-gray-500">{food.amount}{food.unit}</span>
               </button>
             ))}
           </div>
@@ -197,7 +213,7 @@ const NutritionTracker: React.FC = () => {
       {/* Meals List */}
       <div className="space-y-4">
         {meals.map((meal) => (
-          <div key={meal.id} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          <div key={meal._id || meal.id} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
             <div className="p-4 border-b border-gray-200">
               <div className="flex justify-between items-center">
                 <div className="flex items-center space-x-2">
@@ -209,7 +225,7 @@ const NutritionTracker: React.FC = () => {
                 </div>
                 <button 
                   className="text-blue-600 hover:text-blue-700"
-                  onClick={() => handleAddFood(meal.id)}
+                  onClick={() => handleAddFood(meal._id || meal.id || '')}
                 >
                   <Plus className="h-5 w-5" />
                 </button>
@@ -222,7 +238,15 @@ const NutritionTracker: React.FC = () => {
                 <div key={idx} className="p-4 hover:bg-gray-50">
                   <div className="flex justify-between items-center mb-1">
                     <span className="font-medium">{food.name}</span>
-                    <span className="text-gray-600">{food.amount}g</span>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-gray-600">{food.amount}{food.unit || 'g'}</span>
+                      <button 
+                        className="text-red-500 hover:text-red-700 text-sm"
+                        onClick={() => handleRemoveFood(meal._id || meal.id || '', idx)}
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
                   <div className="flex space-x-4 text-sm">
                     <span className="text-pink-500">P: {food.protein}</span>
@@ -301,7 +325,7 @@ const NutritionTracker: React.FC = () => {
                             P: {food.protein}g | C: {food.carbs}g | F: {food.fat}g | {food.calories} kCal
                           </div>
                         </div>
-                        <span className="text-sm text-gray-500">{food.amount}g</span>
+                        <span className="text-sm text-gray-500">{food.amount}{food.unit || 'g'}</span>
                       </button>
                     ))
                   ) : (
