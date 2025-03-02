@@ -127,7 +127,7 @@ export async function POST(req: NextRequest) {
       return apiResponse({
         success: false,
         alreadyClaimed: true
-      }, 'Achievement already claimed', 200);
+      }, false, 'Achievement already claimed', 200);
     }
     
     // Import achievement checking and awarding functions
@@ -138,7 +138,7 @@ export async function POST(req: NextRequest) {
       return apiResponse({
         success: false,
         requirementsMet: false
-      }, 'Requirements not met for this achievement', 400);
+      }, false,'Requirements not met for this achievement', 400);
     }
     
     // Award the achievement
@@ -152,7 +152,7 @@ export async function POST(req: NextRequest) {
       achievement: achievementDef,
       xpAwarded: totalXpAwarded,
       newLevel: updatedProgress.level
-    }, `Achievement '${achievementDef.title}' unlocked!`);
+    }, true, `Achievement '${achievementDef.title}' unlocked!`);
   } catch (error) {
     return handleApiError(error, 'Error claiming achievement');
   }

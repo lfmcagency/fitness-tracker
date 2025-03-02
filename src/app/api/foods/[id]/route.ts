@@ -41,7 +41,7 @@ export async function GET(
       return apiError('You do not have permission to access this food', 403);
     }
     
-    return apiResponse(food, 'Food retrieved successfully');
+    return apiResponse(food, true, 'Food retrieved successfully');
   } catch (error) {
     return handleApiError(error, 'Error retrieving food');
   }
@@ -111,7 +111,7 @@ export async function PUT(
       { new: true, runValidators: true }
     );
     
-    return apiResponse(updatedFood, 'Food updated successfully');
+    return apiResponse(updatedFood, true, 'Food updated successfully');
   } catch (error) {
     return handleApiError(error, 'Error updating food');
   }
@@ -162,7 +162,7 @@ export async function DELETE(
     // Delete the food
     await Food.findByIdAndDelete(id);
     
-    return apiResponse(null, 'Food deleted successfully');
+    return apiResponse(null, true, 'Food deleted successfully');
   } catch (error) {
     return handleApiError(error, 'Error deleting food');
   }

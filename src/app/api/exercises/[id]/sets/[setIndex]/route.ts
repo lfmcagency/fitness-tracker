@@ -146,7 +146,7 @@ export async function PATCH(
         notes,
         timestamp: new Date().toISOString()
       }
-    }, 'Set completion recorded', 200);
+    }, true, 'Set completion recorded', 200);
   } catch (error) {
     return handleApiError(error, 'Error recording set completion');
   }

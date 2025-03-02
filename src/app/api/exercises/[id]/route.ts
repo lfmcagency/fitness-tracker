@@ -55,7 +55,7 @@ export async function GET(
       exercise,
       related: relatedExercises,
       progressionPath
-    });
+    }, true); // Added true for success parameter
   } catch (error) {
     return handleApiError(error, 'Error fetching exercise details');
   }
@@ -180,7 +180,7 @@ export async function PUT(
       );
     }
     
-    return apiResponse(updatedExercise, 'Exercise updated successfully');
+    return apiResponse(updatedExercise, true, "Exercise updated successfully"); // Fixed: added true as success param
   } catch (error) {
     return handleApiError(error, 'Error updating exercise');
   }
@@ -250,6 +250,7 @@ export async function DELETE(
     
     return apiResponse(
       { id, previousExercise, nextExercise },
+      true, // Added true for success parameter
       'Exercise deleted successfully'
     );
   } catch (error) {

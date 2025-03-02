@@ -2,19 +2,39 @@ import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 
 /**
- * Enhanced API response type with more standardized structure
+ * General API response function that can handle both success and error cases
+ * @param data Response data or error details
+ * @param success Whether the response is a success (true) or error (false)
+ * @param message Optional message
+ * @param status HTTP status code
+ * @returns NextResponse with formatted response
  */
-export interface ApiResponse<T = any> {
-  success: boolean;
-  data?: T;
-  message?: string;
-  error?: {
-    code?: string;
-    message: string;
-    details?: any;
-  };
-  timestamp: string;
-  pagination?: PaginationInfo;
+export function apiResponse<T>(
+  data: T, 
+  success: boolean = true,
+  message?: string,
+  status: number = success ? 200 : 400
+): NextResponse<ApiResponse<T>> {
+  if (success) {
+    return NextResponse.json({
+      success: true,
+      data,
+      message,
+      timestamp: new Date().toISOString()
+    }, { status });
+  } else {
+    // Error case - if data is a string, use it as the error message
+    const errorMessage = message || (typeof data === 'string' ? data : 'An error occurred');
+    
+    return NextResponse.json({
+      success: false,
+      error: {
+        code: `ERR_${status}`,
+        message: errorMessage
+      },
+      timestamp: new Date().toISOString()
+    }, { status });
+  }
 }
 
 /**

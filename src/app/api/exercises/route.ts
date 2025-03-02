@@ -166,7 +166,7 @@ export async function POST(req: NextRequest) {
       );
     }
     
-    return apiResponse(exercise, 'Exercise created successfully', 201);
+    return apiResponse(exercise, true, 'Exercise created successfully', 201);
   } catch (error) {
     return handleApiError(error, 'Error creating exercise');
   }

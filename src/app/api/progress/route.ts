@@ -6,7 +6,7 @@ import UserProgress from '@/models/UserProgress';
 import Achievement from '@/models/Achievement';
 import { Types } from 'mongoose';
 import { getAuth } from '@/lib/auth';
-import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
+import { ApiResponse, apiError, handleApiError } from '@/lib/api-utils';
 
 /**
  * GET /api/progress
