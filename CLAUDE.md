@@ -1,51 +1,36 @@
-# Fitness Tracker - Development Guidelines
+# Fitness Tracker - Development Guide
 
 ## Commands
 - `npm run dev` - Start development server
-- `npm run build` - Build for production
+- `npm run build` - Build production bundle
 - `npm run lint` - Run ESLint
 - `npm run start` - Start production server
 - `npm run import-csv` - Import exercise data from CSV
-- `npm run import-csv:dry-run` - Test data import without committing
-- `npm run fix-csv` - Fix CSV exercise data 
-- `npm run test:auth` - Test authentication system
-- `npm run test:db` - Test database connection
-- `npm run test:api` - Test API endpoints
-- `./dev-tools.sh db` - Test database connection
-- `./dev-tools.sh auth` - Test authentication system
-- `./dev-tools.sh api` - Test API endpoints
+- `npm run import-csv:dry-run` - Test import without committing
+- `npm run import-csv:verbose` - Import with detailed logs
+- `npm run fix-csv` - Fix CSV exercise data
+- `npm run fix-csv:dry-run` - Test CSV fixes without writing
+- `node scripts/test-api.js [endpoint]` - Test specific API endpoint
 - `./dev-tools.sh lint` - Run linting and build check
-- `./dev-tools.sh all` - Run all checks
-- `./dev-tools.sh commit` - Quick git commit and push
-
-## Authentication
-- Uses NextAuth.js with MongoDB adapter for persistent sessions
-- Email/password authentication with bcrypt password hashing
-- Role-based access control (user, admin, trainer roles)
-- Protected routes with middleware (`/dashboard`, `/training`, `/nutrition`, etc.)
-- API endpoints for user management in `/api/user/*`
-- Admin-only API endpoints in `/api/admin/*`
-- Test authentication with `npm run test:auth` or `./dev-tools.sh auth`
+- `./dev-tools.sh all` - Run all checks (DB, auth, API, lint)
 
 ## Code Style
-- **Component declarations**: Use arrow functions with React.FC type
-- **Imports**: React/hooks first, then third-party libs, then internal imports with @/ prefix
-- **TypeScript**: Use strict mode with proper type annotations
-- **State management**: Use Zustand for global state
+- **Components**: Arrow functions with `React.FC<Props>` type
+- **Props**: Define interfaces for all component props
+- **Imports**: React first, then third-party, then internal (@/ imports)
+- **State**: Zustand for global state, React hooks for local state
 - **Naming**: PascalCase for components, camelCase for functions/variables
-- **File structure**: Group related components in directories
-- **Error handling**: Try/catch for async operations, fallbacks for loading states
-- **Path aliases**: Use @/ prefix for imports from src directory
-- **Tests**: No test runner configured yet - use API testing scripts in /scripts directory
+- **Error handling**: Use try/catch with standardized `handleApiError` utility
+- **API responses**: Use `apiResponse` and `apiError` utilities consistently
+- **Types**: Strict typing throughout with proper interfaces/types
+- **Styling**: Use Tailwind CSS with consistent class patterns
 
-## Database
-- MongoDB/Mongoose for data persistence
-- Define schemas in /src/models
-- Use MongoDB adapter for NextAuth
-- Run `node scripts/test-mongodb-connection.js` to verify DB connection
+## Architecture
+- **API**: RESTful endpoints in src/app/api with Next.js App Router
+- **Auth**: NextAuth.js with MongoDB adapter and role-based access
+- **Database**: MongoDB/Mongoose with connection pooling via dbConnect
+- **Testing**: Script-based testing in /scripts directory
+- **Modules**: Feature-based organization with clear separation of concerns
+- **Utils**: Reuse utility functions from src/lib for common operations
 
-## API
-- RESTful API endpoints in src/app/api
-- Next.js App Router for routing
-- API utility functions in src/lib/api-utils.ts
-- Run `node scripts/test-api-endpoints.js` to test endpoints
+Refer to existing components for examples of proper structure and style.

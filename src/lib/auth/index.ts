@@ -261,8 +261,8 @@ export const authOptions: NextAuthOptions = {
           logAuthStep("AUTH_PASSWORD_DIRECT_COMPARE", "Directly comparing password with bcrypt", {
             passwordLength: credentials.password.length,
             hashLength: user.password.length,
-            hashFirstChars: user.password.substring(0, 10) + "...",
-            bcryptVersion: bcrypt.version || "unknown"
+            hashFirstChars: user.password.substring(0, 10) + "..."
+            // Removed bcryptVersion property to fix TypeScript error on Vercel
           });
           
           let isPasswordValid = false;
