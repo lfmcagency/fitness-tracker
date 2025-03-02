@@ -13,6 +13,8 @@ import {
   calculateDailyCompletionRate,
   calculateWeeklyCompletionRate,
   calculateMonthlyCompletionRate,
+  calculateYearlyCompletionRate,
+  calculateAllTimeCompletionRate,
   getStreakSummary,
   getCategoryDistribution,
   TaskStatistics

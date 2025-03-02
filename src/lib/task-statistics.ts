@@ -64,6 +64,7 @@ export interface TaskStatistics {
   mostFrequentlyCompleted: TaskFrequency[];
   leastFrequentlyCompleted: TaskFrequency[];
   overallCompletionRate: number; // Value between 0-100
+  trend?: any[]; // For trending data over time
 }
 
 /**
@@ -381,12 +382,12 @@ export function getStreakSummary(tasks: EnhancedTask[]): TaskStreakSummary {
   
   // Calculate current streak stats
   let currentStreakSum = 0;
-  let highestCurrentStreak = { value: 0, taskId: '', taskName: '' };
-  let lowestCurrentStreak = { value: Number.MAX_SAFE_INTEGER, taskId: '', taskName: '' };
+  let highestCurrentStreak = { value: 0, taskId: '' as string | number, taskName: '' };
+  let lowestCurrentStreak = { value: Number.MAX_SAFE_INTEGER, taskId: '' as string | number, taskName: '' };
   
   // Calculate best streak stats
   let bestStreakSum = 0;
-  let highestBestStreak = { value: 0, taskId: '', taskName: '' };
+  let highestBestStreak = { value: 0, taskId: '' as string | number, taskName: '' };
   
   tasks.forEach(task => {
     // Current streak stats
@@ -556,19 +557,84 @@ export function getTaskStatistics(tasks: TaskWithHistory[]): TaskStatistics {
 }
 
 /**
- * Get a performance summary for the last n days
+ * Get a performance summary based on the requested period
  */
-export function getPerformanceTrend(tasks: TaskWithHistory[], days: number = 7): TaskCompletionRate[] {
-  const today = new Date();
-  const result: TaskCompletionRate[] = [];
-  
-  for (let i = days - 1; i >= 0; i--) {
-    const date = new Date(today);
-    date.setDate(date.getDate() - i);
+export function getPerformanceTrend(tasks: TaskWithHistory[], period: string = 'day', fromDate?: Date, toDate: Date = new Date()): any[] {
+  // Default response based on daily trend
+  if (period === 'day') {
+    const days = 7; // Default to one week of data
+    const result: any[] = [];
     
-    const dailyRate = calculateDailyCompletionRate(tasks, date);
-    result.push(dailyRate);
+    for (let i = days - 1; i >= 0; i--) {
+      const date = new Date(toDate);
+      date.setDate(date.getDate() - i);
+      
+      const dailyRate = calculateDailyCompletionRate(tasks, date);
+      result.push({
+        date: dailyRate.startDate?.split('T')[0],
+        completed: dailyRate.completed,
+        total: dailyRate.total
+      });
+    }
+    
+    return result;
+  } else if (period === 'week') {
+    // Weekly data
+    const weeks = 4; // Last 4 weeks
+    const result: any[] = [];
+    
+    for (let i = weeks - 1; i >= 0; i--) {
+      const endDate = new Date(toDate);
+      endDate.setDate(endDate.getDate() - (i * 7));
+      const startDate = new Date(endDate);
+      startDate.setDate(startDate.getDate() - 6);
+      
+      const weeklyRate = calculateWeeklyCompletionRate(tasks, startDate);
+      result.push({
+        date: `${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`,
+        completed: weeklyRate.completed,
+        total: weeklyRate.total
+      });
+    }
+    
+    return result;
+  } else if (period === 'month') {
+    // Monthly data
+    const months = 6; // Last 6 months
+    const result: any[] = [];
+    
+    for (let i = months - 1; i >= 0; i--) {
+      const date = new Date(toDate);
+      date.setMonth(date.getMonth() - i);
+      
+      const monthlyRate = calculateMonthlyCompletionRate(tasks, date.getMonth(), date.getFullYear());
+      result.push({
+        date: `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`,
+        completed: monthlyRate.completed,
+        total: monthlyRate.total
+      });
+    }
+    
+    return result;
+  } else if (period === 'year') {
+    // Show yearly data for the past 3 years
+    const years = 3;
+    const result: any[] = [];
+    
+    for (let i = years - 1; i >= 0; i--) {
+      const year = toDate.getFullYear() - i;
+      const yearlyRate = calculateYearlyCompletionRate(tasks, year);
+      
+      result.push({
+        date: year.toString(),
+        completed: yearlyRate.completed,
+        total: yearlyRate.total
+      });
+    }
+    
+    return result;
   }
   
-  return result;
+  // Default case, return empty array
+  return [];
 }

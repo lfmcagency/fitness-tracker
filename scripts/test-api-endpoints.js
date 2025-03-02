@@ -14,6 +14,12 @@ const endpoints = [
   '/api/exercises',
   '/api/exercises?category=core',
   '/api/exercises/search?q=push',
+,
+  '/api/tasks/statistics',
+  '/api/tasks/statistics?period=day',
+  '/api/tasks/statistics?period=week',
+  '/api/tasks/statistics?period=month',
+  '/api/tasks/statistics?trend=true',
 ]
 
 // Function to make HTTP request
