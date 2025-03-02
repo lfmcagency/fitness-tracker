@@ -1,4 +1,3 @@
-// Mark as dynamic
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -6,7 +5,7 @@ import { dbConnect } from '@/lib/db/mongodb';
 import Task, { ITask } from '@/models/Task';
 import { getAuth } from '@/lib/auth';
 import { EnhancedTask, ApiResponse, RecurrencePattern, TaskPriority } from '@/types';
-import { convertTaskToEnhancedTask } from '../task-utils';
+import { convertTaskToEnhancedTask } from '@/lib/task-utils'; // Updated import path
 
 /**
  * GET /api/tasks/[id]
@@ -187,7 +186,7 @@ export async function PATCH(
           await existingTask.save();
           
           // Award XP for completing the task
-          const { handleTaskXpAward } = await import('../task-utils');
+          const { handleTaskXpAward } = await import('@/lib/task-utils'); // Updated import path
           const xpResult = await handleTaskXpAward(session.user.id, existingTask);
           
           // Return the updated task with XP info

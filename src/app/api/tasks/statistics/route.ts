@@ -6,7 +6,7 @@ import { dbConnect } from '@/lib/db/mongodb';
 import Task, { ITask } from '@/models/Task';
 import { getAuth } from '@/lib/auth';
 import { ApiResponse, TaskWithHistory } from '@/types';
-import { convertTaskToEnhancedTask } from '../task-utils';
+import { convertTaskToEnhancedTask } from '../../../../lib/task-utils';
 import {
   getTaskStatistics,
   getPerformanceTrend,

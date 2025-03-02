@@ -1,125 +1,175 @@
-export const dynamic = 'force-dynamic';
-import { NextRequest, NextResponse } from 'next/server';
-import { dbConnect } from '@/lib/db/mongodb';
-import { getAuth } from '@/lib/auth';
-import Food from '@/models/Food';
-import mongoose from 'mongoose';
-import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
+// File: src/app/api/foods/route.ts
 
-// GET /api/foods - Get foods with filtering, pagination, and sorting
+export const dynamic = 'force-dynamic';
+
+import { NextRequest } from 'next/server';
+import { dbConnect } from '@/lib/db/mongodb';
+import Food from '@/models/Food';
+import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
+import { extractPagination, calculateSkip } from '@/lib/validation';
+
+/**
+ * GET /api/foods
+ * 
+ * Get all foods with filtering and pagination
+ */
 export async function GET(req: NextRequest) {
   try {
     await dbConnect();
     
-    // Authentication is optional - users can view system foods without login
-    const session = await getAuth();
-    const userId = session?.user?.id;
+    const url = new URL(req.url);
+    const { page, limit } = extractPagination(url);
+    const skip = calculateSkip(page, limit);
     
     // Get query parameters
-    const url = new URL(req.url);
-    const searchQuery = url.searchParams.get('search') || '';
-    const category = url.searchParams.get('category') || '';
-    const page = parseInt(url.searchParams.get('page') || '1', 10);
-    const limit = parseInt(url.searchParams.get('limit') || '50', 10);
-    const sortBy = url.searchParams.get('sortBy') || 'name';
-    const sortOrder = url.searchParams.get('sortOrder') || 'asc';
+    const search = url.searchParams.get('search') || '';
+    const category = url.searchParams.get('category');
+    const userId = url.searchParams.get('userId') || null; // Specific user or system foods
+    const isSystem = url.searchParams.get('system') === 'true';
     
-    // Cap the limit to prevent performance issues
-    const cappedLimit = Math.min(limit, 100);
+    // Build query
+    const query: any = {};
     
-    // Build the query
-    const queryConditions: any = {};
-    
-    // Add search conditions if search parameter provided
-    if (searchQuery) {
-      queryConditions.$or = [
-        { name: { $regex: searchQuery, $options: 'i' } },
-        { description: { $regex: searchQuery, $options: 'i' } }
-      ];
+    // Search by name
+    if (search) {
+      query.name = { $regex: search, $options: 'i' };
     }
     
-    // Add category filter if provided
+    // Filter by category
     if (category) {
-      queryConditions.category = category;
+      query.category = category;
     }
     
-    // Only include system foods and user's own custom foods
-    queryConditions.$or = [
-      { isSystemFood: true },
-      ...(userId ? [{ userId: new mongoose.Types.ObjectId(userId) }] : [])
-    ];
+    // Filter by user vs system foods
+    if (userId) {
+      query.userId = userId;
+    } else if (isSystem) {
+      query.isSystemFood = true;
+    }
     
-    // Execute the query with pagination
-    const totalFoods = await Food.countDocuments(queryConditions);
-    const totalPages = Math.ceil(totalFoods / cappedLimit);
-    
-    // Sort options
-    const sortOptions: any = {};
-    sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
+    // Count total matching foods
+    const totalFoods = await Food.countDocuments(query);
     
     // Get foods with pagination
-    const foods = await Food.find(queryConditions)
-      .sort(sortOptions)
-      .skip((page - 1) * cappedLimit)
-      .limit(cappedLimit);
+    const foods = await Food.find(query)
+      .sort({ name: 1 })
+      .skip(skip)
+      .limit(limit);
     
     return apiResponse(
-      { foods, categories: await Food.distinct('category') },
-      'Foods retrieved successfully',
-      {
-        total: totalFoods,
-        page,
-        limit: cappedLimit,
-        pages: totalPages
-      }
+      { 
+        foods, 
+        categories: await Food.distinct('category'),
+        pagination: {
+          total: totalFoods,
+          page,
+          limit,
+          pages: Math.ceil(totalFoods / limit),
+          hasNextPage: skip + foods.length < totalFoods,
+          hasPrevPage: page > 1
+        }
+      },
+      true,                             // Add success flag
+      'Foods retrieved successfully'    // Message as third parameter
     );
   } catch (error) {
-    return handleApiError(error, 'Error retrieving foods');
+    return handleApiError(error, 'Error fetching foods');
   }
 }
 
-// POST /api/foods - Create a new custom food
+/**
+ * POST /api/foods
+ * 
+ * Create a new food item
+ */
 export async function POST(req: NextRequest) {
   try {
     await dbConnect();
     
-    // Authentication is required for creating custom foods
-    const session = await getAuth();
-    if (!session?.user?.id) {
-      return apiError('Authentication required', 401);
-    }
+    const data = await req.json();
     
-    // Get food data from request body
-    const foodData = await req.json();
-    
-    // Basic validation
-    if (!foodData.name || !foodData.servingSize) {
-      return apiError('Name and serving size are required', 400);
-    }
-    
-    // Set default values and ensure numeric values
-    if (!foodData.servingUnit) foodData.servingUnit = 'g';
-    foodData.protein = Number(foodData.protein || 0);
-    foodData.carbs = Number(foodData.carbs || 0);
-    foodData.fat = Number(foodData.fat || 0);
-    foodData.calories = Number(foodData.calories || 0);
-    
-    // Regular users can only create custom foods (not system foods)
-    if (session.user.role !== 'admin') {
-      foodData.isSystemFood = false;
-    }
-    
-    // Set the userId for custom foods
-    if (!foodData.isSystemFood) {
-      foodData.userId = new mongoose.Types.ObjectId(session.user.id);
+    // Set system flag if not provided
+    if (data.isSystemFood === undefined) {
+      data.isSystemFood = false;
     }
     
     // Create the food
-    const newFood = new Food(foodData);
-    await newFood.save();
+    const newFood = await Food.create(data);
     
-    return apiResponse(newFood, 'Food created successfully', undefined, 201);
+    return apiResponse(
+      newFood,
+      true,                         // Add success flag
+      'Food created successfully'   // Message as third parameter
+    );
   } catch (error) {
     return handleApiError(error, 'Error creating food');
+  }
+}
+
+/**
+ * PUT /api/foods
+ * 
+ * Batch update foods (admin only)
+ */
+export async function PUT(req: NextRequest) {
+  try {
+    await dbConnect();
+    
+    const { foods } = await req.json();
+    
+    if (!Array.isArray(foods) || foods.length === 0) {
+      return apiError('No foods provided for update', 400);
+    }
+    
+    const results = await Promise.all(
+      foods.map(async (food) => {
+        if (!food._id) {
+          return { error: 'Food ID is required', food };
+        }
+        
+        const updatedFood = await Food.findByIdAndUpdate(
+          food._id,
+          { $set: food },
+          { new: true, runValidators: true }
+        );
+        
+        return updatedFood || { error: 'Food not found', id: food._id };
+      })
+    );
+    
+    return apiResponse(
+      { updated: results },
+      true,                             // Add success flag
+      `Updated ${results.length} foods` // Message as third parameter
+    );
+  } catch (error) {
+    return handleApiError(error, 'Error updating foods');
+  }
+}
+
+/**
+ * DELETE /api/foods
+ * 
+ * Batch delete foods (admin only)
+ */
+export async function DELETE(req: NextRequest) {
+  try {
+    await dbConnect();
+    
+    const { ids } = await req.json();
+    
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return apiError('No food IDs provided for deletion', 400);
+    }
+    
+    const result = await Food.deleteMany({ _id: { $in: ids } });
+    
+    return apiResponse(
+      { deleted: result.deletedCount },
+      true,                                      // Add success flag
+      `Deleted ${result.deletedCount} foods`     // Message as third parameter
+    );
+  } catch (error) {
+    return handleApiError(error, 'Error deleting foods');
   }
 }

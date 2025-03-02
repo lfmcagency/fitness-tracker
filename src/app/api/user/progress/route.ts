@@ -1,180 +1,131 @@
-// Mark as dynamic
+// File: src/app/api/user/progress/route.ts
+
 export const dynamic = 'force-dynamic';
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { dbConnect } from '@/lib/db/mongodb';
-import { getAuth } from '@/lib/auth';
-import { ApiResponse } from '@/types';
-import { getUserLevelInfo } from '@/lib/xp-manager';
-
-/**
- * GET /api/user/progress
- * 
- * Returns the current user's XP and level information
- */
-export async function GET(req: NextRequest) {
-  try {
-    await dbConnect();
-    const session = await getAuth();
-    
-    // For development, allow access without authentication
-    if (!session && process.env.NODE_ENV === 'production') {
-      return NextResponse.json<ApiResponse<never>>({ 
-        success: false, 
-        message: 'Unauthorized' 
-      }, { status: 401 });
-    }
-    
-    // If we have a user session, get the real user progress
-    if (session?.user?.id) {
-      const userProgress = await getUserLevelInfo(session.user.id);
-      
-      if (!userProgress) {
-        return NextResponse.json<ApiResponse<any>>({ 
-          success: true, 
-          data: {
-            totalXp: 0,
-            level: 1,
-            nextLevelXp: 100,
-            xpToNextLevel: 100,
-            categoryLevels: {
-              core: 1,
-              push: 1,
-              pull: 1,
-              legs: 1
-            }
-          },
-          message: 'No progress found yet. This is your starting point!'
-        });
-      }
-      
-      return NextResponse.json<ApiResponse<any>>({ 
-        success: true, 
-        data: userProgress
-      });
-    }
-    
-    // Mock response for development
-    const mockProgress = {
-      totalXp: 375,
-      level: 4,
-      nextLevelXp: 499,
-      xpToNextLevel: 124,
-      categoryLevels: {
-        core: 3,
-        push: 5,
-        pull: 2,
-        legs: 4
-      }
-    };
-    
-    return NextResponse.json<ApiResponse<any>>({ 
-      success: true, 
-      data: mockProgress,
-      message: 'Mock progress data returned' 
-    });
-  } catch (error) {
-    console.error('Error in GET /api/user/progress:', error);
-    return NextResponse.json<ApiResponse<never>>({ 
-      success: false, 
-      message: 'Error fetching user progress',
-      error: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 });
-  }
-}
+import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
+import { withAuth, AuthLevel, getUserProgressOrCreate } from '@/lib/auth-utils';
+import { ProgressCategory, isValidCategory } from '@/lib/category-progress';
+import { awardXp } from '@/lib/xp-manager-improved';
 
 /**
  * POST /api/user/progress
  * 
- * Awards XP to the user for a specific activity
+ * Add XP to user's progress with optional category
  * 
  * Request body:
- * - amount: number - amount of XP to award
- * - source: string - source of the XP (e.g. 'workout', 'nutrition')
- * - category: 'core' | 'push' | 'pull' | 'legs' (optional) - category to award XP to
- * - description: string (optional) - description of the activity
+ * - amount: number (required) - Amount of XP to award
+ * - source: string (required) - The activity that earned the XP
+ * - category: string (optional) - One of: "core", "push", "pull", "legs"
+ * - details: string (optional) - Additional context
  */
-export async function POST(req: NextRequest) {
+export const POST = withAuth(async (req: NextRequest, userId) => {
   try {
     await dbConnect();
-    const session = await getAuth();
     
-    // For development, allow access without authentication
-    if (!session && process.env.NODE_ENV === 'production') {
-      return NextResponse.json<ApiResponse<never>>({ 
-        success: false, 
-        message: 'Unauthorized' 
-      }, { status: 401 });
-    }
-    
-    const { amount, source, category, description } = await req.json();
+    // Get and validate request body
+    const body = await req.json();
     
     // Validate required fields
-    if (!amount || typeof amount !== 'number' || amount <= 0) {
-      return NextResponse.json<ApiResponse<never>>({ 
-        success: false, 
-        message: 'Invalid XP amount. Must be a positive number.'
-      }, { status: 400 });
+    if (!body.amount || typeof body.amount !== 'number' || body.amount <= 0) {
+      return apiError('XP amount must be a positive number', 400);
     }
     
-    if (!source || typeof source !== 'string') {
-      return NextResponse.json<ApiResponse<never>>({ 
-        success: false, 
-        message: 'Invalid source. Must be a non-empty string.'
-      }, { status: 400 });
+    if (!body.source || typeof body.source !== 'string' || body.source.trim() === '') {
+      return apiError('Source must be a non-empty string', 400);
     }
+    
+    // Extract validated values
+    const amount = body.amount;
+    const source = body.source;
+    const details = body.details || '';
     
     // Validate category if provided
-    if (category && !['core', 'push', 'pull', 'legs'].includes(category)) {
-      return NextResponse.json<ApiResponse<never>>({ 
-        success: false, 
-        message: 'Invalid category. Must be one of: core, push, pull, legs'
-      }, { status: 400 });
+    let category: ProgressCategory | undefined;
+    
+    if (body.category) {
+      if (!isValidCategory(body.category)) {
+        return apiError(`Invalid category: ${body.category}. Must be one of: core, push, pull, legs`, 400);
+      }
+      category = body.category as ProgressCategory;
     }
     
-    // If we have a user session, award real XP
-    if (session?.user?.id) {
-      const { awardXp } = await import('@/lib/xp-manager');
-      
-      const result = await awardXp(
-        session.user.id,
-        amount,
-        source,
-        category as ('core' | 'push' | 'pull' | 'legs' | undefined),
-        description
-      );
-      
-      return NextResponse.json<ApiResponse<any>>({ 
-        success: true, 
-        data: result,
-        message: result.leveledUp 
-          ? `Level up! You are now level ${result.newLevel}` 
-          : `Awarded ${amount} XP! ${result.xpToNextLevel} XP until next level.`
-      });
-    }
+    // Award XP using the xp-manager-improved utility
+    const result = await awardXp(
+      userId, 
+      amount, 
+      source, 
+      category,
+      details
+    );
     
-    // Mock response for development
-    const mockResult = {
-      leveledUp: amount >= 50, // Pretend we level up if awarded 50+ XP
-      previousLevel: 4,
-      newLevel: amount >= 50 ? 5 : 4,
-      currentXp: 375 + amount,
-      xpToNextLevel: amount >= 50 ? 600 - (375 + amount) : 499 - (375 + amount)
-    };
-    
-    return NextResponse.json<ApiResponse<any>>({ 
-      success: true, 
-      data: mockResult,
-      message: mockResult.leveledUp 
-        ? `Level up! You are now level ${mockResult.newLevel}` 
-        : `Awarded ${amount} XP! ${mockResult.xpToNextLevel} XP until next level.`
-    });
+    // Return result with appropriate message
+    return apiResponse({
+      success: true,
+      data: result,
+      message: result.leveledUp
+        ? `Level up! You are now level ${result.currentLevel}` // Fixed: newLevel → currentLevel
+        : `Awarded ${amount} XP! ${result.xpToNextLevel} XP until next level.`
+    }, true);
   } catch (error) {
-    console.error('Error in POST /api/user/progress:', error);
-    return NextResponse.json<ApiResponse<never>>({ 
-      success: false, 
-      message: 'Error awarding XP',
-      error: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 });
+    return handleApiError(error, 'Error awarding XP');
   }
-}
+}, AuthLevel.REQUIRED);
+
+/**
+ * GET /api/user/progress
+ * 
+ * Get user's progress summary
+ */
+export const GET = withAuth(async (req: NextRequest, userId) => {
+  try {
+    await dbConnect();
+    
+    // Get or create user progress
+    const userProgress = await getUserProgressOrCreate(userId);
+    
+    if (!userProgress) {
+      return apiError('Failed to retrieve user progress', 500);
+    }
+    
+    // Return formatted progress data
+    return apiResponse({
+      level: userProgress.level,
+      totalXp: userProgress.totalXp,
+      xpToNextLevel: userProgress.getXpToNextLevel(),
+      percentToNextLevel: Math.floor(
+        ((userProgress.totalXp % userProgress.getNextLevelXp()) / userProgress.getXpToNextLevel()) * 100
+      ),
+      categories: {
+        core: {
+          level: userProgress.categoryProgress.core.level,
+          xp: userProgress.categoryXp.core
+        },
+        push: {
+          level: userProgress.categoryProgress.push.level,
+          xp: userProgress.categoryXp.push
+        },
+        pull: {
+          level: userProgress.categoryProgress.pull.level,
+          xp: userProgress.categoryXp.pull
+        },
+        legs: {
+          level: userProgress.categoryProgress.legs.level,
+          xp: userProgress.categoryXp.legs
+        }
+      },
+      recentActivity: userProgress.xpHistory
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        .slice(0, 5)
+        .map(tx => ({
+          date: tx.date,
+          amount: tx.amount,
+          source: tx.source,
+          category: tx.category
+        }))
+    }, true, 'User progress retrieved successfully');
+  } catch (error) {
+    return handleApiError(error, 'Error retrieving user progress');
+  }
+}, AuthLevel.REQUIRED);

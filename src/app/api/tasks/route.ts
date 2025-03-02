@@ -6,7 +6,7 @@ import { dbConnect } from '@/lib/db/mongodb';
 import Task, { ITask } from '@/models/Task';
 import { getAuth } from '@/lib/auth';
 import { EnhancedTask, ApiResponse, RecurrencePattern, TaskPriority } from '@/types';
-import { convertTaskToEnhancedTask } from './task-utils';
+import { convertTaskToEnhancedTask } from '../../../lib/task-utils';
 
 // Default pagination values
 const DEFAULT_PAGE = 1;

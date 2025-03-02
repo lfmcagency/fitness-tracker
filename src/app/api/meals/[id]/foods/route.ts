@@ -81,7 +81,7 @@ export async function POST(
         }
       );
       
-      return apiResponse(updatedMeal, 'Food added to meal successfully');
+      return apiResponse(updatedMeal, true, 'Food added to meal successfully');
     } catch (dbError) {
       return handleApiError(dbError, 'Error adding food to meal');
     }

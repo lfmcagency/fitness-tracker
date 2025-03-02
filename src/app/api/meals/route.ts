@@ -227,7 +227,7 @@ export async function POST(req: NextRequest) {
     // Create new meal with proper error handling
     try {
       const meal = await Meal.create(body);
-      return apiResponse(meal, 'Meal created successfully', 201);
+      return apiResponse(meal, true, 'Meal created successfully', 201);
     } catch (error) {
       return handleApiError(error, 'Error creating meal');
     }
@@ -270,7 +270,7 @@ export async function DELETE(req: NextRequest) {
       // Delete the meal
       await Meal.deleteOne({ _id: id });
       
-      return apiResponse(null, 'Meal deleted successfully', 200);
+      return apiResponse(null, true, 'Meal deleted successfully', 200);
     } catch (dbError) {
       if (dbError instanceof mongoose.Error.CastError) {
         return apiError('Invalid meal ID format', 400);
@@ -384,7 +384,7 @@ export async function PATCH(req: NextRequest) {
         }
       );
       
-      return apiResponse(updatedMeal, 'Meal updated successfully');
+      return apiResponse(updatedMeal, true, 'Meal updated successfully');
     } catch (dbError) {
       if (dbError instanceof mongoose.Error.CastError) {
         return apiError('Invalid meal ID format', 400);

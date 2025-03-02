@@ -68,7 +68,7 @@ export async function DELETE(
         }
       );
       
-      return apiResponse(updatedMeal, 'Food removed from meal successfully');
+      return apiResponse(updatedMeal, true, 'Food removed from meal successfully');
     } catch (dbError) {
       return handleApiError(dbError, 'Error removing food from meal');
     }

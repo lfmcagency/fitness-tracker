@@ -1,169 +1,173 @@
 export const dynamic = 'force-dynamic';
-import { NextRequest, NextResponse } from 'next/server';
-import { dbConnect } from '@/lib/db/mongodb';
-import { getAuth } from '@/lib/auth';
-import Food from '@/models/Food';
-import mongoose from 'mongoose';
-import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 
-// GET /api/foods/[id] - Get a single food by ID
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+import { NextRequest } from 'next/server';
+import { dbConnect } from '@/lib/db/mongodb';
+import Food from '@/models/Food';
+import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
+import { extractPagination, calculateSkip } from '@/lib/validation';
+
+/**
+ * GET /api/foods
+ * 
+ * Get all foods with filtering and pagination
+ */
+export async function GET(req: NextRequest) {
   try {
     await dbConnect();
     
-    const { id } = params;
+    const url = new URL(req.url);
+    const { page, limit } = extractPagination(url);
+    const skip = calculateSkip(page, limit);
     
-    // Validate food ID format
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return apiError('Invalid food ID format', 400);
+    // Get query parameters
+    const search = url.searchParams.get('search') || '';
+    const category = url.searchParams.get('category');
+    const userId = url.searchParams.get('userId') || null; // Specific user or system foods
+    const isSystem = url.searchParams.get('system') === 'true';
+    
+    // Build query
+    const query: any = {};
+    
+    // Search by name
+    if (search) {
+      query.name = { $regex: search, $options: 'i' };
     }
     
-    // Get the food
-    const food = await Food.findById(id);
-    
-    if (!food) {
-      return apiError('Food not found', 404);
+    // Filter by category
+    if (category) {
+      query.category = category;
     }
     
-    // Check if user has access to this food
-    const session = await getAuth();
-    const userId = session?.user?.id;
-    const isAdmin = session?.user?.role === 'admin';
-    
-    // User can access if:
-    // 1. It's a system food, or
-    // 2. They're the owner of the food, or
-    // 3. They're an admin
-    if (!food.isSystemFood && !isAdmin && (!userId || food.userId.toString() !== userId)) {
-      return apiError('You do not have permission to access this food', 403);
+    // Filter by user vs system foods
+    if (userId) {
+      query.userId = userId;
+    } else if (isSystem) {
+      query.isSystemFood = true;
     }
     
-    return apiResponse(food, true, 'Food retrieved successfully');
+    // Count total matching foods
+    const totalFoods = await Food.countDocuments(query);
+    
+    // Get foods with pagination
+    const foods = await Food.find(query)
+      .sort({ name: 1 })
+      .skip(skip)
+      .limit(limit);
+    
+    return apiResponse(
+      { 
+        foods, 
+        categories: await Food.distinct('category'),
+        pagination: {
+          total: totalFoods,
+          page,
+          limit,
+          pages: Math.ceil(totalFoods / limit),
+          hasNextPage: skip + foods.length < totalFoods,
+          hasPrevPage: page > 1
+        }
+      },
+      true,                             // Add success flag
+      'Foods retrieved successfully'    // Message as third parameter
+    );
   } catch (error) {
-    return handleApiError(error, 'Error retrieving food');
+    return handleApiError(error, 'Error fetching foods');
   }
 }
 
-// PUT /api/foods/[id] - Update a food
-export async function PUT(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+/**
+ * POST /api/foods
+ * 
+ * Create a new food item
+ */
+export async function POST(req: NextRequest) {
   try {
     await dbConnect();
     
-    // Authentication is required for updating foods
-    const session = await getAuth();
-    if (!session?.user?.id) {
-      return apiError('Authentication required', 401);
+    const data = await req.json();
+    
+    // Set system flag if not provided
+    if (data.isSystemFood === undefined) {
+      data.isSystemFood = false;
     }
     
-    const { id } = params;
+    // Create the food
+    const newFood = await Food.create(data);
     
-    // Validate food ID format
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return apiError('Invalid food ID format', 400);
+    return apiResponse(
+      newFood,
+      true,                         // Add success flag
+      'Food created successfully'   // Message as third parameter
+    );
+  } catch (error) {
+    return handleApiError(error, 'Error creating food');
+  }
+}
+
+/**
+ * PUT /api/foods
+ * 
+ * Batch update foods (admin only)
+ */
+export async function PUT(req: NextRequest) {
+  try {
+    await dbConnect();
+    
+    const { foods } = await req.json();
+    
+    if (!Array.isArray(foods) || foods.length === 0) {
+      return apiError('No foods provided for update', 400);
     }
     
-    // Get food data from request body
-    const foodData = await req.json();
-    
-    // Basic validation
-    if (!foodData.name || !foodData.servingSize) {
-      return apiError('Name and serving size are required', 400);
-    }
-    
-    // Get the existing food
-    const existingFood = await Food.findById(id);
-    
-    if (!existingFood) {
-      return apiError('Food not found', 404);
-    }
-    
-    // Check permissions - only the owner or admin can update
-    const isAdmin = session.user.role === 'admin';
-    if (!isAdmin && (!existingFood.userId || existingFood.userId.toString() !== session.user.id)) {
-      return apiError('You do not have permission to update this food', 403);
-    }
-    
-    // Regular users cannot change system food status
-    if (!isAdmin) {
-      delete foodData.isSystemFood;
-    }
-    
-    // Don't allow changing ownership
-    delete foodData.userId;
-    
-    // Ensure numeric values
-    if (foodData.protein !== undefined) foodData.protein = Number(foodData.protein);
-    if (foodData.carbs !== undefined) foodData.carbs = Number(foodData.carbs);
-    if (foodData.fat !== undefined) foodData.fat = Number(foodData.fat);
-    if (foodData.calories !== undefined) foodData.calories = Number(foodData.calories);
-    if (foodData.servingSize !== undefined) foodData.servingSize = Number(foodData.servingSize);
-    
-    // Update the food
-    const updatedFood = await Food.findByIdAndUpdate(
-      id,
-      { $set: foodData },
-      { new: true, runValidators: true }
+    const results = await Promise.all(
+      foods.map(async (food) => {
+        if (!food._id) {
+          return { error: 'Food ID is required', food };
+        }
+        
+        const updatedFood = await Food.findByIdAndUpdate(
+          food._id,
+          { $set: food },
+          { new: true, runValidators: true }
+        );
+        
+        return updatedFood || { error: 'Food not found', id: food._id };
+      })
     );
     
-    return apiResponse(updatedFood, true, 'Food updated successfully');
+    return apiResponse(
+      { updated: results },
+      true,                             // Add success flag
+      `Updated ${results.length} foods` // Message as third parameter
+    );
   } catch (error) {
-    return handleApiError(error, 'Error updating food');
+    return handleApiError(error, 'Error updating foods');
   }
 }
 
-// DELETE /api/foods/[id] - Delete a food
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+/**
+ * DELETE /api/foods
+ * 
+ * Batch delete foods (admin only)
+ */
+export async function DELETE(req: NextRequest) {
   try {
     await dbConnect();
     
-    // Authentication is required for deleting foods
-    const session = await getAuth();
-    if (!session?.user?.id) {
-      return apiError('Authentication required', 401);
+    const { ids } = await req.json();
+    
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return apiError('No food IDs provided for deletion', 400);
     }
     
-    const { id } = params;
+    const result = await Food.deleteMany({ _id: { $in: ids } });
     
-    // Validate food ID format
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return apiError('Invalid food ID format', 400);
-    }
-    
-    // Get the existing food
-    const existingFood = await Food.findById(id);
-    
-    if (!existingFood) {
-      return apiError('Food not found', 404);
-    }
-    
-    // Check permissions - only the owner or admin can delete
-    const isAdmin = session.user.role === 'admin';
-    
-    // System foods can only be deleted by admins
-    if (existingFood.isSystemFood && !isAdmin) {
-      return apiError('Only administrators can delete system foods', 403);
-    }
-    
-    // User foods can only be deleted by the owner or admin
-    if (!existingFood.isSystemFood && !isAdmin && 
-        (!existingFood.userId || existingFood.userId.toString() !== session.user.id)) {
-      return apiError('You do not have permission to delete this food', 403);
-    }
-    
-    // Delete the food
-    await Food.findByIdAndDelete(id);
-    
-    return apiResponse(null, true, 'Food deleted successfully');
+    return apiResponse(
+      { deleted: result.deletedCount },
+      true,                                      // Add success flag
+      `Deleted ${result.deletedCount} foods`     // Message as third parameter
+    );
   } catch (error) {
-    return handleApiError(error, 'Error deleting food');
+    return handleApiError(error, 'Error deleting foods');
   }
 }
