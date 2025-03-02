@@ -1,8 +1,12 @@
-import UserProgress from '@/models/UserProgress';
 import { Types } from 'mongoose';
+import UserProgress from '@/models/UserProgress';
+import { checkAchievements, awardAchievements } from './achievements';
+import { checkCategoryMilestone, ProgressCategory } from './category-progress';
 
-// XP reward configuration
-const XP_REWARDS = {
+/**
+ * XP reward configuration
+ */
+export const XP_REWARDS = {
   TASK_COMPLETION: 10,
   STREAK_MILESTONE: 25,
   WORKOUT_COMPLETION: 50,
@@ -10,91 +14,201 @@ const XP_REWARDS = {
   NUTRITION_GOAL_MET: 20
 };
 
-// Category mapping for various activities
-const CATEGORY_MAPPING = {
-  // Exercise categories
-  'push-up': 'push',
-  'pull-up': 'pull',
-  'squat': 'legs',
-  'plank': 'core',
-  'dip': 'push',
-  'row': 'pull',
-  'bridge': 'core',
-  
-  // General mapping
-  'upper-body': 'push',
-  'lower-body': 'legs',
-  'core-exercise': 'core'
-};
+/**
+ * Response from XP award operations
+ */
+export interface XpAwardResult {
+  previousXp: number;
+  totalXp: number;
+  xpAdded: number;
+  previousLevel: number;
+  currentLevel: number;
+  leveledUp: boolean;
+  xpToNextLevel: number;
+  progressPercent: number;
+  achievements?: {
+    unlocked: Array<any>;
+    count: number;
+    totalXpAwarded: number;
+  };
+  category?: {
+    name: ProgressCategory;
+    previousXp: number;
+    currentXp: number;
+    previousLevel: number;
+    currentLevel: number;
+    leveledUp: boolean;
+    milestone: any | null;
+  };
+}
 
 /**
- * Award XP to a user for completing various activities
- * @param userId - User's MongoDB ObjectId
- * @param amount - Amount of XP to award
- * @param source - Source of the XP (task, workout, achievement, etc.)
- * @param category - Optional category to award XP to (core, push, pull, legs)
- * @param description - Optional description of the activity
- * @returns Object containing levelUp status and new level info
+ * Award XP to a user with comprehensive tracking and milestone detection
+ * @param userId MongoDB ObjectID of the user
+ * @param amount Amount of XP to award
+ * @param source Source of the XP (e.g., 'workout', 'task')
+ * @param category Optional category to which the XP applies
+ * @param description Optional detailed description of the XP source
+ * @returns Detailed result of the XP award operation
  */
 export async function awardXp(
   userId: string | Types.ObjectId,
   amount: number,
   source: string,
-  category?: 'core' | 'push' | 'pull' | 'legs',
+  category?: ProgressCategory,
   description?: string
-) {
+): Promise<XpAwardResult> {
   // Ensure userId is an ObjectId
   const userObjectId = typeof userId === 'string' ? new Types.ObjectId(userId) : userId;
   
-  // Find or create user progress document
-  let userProgress = await UserProgress.findOne({ userId: userObjectId });
+  // Get or create user progress document
+  let userProgress = await getUserProgress(userObjectId);
   
-  // If no progress record exists, create one
-  if (!userProgress) {
-    userProgress = await UserProgress.createInitialProgress(userObjectId);
+  // Store previous values to detect changes
+  const previousXp = userProgress.totalXp;
+  const previousLevel = userProgress.level;
+  let previousCategoryLevel: number | undefined;
+  let previousCategoryXp: number | undefined;
+  
+  if (category) {
+    previousCategoryLevel = userProgress.categoryProgress[category].level;
+    previousCategoryXp = userProgress.categoryXp[category];
   }
   
-  // Record previous state to detect level changes
-  const previousLevel = userProgress.level;
+  // Add XP and save changes
+  const leveledUp = await userProgress.addXp(amount, source, category, description || '');
   
-  // Add XP to user's record
-  const leveledUp = await userProgress.addXp(amount, source, category, description);
+  // Check for newly unlocked achievements
+  const unlockedAchievements = await checkAndAwardAchievements(userProgress);
   
-  // Return status including level up information
-  return {
-    leveledUp,
+  // Calculate progress toward next level
+  const nextLevelXp = userProgress.getNextLevelXp();
+  const xpToNextLevel = userProgress.getXpToNextLevel();
+  const progressPercent = Math.floor(
+    ((userProgress.totalXp - (nextLevelXp - xpToNextLevel)) / xpToNextLevel) * 100
+  );
+  
+  // Prepare result object
+  const result: XpAwardResult = {
+    previousXp,
+    totalXp: userProgress.totalXp,
+    xpAdded: amount,
     previousLevel,
-    newLevel: userProgress.level,
-    currentXp: userProgress.totalXp,
-    xpToNextLevel: userProgress.getXpToNextLevel()
+    currentLevel: userProgress.level,
+    leveledUp,
+    xpToNextLevel,
+    progressPercent
+  };
+  
+  // Add achievement information if any were unlocked
+  if (unlockedAchievements.achievements.length > 0) {
+    result.achievements = {
+      unlocked: unlockedAchievements.achievements,
+      count: unlockedAchievements.achievements.length,
+      totalXpAwarded: unlockedAchievements.totalXpAwarded
+    };
+  }
+  
+  // Add category-specific information if a category was provided
+  if (category && previousCategoryLevel !== undefined && previousCategoryXp !== undefined) {
+    const categoryLeveledUp = userProgress.categoryProgress[category].level > previousCategoryLevel;
+    const currentCategoryXp = userProgress.categoryXp[category];
+    
+    // Check for category milestone
+    const milestone = checkCategoryMilestone(
+      category,
+      previousCategoryXp,
+      currentCategoryXp
+    );
+    
+    result.category = {
+      name: category,
+      previousXp: previousCategoryXp,
+      currentXp: currentCategoryXp,
+      previousLevel: previousCategoryLevel,
+      currentLevel: userProgress.categoryProgress[category].level,
+      leveledUp: categoryLeveledUp,
+      milestone: milestone
+    };
+  }
+  
+  return result;
+}
+
+/**
+ * Get user's progress document, creating it if it doesn't exist
+ * @param userId MongoDB ObjectID of the user
+ * @returns UserProgress document
+ */
+async function getUserProgress(userId: Types.ObjectId) {
+  let userProgress = await UserProgress.findOne({ userId });
+  
+  // If no progress document exists, create one
+  if (!userProgress) {
+    userProgress = await UserProgress.createInitialProgress(userId);
+  }
+  
+  return userProgress;
+}
+
+/**
+ * Check for and award newly unlocked achievements
+ * @param userProgress User progress document
+ * @returns Object containing updated progress and awarded achievements
+ */
+async function checkAndAwardAchievements(userProgress: any) {
+  const newlyUnlockedAchievements = await checkAchievements(userProgress);
+  
+  // If no achievements were unlocked, return early
+  if (newlyUnlockedAchievements.length === 0) {
+    return {
+      achievements: [],
+      totalXpAwarded: 0
+    };
+  }
+  
+  // Award the achievements
+  const { updatedProgress, totalXpAwarded } = await awardAchievements(
+    userProgress,
+    newlyUnlockedAchievements
+  );
+  
+  // Format achievements for response
+  const formattedAchievements = newlyUnlockedAchievements.map(achievement => ({
+    id: achievement.id,
+    title: achievement.title,
+    description: achievement.description,
+    icon: achievement.icon,
+    xpReward: achievement.xpReward,
+    type: achievement.type,
+    badgeColor: achievement.badgeColor
+  }));
+  
+  return {
+    achievements: formattedAchievements,
+    totalXpAwarded
   };
 }
 
 /**
- * Award XP for completing a task
- * @param userId - User's MongoDB ObjectId
- * @param taskName - Name of the completed task
- * @param taskCategory - Category of the task (optional)
- * @param streakCount - Current streak count (optional)
+ * Award XP for completing a task with streak bonuses
+ * @param userId MongoDB ObjectID of the user
+ * @param taskName Name of the completed task
+ * @param streakCount Current streak count (optional)
+ * @param category Optional fitness category the task belongs to
  * @returns XP award result
  */
 export async function awardTaskCompletionXp(
   userId: string | Types.ObjectId,
   taskName: string,
-  taskCategory?: string,
-  streakCount?: number
-) {
+  streakCount?: number,
+  category?: ProgressCategory
+): Promise<XpAwardResult> {
   let xpAmount = XP_REWARDS.TASK_COMPLETION;
-  let category: 'core' | 'push' | 'pull' | 'legs' | undefined = undefined;
-  
-  // Map task category to fitness category if possible
-  if (taskCategory && CATEGORY_MAPPING[taskCategory as keyof typeof CATEGORY_MAPPING]) {
-    category = CATEGORY_MAPPING[taskCategory as keyof typeof CATEGORY_MAPPING] as 'core' | 'push' | 'pull' | 'legs';
-  }
   
   // Add streak bonus for consistent performance
   if (streakCount && streakCount > 0) {
-    // Bonus for streaks at 7, 30, 100 days
+    // Bonus for streak milestones
     if (streakCount === 7) {
       xpAmount += XP_REWARDS.STREAK_MILESTONE / 2;
     } else if (streakCount === 30) {
@@ -107,106 +221,16 @@ export async function awardTaskCompletionXp(
     }
   }
   
-  return await awardXp(
-    userId, 
-    xpAmount, 
-    'task_completion', 
-    category,
-    `Completed task: ${taskName}${streakCount ? ` (${streakCount} day streak)` : ''}`
-  );
-}
-
-/**
- * Award XP for completing a workout
- * @param userId - User's MongoDB ObjectId
- * @param workoutName - Name of the completed workout
- * @param exerciseCategories - Categories of exercises completed in the workout
- * @returns XP award result for each category
- */
-export async function awardWorkoutCompletionXp(
-  userId: string | Types.ObjectId,
-  workoutName: string,
-  exerciseCategories: { category: 'core' | 'push' | 'pull' | 'legs', count: number }[]
-) {
-  const results = [];
-  let totalXpAwarded = 0;
+  const description = `Completed task: ${taskName}${
+    streakCount ? ` (${streakCount} day streak)` : ''
+  }`;
   
-  // Base XP for workout completion
-  const baseXp = XP_REWARDS.WORKOUT_COMPLETION;
-  
-  // Award base XP for overall workout completion (not category-specific)
-  const baseResult = await awardXp(
-    userId,
-    baseXp,
-    'workout_completion',
-    undefined,
-    `Completed workout: ${workoutName}`
-  );
-  
-  totalXpAwarded += baseXp;
-  
-  // Award additional XP for each exercise category
-  for (const { category, count } of exerciseCategories) {
-    if (count > 0) {
-      // Award category-specific XP based on number of exercises
-      const categoryXp = Math.min(count * 5, 25); // Cap at 25 XP per category
-      
-      const result = await awardXp(
-        userId,
-        categoryXp,
-        'workout_completion',
-        category,
-        `Completed ${count} ${category} exercises in: ${workoutName}`
-      );
-      
-      totalXpAwarded += categoryXp;
-      results.push(result);
-    }
-  }
-  
-  return {
-    overall: baseResult,
-    categoryResults: results,
-    totalXpAwarded
-  };
-}
-
-/**
- * Award XP for meeting nutrition goals
- * @param userId - User's MongoDB ObjectId
- * @param goalType - Type of nutrition goal met
- * @returns XP award result
- */
-export async function awardNutritionXp(
-  userId: string | Types.ObjectId,
-  goalType: 'protein' | 'calories' | 'macros' | 'water'
-) {
-  let xpAmount = XP_REWARDS.NUTRITION_GOAL_MET;
-  let description = '';
-  
-  switch (goalType) {
-    case 'protein':
-      description = 'Met daily protein goal';
-      break;
-    case 'calories':
-      description = 'Met daily calorie goal';
-      break;
-    case 'macros':
-      xpAmount = XP_REWARDS.NUTRITION_GOAL_MET * 1.5; // Bonus for hitting all macros
-      description = 'Met all macro nutrition goals';
-      break;
-    case 'water':
-      xpAmount = XP_REWARDS.NUTRITION_GOAL_MET / 2; // Less XP for water goals
-      description = 'Met daily water intake goal';
-      break;
-  }
-  
-  return await awardXp(userId, xpAmount, 'nutrition_goal', 'core', description);
+  return await awardXp(userId, xpAmount, 'task_completion', category, description);
 }
 
 /**
  * Get user's level progression information
- * @param userId - User's MongoDB ObjectId
+ * @param userId MongoDB ObjectID of the user
  * @returns User's level info or null if not found
  */
 export async function getUserLevelInfo(userId: string | Types.ObjectId) {

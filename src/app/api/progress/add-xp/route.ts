@@ -2,15 +2,10 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest } from 'next/server';
 import { dbConnect } from '@/lib/db/mongodb';
-import UserProgress from '@/models/UserProgress';
-import { Types } from 'mongoose';
-import { getAuth } from '@/lib/auth';
-import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
-import { checkAchievements, awardAchievements } from '@/lib/achievements';
-import { 
-  ProgressCategory, 
-  checkCategoryMilestone 
-} from '@/lib/category-progress';
+import { withAuth, AuthLevel } from '@/lib/auth-utils';
+import { apiSuccess, handleApiError } from '@/lib/api-utils-enhanced';
+import { validateRequest, schemas } from '@/lib/validation';
+import { awardXp } from '@/lib/xp-manager-improved';
 
 /**
  * POST /api/progress/add-xp
@@ -24,206 +19,49 @@ import {
  * - category: string (optional) - One of: "core", "push", "pull", "legs"
  * - source: string (required) - Describes the activity that earned the XP
  * - details: string (optional) - Additional context about the XP award
- * 
- * Response:
- * - totalXp: number - Updated total XP
- * - level: number - Current level after XP award
- * - leveledUp: boolean - Whether this XP award caused a level-up
- * - categoryXp: object (if category provided) - Updated category XP
- * - categoryLevel: number (if category provided) - Updated category level
- * - xpToNextLevel: number - How much XP needed for next level
- * - progressPercent: number - Progress toward next level as percentage
- * - achievements: object (if any unlocked) - Newly unlocked achievements
  */
-export async function POST(req: NextRequest) {
+export const POST = withAuth(async (req: NextRequest, userId) => {
   try {
     await dbConnect();
-    const session = await getAuth();
     
-    // Require authentication in production
-    if (!session && process.env.NODE_ENV === 'production') {
-      return apiError('Authentication required', 401);
+    // Validate request body
+    const { xpAmount, category, source, details } = await validateRequest(
+      req,
+      schemas.xp.addXp
+    );
+    
+    // Award XP and get comprehensive result
+    const result = await awardXp(
+      userId,
+      xpAmount,
+      source,
+      category,
+      details
+    );
+    
+    // Generate appropriate success message
+    let message;
+    
+    if (result.leveledUp && result.achievements?.count && result.category?.milestone) {
+      message = `Congratulations! You've leveled up to ${result.currentLevel}, reached the ${result.category.milestone.milestone} milestone in ${category}, and unlocked ${result.achievements.count} achievement(s)!`;
+    } else if (result.leveledUp && result.category?.milestone) {
+      message = `Congratulations! You've leveled up to ${result.currentLevel} and reached the ${result.category.milestone.milestone} milestone in ${category}!`;
+    } else if (result.achievements?.count && result.category?.milestone) {
+      message = `You've earned ${xpAmount} XP, reached the ${result.category.milestone.milestone} milestone in ${category}, and unlocked ${result.achievements.count} achievement(s)!`;
+    } else if (result.category?.milestone) {
+      message = `You've earned ${xpAmount} XP and reached the ${result.category.milestone.milestone} milestone in ${category}!`;
+    } else if (result.leveledUp && result.achievements?.count) {
+      message = `Congratulations! You've leveled up to level ${result.currentLevel} and unlocked ${result.achievements.count} new achievement(s)!`;
+    } else if (result.leveledUp) {
+      message = `Congratulations! You've leveled up to level ${result.currentLevel}!`;
+    } else if (result.achievements?.count) {
+      message = `You've earned ${xpAmount} XP and unlocked ${result.achievements.count} new achievement(s)!`;
+    } else {
+      message = `You've earned ${xpAmount} XP from ${source}. ${result.xpToNextLevel} XP until next level.`;
     }
     
-    const userId = session?.user?.id || '000000000000000000000000'; // Mock ID for development
-    let userObjectId: Types.ObjectId;
-    
-    try {
-      userObjectId = new Types.ObjectId(userId);
-    } catch (error) {
-      return apiError('Invalid user ID', 400);
-    }
-    
-    // Parse and validate request body
-    const { xpAmount, category, source, details } = await req.json();
-    
-    // Validate xpAmount
-    if (!xpAmount || typeof xpAmount !== 'number' || xpAmount <= 0) {
-      return apiError('XP amount must be a positive number', 400);
-    }
-    
-    // Validate source
-    if (!source || typeof source !== 'string' || source.trim() === '') {
-      return apiError('Source is required and must be a non-empty string', 400);
-    }
-    
-    // Validate category if provided
-    if (category && !['core', 'push', 'pull', 'legs'].includes(category)) {
-      return apiError('Category must be one of: core, push, pull, legs', 400);
-    }
-    
-    // Get or create user progress document
-    let userProgress = await UserProgress.findOne({ userId: userObjectId });
-    if (!userProgress) {
-      try {
-        // Access static method through model using proper type-safe approach
-        userProgress = await UserProgress.createInitialProgress(userObjectId);
-      } catch (error) {
-        return handleApiError(error, 'Failed to create initial progress record');
-      }
-    }
-    
-    // Store previous values to detect changes
-    const previousXp = userProgress.totalXp;
-    const previousLevel = userProgress.level;
-    let previousCategoryLevel: number | undefined;
-    let previousCategoryXp: number | undefined;
-    
-    if (category) {
-      previousCategoryLevel = userProgress.categoryProgress[category as ProgressCategory].level;
-      previousCategoryXp = userProgress.categoryXp[category as ProgressCategory];
-    }
-    
-    // Add XP and save changes
-    try {
-      const leveledUp = await userProgress.addXp(
-        xpAmount,
-        source,
-        category as 'core' | 'push' | 'pull' | 'legs' | undefined,
-        details || ''
-      );
-      
-      // Check for newly unlocked achievements
-      const newlyUnlockedAchievements = await checkAchievements(userProgress);
-      
-      // Award any newly unlocked achievements
-      let achievementXpAwarded = 0;
-      let unlockedAchievements: Array<any> = [];
-      
-      if (newlyUnlockedAchievements.length > 0) {
-        // Award achievements
-        const { updatedProgress, totalXpAwarded } = await awardAchievements(
-          userProgress,
-          newlyUnlockedAchievements
-        );
-        
-        // Update references with the returned document instance
-        userProgress = updatedProgress;
-        achievementXpAwarded = totalXpAwarded;
-        
-        // Format achievements for response
-        unlockedAchievements = newlyUnlockedAchievements.map(achievement => ({
-          id: achievement.id,
-          title: achievement.title,
-          description: achievement.description,
-          icon: achievement.icon,
-          xpReward: achievement.xpReward,
-          type: achievement.type,
-          badgeColor: achievement.badgeColor
-        }));
-      }
-      
-      // Calculate progress toward next level
-      const nextLevelXp = userProgress.getNextLevelXp();
-      const xpToNextLevel = userProgress.getXpToNextLevel();
-      const progressPercent = Math.floor(
-        ((userProgress.totalXp - (nextLevelXp - xpToNextLevel)) / xpToNextLevel) * 100
-      );
-      
-      // Prepare response
-      const response: Record<string, any> = {
-        success: true,
-        previousXp,
-        totalXp: userProgress.totalXp,
-        xpAdded: xpAmount,
-        achievementXpAwarded,
-        totalXpAwarded: xpAmount + achievementXpAwarded,
-        previousLevel,
-        currentLevel: userProgress.level,
-        leveledUp,
-        xpToNextLevel,
-        progressPercent
-      };
-      
-      // Add category-specific information if a category was provided
-      if (category && previousCategoryLevel !== undefined && previousCategoryXp !== undefined) {
-        const typedCategory = category as ProgressCategory;
-        const categoryLeveledUp = userProgress.categoryProgress[typedCategory].level > previousCategoryLevel;
-        const currentCategoryXp = userProgress.categoryXp[typedCategory];
-        
-        // Check for category milestone
-        const milestone = checkCategoryMilestone(
-          typedCategory,
-          previousCategoryXp,
-          currentCategoryXp
-        );
-        
-        response.category = {
-          name: category,
-          previousXp: previousCategoryXp,
-          currentXp: currentCategoryXp,
-          previousLevel: previousCategoryLevel,
-          currentLevel: userProgress.categoryProgress[typedCategory].level,
-          leveledUp: categoryLeveledUp,
-          milestone: milestone
-        };
-      }
-      
-      // Add transaction information
-      response.transaction = {
-        source,
-        amount: xpAmount,
-        category,
-        timestamp: new Date().toISOString(),
-        details: details || undefined
-      };
-      
-      // Add achievements information if any were unlocked
-      if (unlockedAchievements.length > 0) {
-        response.achievements = {
-          unlocked: unlockedAchievements,
-          count: unlockedAchievements.length,
-          totalXpAwarded: achievementXpAwarded
-        };
-      }
-      
-      // Determine success message based on level up, achievements, and milestones
-      let message;
-      const milestone = response.category?.milestone;
-      
-      if (leveledUp && unlockedAchievements.length > 0 && milestone) {
-        message = `Congratulations! You've leveled up to ${userProgress.level}, reached the ${milestone.milestone} milestone in ${category}, and unlocked ${unlockedAchievements.length} achievement(s)!`;
-      } else if (leveledUp && milestone) {
-        message = `Congratulations! You've leveled up to ${userProgress.level} and reached the ${milestone.milestone} milestone in ${category}!`;
-      } else if (unlockedAchievements.length > 0 && milestone) {
-        message = `You've earned ${xpAmount} XP, reached the ${milestone.milestone} milestone in ${category}, and unlocked ${unlockedAchievements.length} achievement(s)!`;
-      } else if (milestone) {
-        message = `You've earned ${xpAmount} XP and reached the ${milestone.milestone} milestone in ${category}!`;
-      } else if (leveledUp && unlockedAchievements.length > 0) {
-        message = `Congratulations! You've leveled up to level ${userProgress.level} and unlocked ${unlockedAchievements.length} new achievement(s)!`;
-      } else if (leveledUp) {
-        message = `Congratulations! You've leveled up to level ${userProgress.level}!`;
-      } else if (unlockedAchievements.length > 0) {
-        message = `You've earned ${xpAmount} XP and unlocked ${unlockedAchievements.length} new achievement(s)!`;
-      } else {
-        message = `You've earned ${xpAmount} XP from ${source}. ${xpToNextLevel} XP until next level.`;
-      }
-      
-      return apiResponse(response, message);
-    } catch (error) {
-      return handleApiError(error, 'Failed to add XP');
-    }
+    return apiSuccess(result, message);
   } catch (error) {
     return handleApiError(error, 'Error processing XP award');
   }
-}
+}, AuthLevel.DEV_OPTIONAL);
