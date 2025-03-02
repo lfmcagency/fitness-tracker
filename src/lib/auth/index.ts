@@ -7,6 +7,32 @@ import { dbConnect } from '@/lib/db/mongodb';
 import User from "@/models/User";
 import { compare, hash } from "bcrypt";
 import { NextRequest, NextResponse } from "next/server";
+import mongoose from "mongoose";
+
+// Utility function for logging authentication steps
+const logAuthStep = (step: string, message: string, data?: any) => {
+  const timestamp = new Date().toISOString();
+  console.log(`[${timestamp}] 🔑 AUTH STEP: ${step}`);
+  console.log(`[${timestamp}] ℹ️ ${message}`);
+  if (data) {
+    console.log(`[${timestamp}] 📊 DATA:`, data);
+  }
+  console.log("-----------------------------------");
+};
+
+// Utility function for logging authentication errors
+const logAuthError = (step: string, error: any) => {
+  const timestamp = new Date().toISOString();
+  console.error(`[${timestamp}] ❌ AUTH ERROR in ${step}:`, error);
+  console.log("-----------------------------------");
+};
+
+// Utility function for logging authentication success
+const logAuthSuccess = (step: string, message: string) => {
+  const timestamp = new Date().toISOString();
+  console.log(`[${timestamp}] ✅ AUTH SUCCESS: ${step} - ${message}`);
+  console.log("-----------------------------------");
+};
 
 export interface UserRegistrationData {
   name: string;
@@ -20,38 +46,62 @@ export interface UserRegistrationData {
  * Register a new user with email and password
  */
 export async function registerUser(userData: UserRegistrationData) {
-  await dbConnect();
-  
-  // Check if user already exists
-  const existingUser = await User.findOne({ email: userData.email });
-  if (existingUser) {
-    throw new Error("User already exists");
-  }
-  
-  // Hash password manually instead of relying on the pre-save hook
-  const hashedPassword = await hash(userData.password, 10);
-  
-  // Determine if this is the first user (admin)
-  const userCount = await User.countDocuments({});
-  const isFirstUser = userCount === 0;
-  
-  // Create new user
-  const user = await User.create({
-    name: userData.name,
+  logAuthStep("REGISTER_INIT", "Starting user registration process", {
     email: userData.email,
-    password: hashedPassword,
-    image: userData.image || null,
-    role: isFirstUser ? 'admin' : (userData.role || 'user')
+    name: userData.name,
   });
-  
-  // Return user without password
-  const userObject = user.toObject();
-  const { password: _, ...userWithoutPassword } = userObject;
-  
-  return {
-    ...userWithoutPassword,
-    id: userObject._id.toString(),
-  };
+
+  try {
+    await dbConnect();
+    logAuthStep("REGISTER_DB_CONNECT", "Database connection established");
+    
+    // Check if user already exists
+    const existingUser = await User.findOne({ email: userData.email });
+    if (existingUser) {
+      logAuthStep("REGISTER_USER_EXISTS", "User with this email already exists", {
+        email: userData.email,
+      });
+      throw new Error("User already exists");
+    }
+    
+    // Hash password manually instead of relying on the pre-save hook
+    logAuthStep("REGISTER_PASSWORD_HASH", "Hashing password");
+    const hashedPassword = await hash(userData.password, 10);
+    
+    // Determine if this is the first user (admin)
+    const userCount = await User.countDocuments({});
+    const isFirstUser = userCount === 0;
+    const role = isFirstUser ? 'admin' : (userData.role || 'user');
+    
+    logAuthStep("REGISTER_USER_CREATE", "Creating new user in database", {
+      email: userData.email,
+      role: role,
+      isFirstUser: isFirstUser,
+    });
+    
+    // Create new user
+    const user = await User.create({
+      name: userData.name,
+      email: userData.email,
+      password: hashedPassword,
+      image: userData.image || null,
+      role: role
+    });
+    
+    logAuthSuccess("REGISTER_COMPLETE", "User registered successfully");
+    
+    // Return user without password
+    const userObject = user.toObject();
+    const { password: _, ...userWithoutPassword } = userObject;
+    
+    return {
+      ...userWithoutPassword,
+      id: userObject._id.toString(),
+    };
+  } catch (error) {
+    logAuthError("REGISTER", error);
+    throw error;
+  }
 }
 
 /**
@@ -106,65 +156,139 @@ export const authOptions: NextAuthOptions = {
         password: { label: "Password", type: "password" }
       },
       async authorize(credentials) {
+        // Start of authorization process
+        logAuthStep("AUTH_INIT", "Starting authentication process", {
+          receivedCredentials: credentials ? "Yes" : "No",
+          email: credentials?.email ? `${credentials.email.substring(0, 3)}...${credentials.email.split('@')[1]}` : "Not provided",
+          passwordProvided: credentials?.password ? "Yes" : "No",
+        });
+        
         // For development - accept test user credentials
-        if (credentials?.email === "test@example.com" && credentials?.password === "password") {
-          return {
-            id: "1",
-            name: "Test User",
-            email: "test@example.com",
-            role: "admin" // Set test user as admin for development
-          };
+        if (credentials?.email === "test@example.com") {
+          logAuthStep("AUTH_TEST_USER", "Detected test@example.com login attempt", {
+            providedEmail: credentials.email,
+            providedPassword: credentials.password === "password" ? "Matches expected" : "Does not match expected",
+            isTestPassword: credentials.password === "password",
+          });
+          
+          if (credentials.password === "password") {
+            logAuthSuccess("AUTH_TEST_USER", "Test user authentication successful");
+            return {
+              id: "1",
+              name: "Test User",
+              email: "test@example.com",
+              role: "admin" // Set test user as admin for development
+            };
+          } else {
+            logAuthStep("AUTH_TEST_USER_FAIL", "Test user provided incorrect password", {
+              expectedPassword: "password",
+              passwordLengthProvided: credentials.password?.length,
+            });
+            return null;
+          }
         }
         
         try {
-          await dbConnect();
+          // Check database connection
+          logAuthStep("AUTH_DB_CONNECT", "Connecting to database");
+          
+          try {
+            await dbConnect();
+            // Check MongoDB connection status
+            const mongoStatus = mongoose.connection.readyState;
+            const statusText = mongoStatus === 1 ? "Connected" :
+                              mongoStatus === 2 ? "Connecting" :
+                              mongoStatus === 3 ? "Disconnecting" : "Disconnected";
+            
+            logAuthStep("AUTH_DB_STATUS", `MongoDB connection status: ${statusText}`, { 
+              readyState: mongoStatus,
+              statusText: statusText,
+              host: mongoose.connection.host,
+              name: mongoose.connection.name
+            });
+          } catch (dbError) {
+            logAuthError("AUTH_DB_CONNECT", dbError);
+            return null;
+          }
           
           if (!credentials?.email || !credentials?.password) {
+            logAuthStep("AUTH_CREDENTIALS_MISSING", "Missing credentials", {
+              emailProvided: Boolean(credentials?.email),
+              passwordProvided: Boolean(credentials?.password)
+            });
             return null;
           }
           
-          const user = await User.findOne({ email: credentials.email });
+          logAuthStep("AUTH_USER_LOOKUP", `Looking up user by email: ${credentials.email.substring(0, 3)}...`);
+          
+          // Find user by email
+          let user;
+          try {
+            user = await User.findOne({ email: credentials.email });
+            logAuthStep("AUTH_USER_FOUND", user ? "User found in database" : "User not found in database", {
+              userFound: Boolean(user),
+              email: credentials.email.substring(0, 3) + "..." + credentials.email.split('@')[1],
+              userId: user?._id?.toString(),
+              userHasPassword: Boolean(user?.password),
+            });
+          } catch (lookupError) {
+            logAuthError("AUTH_USER_LOOKUP", lookupError);
+            return null;
+          }
           
           if (!user) {
+            logAuthStep("AUTH_USER_NOT_FOUND", "User not found for provided email");
             return null;
           }
           
-          // If user exists but doesn't have a password (like our test user)
+          // If user exists but doesn't have a password (like OAuth accounts)
           if (!user.password) {
+            logAuthStep("AUTH_PASSWORD_MISSING", "User exists but has no password (possibly OAuth account)");
             return null;
           }
           
-          console.log("Attempting login for:", credentials.email);
-          console.log("Password from credentials:", credentials.password.substring(0, 3) + "***");
-          console.log("Stored password hash (first 20 chars):", user.password.substring(0, 20) + "...");
+          logAuthStep("AUTH_PASSWORD_COMPARE", "Attempting password validation", {
+            passwordLength: credentials.password.length,
+            hashLength: user.password.length,
+            hashFirstChars: user.password.substring(0, 10) + "...",
+            compareMethod: "direct bcrypt comparison"
+          });
           
-          // Try both ways of comparing passwords
+          // Password validation - try direct comparison first
           let isPasswordValid = false;
-          
-          // 1. Using direct bcrypt comparison
           try {
             isPasswordValid = await compare(credentials.password, user.password);
-            console.log("Direct bcrypt compare result:", isPasswordValid);
-          } catch (err) {
-            console.error("Error in direct password comparison:", err);
+            logAuthStep("AUTH_PASSWORD_DIRECT_RESULT", `Direct bcrypt comparison ${isPasswordValid ? "succeeded" : "failed"}`, {
+              result: isPasswordValid
+            });
+          } catch (compareError) {
+            logAuthError("AUTH_PASSWORD_COMPARE_DIRECT", compareError);
           }
           
-          // 2. Using the model method if direct comparison fails
+          // Try model method if direct comparison fails and method exists
           if (!isPasswordValid && typeof user.comparePassword === 'function') {
+            logAuthStep("AUTH_PASSWORD_MODEL_COMPARE", "Trying model's comparePassword method", {
+              methodAvailable: typeof user.comparePassword === 'function'
+            });
+            
             try {
               isPasswordValid = await user.comparePassword(credentials.password);
-              console.log("Model comparePassword result:", isPasswordValid);
-            } catch (err) {
-              console.error("Error in model comparePassword:", err);
+              logAuthStep("AUTH_PASSWORD_MODEL_RESULT", `Model comparePassword method ${isPasswordValid ? "succeeded" : "failed"}`, {
+                result: isPasswordValid
+              });
+            } catch (modelCompareError) {
+              logAuthError("AUTH_PASSWORD_COMPARE_MODEL", modelCompareError);
             }
           }
           
+          // Final validation result
           if (!isPasswordValid) {
-            console.log("Password validation failed");
+            logAuthStep("AUTH_PASSWORD_VALIDATION_FAILED", "Both password validation methods failed");
             return null;
           }
           
-          console.log("Login successful for:", credentials.email);
+          // Authentication successful
+          logAuthSuccess("AUTH_SUCCESSFUL", `User ${user.email} authenticated successfully`);
           return {
             id: user._id.toString(),
             email: user.email,
@@ -173,7 +297,7 @@ export const authOptions: NextAuthOptions = {
             role: user.role || 'user'
           };
         } catch (error) {
-          console.error("Error in authorize function:", error);
+          logAuthError("AUTH_GENERAL", error);
           return null;
         }
       }
@@ -192,6 +316,11 @@ export const authOptions: NextAuthOptions = {
         token.id = user.id;
         token.email = user.email;
         token.role = user.role;
+        logAuthStep("JWT_CALLBACK", "Adding user data to JWT token", {
+          userId: user.id,
+          userEmail: user.email?.substring(0, 3) + "..." + user.email?.split('@')[1],
+          userRole: user.role
+        });
       }
       return token;
     },
@@ -199,12 +328,27 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         session.user.id = token.id as string;
         session.user.role = token.role as string;
+        logAuthStep("SESSION_CALLBACK", "Adding user data to session", {
+          sessionUserId: session.user.id,
+          sessionUserRole: session.user.role
+        });
       }
       return session;
     },
   },
   secret: process.env.NEXTAUTH_SECRET || "development-secret-key",
   debug: process.env.NODE_ENV === "development",
+  logger: {
+    error(code, metadata) {
+      logAuthError("NEXTAUTH_ERROR", { code, metadata });
+    },
+    warn(code) {
+      console.warn(`[NextAuth] Warning: ${code}`);
+    },
+    debug(code, metadata) {
+      logAuthStep("NEXTAUTH_DEBUG", code, metadata);
+    },
+  },
 };
 
 export const getAuth = () => getServerSession(authOptions);
