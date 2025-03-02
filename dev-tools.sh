@@ -191,6 +191,26 @@ test_auth_system() {
   fi
 }
 
+# Test nutrition API
+test_nutrition_api() {
+  show_header "Testing Nutrition API"
+  
+  # Check for the environment file
+  if [ ! -f .env.local ]; then
+    show_error "No .env.local file found. Please create one with your MongoDB connection string."
+    return 1
+  fi
+  
+  # Use our dedicated nutrition test script
+  node scripts/test-nutrition-api.js
+  
+  if [ $? -eq 0 ]; then
+    show_success "Nutrition API is working properly!"
+  else
+    show_error "Nutrition API test failed. Check the logs for details."
+  fi
+}
+
 # Run all checks
 run_all_checks() {
   show_header "Running All Checks"
@@ -198,6 +218,7 @@ run_all_checks() {
   test_db_connection
   test_auth_system
   test_api_endpoints
+  test_nutrition_api
   lint_and_build_check
   
   if [ $? -eq 0 ]; then
@@ -223,6 +244,7 @@ show_usage() {
   echo "  db          Test database connection"
   echo "  auth        Test authentication system"
   echo "  api         Test API endpoints"
+  echo "  nutrition   Test nutrition API"
   echo "  lint        Run linting and build check"
   echo "  commit      Quick git add, commit, and push"
   echo "  all         Run all checks and then commit"
@@ -245,6 +267,9 @@ case "$1" in
     ;;
   api)
     test_api_endpoints
+    ;;
+  nutrition)
+    test_nutrition_api
     ;;
   lint)
     lint_and_build_check

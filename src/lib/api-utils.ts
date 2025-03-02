@@ -11,18 +11,44 @@ type ApiResponse<T = any> = {
   message?: string;
   error?: string | Record<string, any>;
   timestamp?: string;
+  pagination?: PaginationInfo;
 };
+
+/**
+ * Pagination information interface
+ */
+export interface PaginationInfo {
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+}
 
 /**
  * Creates a successful API response
  */
-export function apiResponse<T>(data: T, message?: string, status: number = 200): NextResponse<ApiResponse<T>> {
+export function apiResponse<T>(
+  data: T, 
+  message?: string, 
+  paginationOrStatus?: PaginationInfo | number,
+  status: number = 200
+): NextResponse<ApiResponse<T>> {
+  let actualStatus = status;
+  let pagination: PaginationInfo | undefined = undefined;
+  
+  if (typeof paginationOrStatus === 'number') {
+    actualStatus = paginationOrStatus;
+  } else if (paginationOrStatus) {
+    pagination = paginationOrStatus;
+  }
+  
   return NextResponse.json({
     success: true,
     data,
     message,
-    timestamp: new Date().toISOString()
-  }, { status });
+    timestamp: new Date().toISOString(),
+    pagination
+  }, { status: actualStatus });
 }
 
 /**
