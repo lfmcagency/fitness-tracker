@@ -4,7 +4,7 @@ import { NextRequest } from 'next/server';
 import { dbConnect } from '@/lib/db/mongodb';
 import UserProgress from '@/models/UserProgress';
 import { Types } from 'mongoose';
-import { getAuth } from '@/lib/auth';
+import { withAuth, AuthLevel } from '@/lib/auth-utils';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { 
   ProgressCategory, 
@@ -25,10 +25,11 @@ import { Exercise } from '@/models/Exercise';
  * Query parameters:
  * - includeExercises: boolean - Whether to include unlocked exercises details
  */
-export async function GET(
+export const GET = withAuth(async (
   req: NextRequest,
+  userId,
   { params }: { params: { category: string } }
-) {
+) => {
   try {
     // Validate category parameter with defensive check
     const category = params?.category;
@@ -42,34 +43,26 @@ export async function GET(
     }
     
     await dbConnect();
-    const session = await getAuth();
     
-    // Require authentication in production
-    if (!session && process.env.NODE_ENV === 'production') {
-      return apiError('Authentication required', 401, 'ERR_401');
-    }
-    
-    // Defensive check for user ID
-    const userId = session?.user?.id || '000000000000000000000000'; // Mock ID for development
-    let userObjectId: Types.ObjectId;
-    
-    try {
-      userObjectId = new Types.ObjectId(userId);
-    } catch (error) {
+    // Defensive check for userId
+    if (!userId || !Types.ObjectId.isValid(userId)) {
       return apiError('Invalid user ID', 400, 'ERR_INVALID_ID');
     }
     
+    const userObjectId = userId instanceof Types.ObjectId ? userId : new Types.ObjectId(userId);
+    
     // Parse query parameters with defensive checks
-    let url;
+    let includeExercises = false;
+    
     try {
-      url = new URL(req.url);
+      const url = new URL(req.url);
+      includeExercises = url.searchParams.get('includeExercises') === 'true';
     } catch (error) {
-      return apiError('Invalid request URL', 400, 'ERR_INVALID_URL');
+      console.error('Error parsing URL:', error);
+      // Continue with default values
     }
     
-    const includeExercises = url.searchParams.get('includeExercises') === 'true';
-    
-    // Try to get the user's progress document
+    // Try to get the user's progress document with error handling
     let userProgress;
     try {
       userProgress = await UserProgress.findOne({ userId: userObjectId });
@@ -84,6 +77,11 @@ export async function GET(
       } catch (error) {
         return handleApiError(error, 'Failed to create initial progress record');
       }
+    }
+    
+    // Defensive null check for userProgress
+    if (!userProgress) {
+      return apiError('Unable to find or create user progress', 500, 'ERR_DATABASE');
     }
     
     // Defensive null checks for category progress
@@ -190,4 +188,4 @@ export async function GET(
   } catch (error) {
     return handleApiError(error, 'Error retrieving category progress');
   }
-}
+}, AuthLevel.DEV_OPTIONAL);

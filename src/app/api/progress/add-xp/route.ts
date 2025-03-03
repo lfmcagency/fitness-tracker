@@ -5,7 +5,7 @@ import { dbConnect } from '@/lib/db/mongodb';
 import { withAuth, AuthLevel } from '@/lib/auth-utils';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { validateRequest, schemas } from '@/lib/validation';
-import { awardXp } from '@/lib/xp-manager';
+import { awardXp } from '@/lib/xp-manager-improved';
 
 /**
  * POST /api/progress/add-xp
@@ -16,31 +16,61 @@ export const POST = withAuth(async (req: NextRequest, userId) => {
   try {
     await dbConnect();
     
-    // Validate request body - only do this once
-    const { xpAmount, category, source, details } = await validateRequest(
-      req,
-      schemas.xp.addXp
-    );
+    // Defensive check for userId
+    if (!userId) {
+      return apiError('Invalid user ID', 400, 'ERR_INVALID_ID');
+    }
+    
+    // Validate request body with defensive error handling
+    let requestData;
+    try {
+      requestData = await validateRequest(
+        req,
+        schemas.xp.addXp
+      );
+    } catch (error) {
+      // validateRequest already returns an API error response
+      if (error.status && error.json) {
+        return error;
+      }
+      return apiError('Invalid request data', 400, 'ERR_VALIDATION');
+    }
+    
+    // Safely extract values with defaults
+    const xpAmount = Number(requestData?.xpAmount || 0);
+    const category = requestData?.category;
+    const source = requestData?.source || '';
+    const details = requestData?.details || '';
     
     // Add additional defensive validation
     if (!xpAmount || xpAmount <= 0) {
       return apiError('XP amount must be positive', 400, 'ERR_VALIDATION');
     }
     
-    if (!source) {
+    if (!source || typeof source !== 'string' || source.trim() === '') {
       return apiError('Source is required', 400, 'ERR_VALIDATION');
     }
     
-    // Award XP and get comprehensive result
-    const result = await awardXp(
-      userId,
-      xpAmount,
-      source,
-      category,
-      details
-    );
+    // Award XP and get comprehensive result with error handling
+    let result;
+    try {
+      result = await awardXp(
+        userId,
+        xpAmount,
+        source,
+        category,
+        details
+      );
+    } catch (error) {
+      return handleApiError(error, 'Error processing XP award');
+    }
     
-    // Generate appropriate success message
+    // Handle case where result is undefined or null
+    if (!result) {
+      return apiError('Failed to process XP award', 500, 'ERR_PROCESSING');
+    }
+    
+    // Generate appropriate success message with defensive checks
     let message;
     
     if (result.leveledUp && result.achievements?.count && result.category?.milestone) {

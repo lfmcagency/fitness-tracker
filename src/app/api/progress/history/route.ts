@@ -131,207 +131,214 @@ export const GET = withAuth(async (req: NextRequest, userId: Types.ObjectId) => 
         summary => summary && summary.date && new Date(summary.date) >= startDate
       );
       
-      if (relevantSummaries.length > 0) {
-        sourceData = relevantSummaries;
-        dataSource = 'summaries';
+      if (relevantSummaries.length > 0){
+          sourceData = relevantSummaries;
+          dataSource = 'summaries';
+        } else if (hasHistory) {
+          // Fall back to transactions
+          const history = userProgress.xpHistory || [];
+          sourceData = history.filter(
+            tx => tx && tx.date && new Date(tx.date) >= startDate
+          );
+          dataSource = 'transactions';
+        }
       } else if (hasHistory) {
-        // Fall back to transactions
+        // Use transactions for shorter ranges or if no summaries
         const history = userProgress.xpHistory || [];
         sourceData = history.filter(
           tx => tx && tx.date && new Date(tx.date) >= startDate
         );
         dataSource = 'transactions';
       }
-    } else if (hasHistory) {
-      // Use transactions for shorter ranges or if no summaries
-      const history = userProgress.xpHistory || [];
-      sourceData = history.filter(
-        tx => tx && tx.date && new Date(tx.date) >= startDate
-      );
-      dataSource = 'transactions';
-    }
-    
-    // If no data in range, return empty result with metadata
-    if (!sourceData || sourceData.length === 0) {
+      
+      // If no data in range, return empty result with metadata
+      if (!sourceData || sourceData.length === 0) {
+        return apiResponse({
+          data: [],
+          dataPoints: 0,
+          totalXp: 0,
+          timeRange,
+          groupBy,
+          category: categoryParam || 'all',
+          dataSource: 'none',
+          startDate: startDate.toISOString(),
+          endDate: now.toISOString()
+        }, true, 'No data found for selected time range');
+      }
+      
+      // Group the data
+      const groupedData: { [key: string]: { 
+        date: string, 
+        xp: number,
+        totalXp: number
+      }} = {};
+      
+      let cumulativeXp = 0;
+      
+      // Process the data based on source type with defensive checks
+      if (dataSource === 'summaries') {
+        // Using dailySummaries
+        for (const summary of sourceData as XpDailySummary[]) {
+          if (!summary || !summary.date) continue;
+          
+          const date = new Date(summary.date);
+          if (isNaN(date.getTime())) continue; // Skip invalid dates
+          
+          // Generate group key based on groupBy
+          const groupKey = formatDateForGrouping(date, groupBy);
+          
+          // Initialize group if needed
+          if (!groupedData[groupKey]) {
+            groupedData[groupKey] = {
+              date: formatDateForDisplay(date, groupBy),
+              xp: 0,
+              totalXp: 0
+            };
+          }
+          
+          // Add the XP amount based on category filter with defensive checks
+          let xpToAdd = 0;
+          
+          if (categoryParam === 'all') {
+            xpToAdd = typeof summary.totalXp === 'number' ? summary.totalXp : 0;
+          } else if (category && summary.categories && typeof summary.categories[category] === 'number') {
+            xpToAdd = summary.categories[category];
+          } else if (typeof summary.totalXp === 'number') {
+            xpToAdd = summary.totalXp;
+          }
+          
+          groupedData[groupKey].xp += xpToAdd;
+          
+          // Add to cumulative XP 
+          cumulativeXp += xpToAdd;
+          groupedData[groupKey].totalXp = cumulativeXp;
+        }
+      } else if (dataSource === 'transactions') {
+        // Using transaction data
+        for (const tx of sourceData as XpTransaction[]) {
+          if (!tx || !tx.date) continue;
+          
+          const date = new Date(tx.date);
+          if (isNaN(date.getTime())) continue; // Skip invalid dates
+          
+          // Generate group key based on groupBy
+          const groupKey = formatDateForGrouping(date, groupBy);
+          
+          // Skip if we're filtering by category and this transaction doesn't match
+          if (category && tx.category !== category) {
+            continue;
+          }
+          
+          // Initialize group if needed
+          if (!groupedData[groupKey]) {
+            groupedData[groupKey] = {
+              date: formatDateForDisplay(date, groupBy),
+              xp: 0,
+              totalXp: 0
+            };
+          }
+          
+          // Add the XP amount with defensive check
+          const xpToAdd = typeof tx.amount === 'number' ? tx.amount : 0;
+          groupedData[groupKey].xp += xpToAdd;
+        }
+        
+        // Calculate cumulative totals
+        const sortedKeys = Object.keys(groupedData).sort();
+        for (const key of sortedKeys) {
+          cumulativeXp += groupedData[key].xp;
+          groupedData[key].totalXp = cumulativeXp;
+        }
+      }
+      
+      // Convert to array and sort by date with defensive approach
+      let result = [];
+      try {
+        result = Object.values(groupedData).sort((a, b) => {
+          return new Date(a.date).getTime() - new Date(b.date).getTime();
+        });
+      } catch (error) {
+        console.error('Error sorting data:', error);
+        // Fall back to unsorted if error occurs
+        result = Object.values(groupedData);
+      }
+      
       return apiResponse({
-        data: [],
-        dataPoints: 0,
-        totalXp: 0,
+        data: result || [],
+        dataPoints: result.length,
+        totalXp: cumulativeXp,
         timeRange,
         groupBy,
         category: categoryParam || 'all',
-        dataSource: 'none',
+        dataSource,
         startDate: startDate.toISOString(),
         endDate: now.toISOString()
-      }, true, 'No data found for selected time range');
+      }, true, 'Progress history retrieved successfully');
+    } catch (error) {
+      return handleApiError(error, 'Error retrieving progress history');
+    }
+  }, AuthLevel.DEV_OPTIONAL);
+  
+  /**
+   * Helper function to format a date for grouping
+   */
+  function formatDateForGrouping(date: Date, groupBy: GroupBy): string {
+    if (!date || isNaN(date.getTime())) {
+      return new Date().toISOString().split('T')[0]; // Default to today if invalid
     }
     
-    // Group the data
-    const groupedData: { [key: string]: { 
-      date: string, 
-      xp: number,
-      totalXp: number
-    }} = {};
-    
-    let cumulativeXp = 0;
-    
-    // Process the data based on source type with defensive checks
-    if (dataSource === 'summaries') {
-      // Using dailySummaries
-      for (const summary of sourceData as XpDailySummary[]) {
-        if (!summary || !summary.date) continue;
-        
-        const date = new Date(summary.date);
-        if (isNaN(date.getTime())) continue; // Skip invalid dates
-        
-        // Generate group key based on groupBy
-        const groupKey = formatDateForGrouping(date, groupBy);
-        
-        // Initialize group if needed
-        if (!groupedData[groupKey]) {
-          groupedData[groupKey] = {
-            date: formatDateForDisplay(date, groupBy),
-            xp: 0,
-            totalXp: 0
-          };
-        }
-        
-        // Add the XP amount based on category filter with defensive checks
-        let xpToAdd = 0;
-        
-        if (categoryParam === 'all') {
-          xpToAdd = typeof summary.totalXp === 'number' ? summary.totalXp : 0;
-        } else if (category && summary.categories && typeof summary.categories[category] === 'number') {
-          xpToAdd = summary.categories[category];
-        } else if (typeof summary.totalXp === 'number') {
-          xpToAdd = summary.totalXp;
-        }
-        
-        groupedData[groupKey].xp += xpToAdd;
-        
-        // Add to cumulative XP 
-        cumulativeXp += xpToAdd;
-        groupedData[groupKey].totalXp = cumulativeXp;
-      }
-    } else if (dataSource === 'transactions') {
-      // Using transaction data
-      for (const tx of sourceData as XpTransaction[]) {
-        if (!tx || !tx.date) continue;
-        
-        const date = new Date(tx.date);
-        if (isNaN(date.getTime())) continue; // Skip invalid dates
-        
-        // Generate group key based on groupBy
-        const groupKey = formatDateForGrouping(date, groupBy);
-        
-        // Skip if we're filtering by category and this transaction doesn't match
-        if (category && tx.category !== category) {
-          continue;
-        }
-        
-        // Initialize group if needed
-        if (!groupedData[groupKey]) {
-          groupedData[groupKey] = {
-            date: formatDateForDisplay(date, groupBy),
-            xp: 0,
-            totalXp: 0
-          };
-        }
-        
-        // Add the XP amount with defensive check
-        const xpToAdd = typeof tx.amount === 'number' ? tx.amount : 0;
-        groupedData[groupKey].xp += xpToAdd;
+    switch (groupBy) {
+      case 'day':
+        return date.toISOString().split('T')[0]; // YYYY-MM-DD
+      
+      case 'week': {
+        // Get the first day of the week (Sunday)
+        const firstDay = new Date(date);
+        const day = date.getDay(); // 0 for Sunday
+        firstDay.setDate(date.getDate() - day);
+        return firstDay.toISOString().split('T')[0];
       }
       
-      // Calculate cumulative totals
-      const sortedKeys = Object.keys(groupedData).sort();
-      for (const key of sortedKeys) {
-        cumulativeXp += groupedData[key].xp;
-        groupedData[key].totalXp = cumulativeXp;
-      }
+      case 'month':
+        return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
+      
+      default:
+        return date.toISOString().split('T')[0];
     }
-    
-    // Convert to array and sort by date
-    const result = Object.values(groupedData).sort((a, b) => {
-      return new Date(a.date).getTime() - new Date(b.date).getTime();
-    });
-    
-    return apiResponse({
-      data: result || [],
-      dataPoints: result.length,
-      totalXp: cumulativeXp,
-      timeRange,
-      groupBy,
-      category: categoryParam || 'all',
-      dataSource,
-      startDate: startDate.toISOString(),
-      endDate: now.toISOString()
-    }, true, 'Progress history retrieved successfully');
-  } catch (error) {
-    return handleApiError(error, 'Error retrieving progress history');
-  }
-}, AuthLevel.DEV_OPTIONAL);
-
-/**
- * Helper function to format a date for grouping
- */
-function formatDateForGrouping(date: Date, groupBy: GroupBy): string {
-  if (!date || isNaN(date.getTime())) {
-    return new Date().toISOString().split('T')[0]; // Default to today if invalid
   }
   
-  switch (groupBy) {
-    case 'day':
-      return date.toISOString().split('T')[0]; // YYYY-MM-DD
-    
-    case 'week': {
-      // Get the first day of the week (Sunday)
-      const firstDay = new Date(date);
-      const day = date.getDay(); // 0 for Sunday
-      firstDay.setDate(date.getDate() - day);
-      return firstDay.toISOString().split('T')[0];
+  /**
+   * Helper function to format a date for display
+   */
+  function formatDateForDisplay(date: Date, groupBy: GroupBy): string {
+    if (!date || isNaN(date.getTime())) {
+      return new Date().toISOString().split('T')[0]; // Default to today if invalid
     }
     
-    case 'month':
-      return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
-    
-    default:
-      return date.toISOString().split('T')[0];
-  }
-}
-
-/**
- * Helper function to format a date for display
- */
-function formatDateForDisplay(date: Date, groupBy: GroupBy): string {
-  if (!date || isNaN(date.getTime())) {
-    return new Date().toISOString().split('T')[0]; // Default to today if invalid
-  }
-  
-  switch (groupBy) {
-    case 'day':
-      return date.toISOString().split('T')[0]; // YYYY-MM-DD
-    
-    case 'week': {
-      // Get the first day of the week (Sunday)
-      const firstDay = new Date(date);
-      const day = date.getDay(); // 0 for Sunday
-      firstDay.setDate(date.getDate() - day);
+    switch (groupBy) {
+      case 'day':
+        return date.toISOString().split('T')[0]; // YYYY-MM-DD
       
-      // Get the last day of the week (Saturday)
-      const lastDay = new Date(firstDay);
-      lastDay.setDate(firstDay.getDate() + 6);
+      case 'week': {
+        // Get the first day of the week (Sunday)
+        const firstDay = new Date(date);
+        const day = date.getDay(); // 0 for Sunday
+        firstDay.setDate(date.getDate() - day);
+        
+        // Get the last day of the week (Saturday)
+        const lastDay = new Date(firstDay);
+        lastDay.setDate(firstDay.getDate() + 6);
+        
+        // Format as "YYYY-MM-DD - YYYY-MM-DD"
+        return `${firstDay.toISOString().split('T')[0]} - ${lastDay.toISOString().split('T')[0]}`;
+      }
       
-      // Format as "YYYY-MM-DD - YYYY-MM-DD"
-      return `${firstDay.toISOString().split('T')[0]} - ${lastDay.toISOString().split('T')[0]}`;
+      case 'month': {
+        // Format as "YYYY-MM"
+        return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
+      }
+      
+      default:
+        return date.toISOString().split('T')[0];
     }
-    
-    case 'month': {
-      // Format as "YYYY-MM"
-      return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
-    }
-    
-    default:
-      return date.toISOString().split('T')[0];
   }
-}

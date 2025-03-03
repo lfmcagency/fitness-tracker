@@ -4,7 +4,7 @@ import { NextRequest } from 'next/server';
 import { dbConnect } from '@/lib/db/mongodb';
 import UserProgress from '@/models/UserProgress';
 import { Types } from 'mongoose';
-import { getAuth } from '@/lib/auth';
+import { withAuth, AuthLevel } from '@/lib/auth-utils';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { getCategoriesComparison, VALID_CATEGORIES, CATEGORY_METADATA, ProgressCategory, isValidCategory } from '@/lib/category-progress';
 
@@ -20,27 +20,24 @@ import { getCategoriesComparison, VALID_CATEGORIES, CATEGORY_METADATA, ProgressC
  * - Balance score and recommendations
  * - Category-specific metadata for UI rendering
  */
-export async function GET(req: NextRequest) {
+export const GET = withAuth(async (req: NextRequest, userId) => {
   try {
     await dbConnect();
-    const session = await getAuth();
     
-    // Require authentication in production
-    if (!session && process.env.NODE_ENV === 'production') {
-      return apiError('Authentication required', 401);
+    // Defensive check for userId validity
+    if (!userId || !Types.ObjectId.isValid(userId)) {
+      return apiError('Invalid user ID', 400, 'ERR_INVALID_ID');
     }
     
-    const userId = session?.user?.id || '000000000000000000000000'; // Mock ID for development
-    let userObjectId: Types.ObjectId;
+    const userObjectId = userId instanceof Types.ObjectId ? userId : new Types.ObjectId(userId);
     
+    // Try to get the user's progress document with error handling
+    let userProgress;
     try {
-      userObjectId = new Types.ObjectId(userId);
+      userProgress = await UserProgress.findOne({ userId: userObjectId });
     } catch (error) {
-      return apiError('Invalid user ID', 400);
+      return handleApiError(error, 'Database error while fetching user progress');
     }
-    
-    // Try to get the user's progress document
-    let userProgress = await UserProgress.findOne({ userId: userObjectId });
     
     // If no progress document exists, create one with initial values
     if (!userProgress) {
@@ -51,35 +48,77 @@ export async function GET(req: NextRequest) {
       }
     }
     
-    // Get category comparison data
-    const categoriesData = getCategoriesComparison(userProgress);
+    // Defensively ensure userProgress is valid before proceeding
+    if (!userProgress) {
+      return apiError('Unable to find or create user progress', 500, 'ERR_DATABASE');
+    }
     
-    // Calculate overall stats
-    const totalCategoryLevels = VALID_CATEGORIES.reduce(
-      (sum, category) => sum + userProgress.categoryProgress[category].level, 
-      0
-    );
+    // Get category comparison data with defensive error handling
+    let categoriesData;
+    try {
+      categoriesData = getCategoriesComparison(userProgress);
+    } catch (error) {
+      console.error('Error calculating category comparison:', error);
+      // Provide default comparison data
+      categoriesData = {
+        categories: [],
+        strongest: { category: 'core', xp: 0, level: 1 },
+        weakest: { category: 'core', xp: 0, level: 1 },
+        balanceScore: 100,
+        balanceMessage: 'Error calculating balance'
+      };
+    }
     
-    const averageCategoryLevel = totalCategoryLevels / VALID_CATEGORIES.length;
+    // Ensure we have valid weakest category for recommendations
+    const weakestCategory = categoriesData?.weakest?.category || 'core';
     
-    // Generate recommendations based on balance
+    // Ensure category progress exists for calculations
+    const categoryProgress = userProgress.categoryProgress || {
+      core: { level: 1, xp: 0 },
+      push: { level: 1, xp: 0 },
+      pull: { level: 1, xp: 0 },
+      legs: { level: 1, xp: 0 }
+    };
+    
+    // Calculate overall stats with defensive null checks
+    let totalCategoryLevels = 0;
+    let validCategoryCount = 0;
+    
+    VALID_CATEGORIES.forEach(category => {
+      const level = categoryProgress[category]?.level || 1;
+      totalCategoryLevels += level;
+      validCategoryCount++;
+    });
+    
+    const averageCategoryLevel = validCategoryCount > 0 
+      ? totalCategoryLevels / validCategoryCount
+      : 1;
+    
+    // Generate recommendations based on balance with defensive checks
     const recommendations = generateRecommendations(
-      categoriesData.balanceScore,
-      categoriesData.weakest.category
+      categoriesData?.balanceScore || 100,
+      weakestCategory
     );
     
-    // Build response
+    // Build response with careful null checks
     const response = {
       ...categoriesData,
       metadata: {
         categories: VALID_CATEGORIES.map(cat => ({
           key: cat,
-          ...CATEGORY_METADATA[cat]
+          ...(CATEGORY_METADATA[cat] || {
+            name: cat,
+            description: 'Category information',
+            icon: 'circle',
+            color: 'bg-gray-500',
+            primaryMuscles: [],
+            scaling: 1.0
+          })
         })),
         categoryCount: VALID_CATEGORIES.length
       },
       overview: {
-        totalXp: userProgress.totalXp,
+        totalXp: userProgress.totalXp || 0,
         averageCategoryLevel: parseFloat(averageCategoryLevel.toFixed(1)),
         totalCategoryLevels
       },
@@ -90,7 +129,7 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     return handleApiError(error, 'Error retrieving categories summary');
   }
-}
+}, AuthLevel.DEV_OPTIONAL);
 
 /**
  * Generate recommendations based on balance score and weakest category
@@ -98,22 +137,25 @@ export async function GET(req: NextRequest) {
 function generateRecommendations(balanceScore: number, weakestCategory: string) {
   const recommendations = [];
   
-  // Ensure weakestCategory is a valid category
+  // Ensure weakestCategory is valid with defensive check
   const safeCategory = isValidCategory(weakestCategory) ? weakestCategory : 'core';
+  
+  // Get category metadata with fallback
+  const categoryName = CATEGORY_METADATA[safeCategory]?.name || safeCategory.charAt(0).toUpperCase() + safeCategory.slice(1);
   
   // Balance-based recommendations
   if (balanceScore < 50) {
     recommendations.push({
       type: 'balance',
       priority: 'high',
-      message: `Focus on ${CATEGORY_METADATA[safeCategory].name} exercises to improve overall balance.`,
+      message: `Focus on ${categoryName} exercises to improve overall balance.`,
       target: safeCategory
     });
   } else if (balanceScore < 75) {
     recommendations.push({
       type: 'balance',
       priority: 'medium',
-      message: `Consider adding more ${CATEGORY_METADATA[safeCategory].name} exercises to your routine.`,
+      message: `Consider adding more ${categoryName} exercises to your routine.`,
       target: safeCategory
     });
   } else {

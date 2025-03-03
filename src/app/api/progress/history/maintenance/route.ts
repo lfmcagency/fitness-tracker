@@ -31,9 +31,23 @@ export const POST = withAuth(async (req: NextRequest, userId) => {
   try {
     await dbConnect();
     
-    // Parse request body
-    const body = await req.json();
-    const { action, keepDays, userId: targetUserId } = body;
+    // Defensive check for userId
+    if (!userId || !Types.ObjectId.isValid(userId)) {
+      return apiError('Invalid user ID', 400, 'ERR_INVALID_ID');
+    }
+    
+    // Parse request body with defensive error handling
+    let body;
+    try {
+      body = await req.json();
+    } catch (error) {
+      return apiError('Invalid JSON request body', 400, 'ERR_INVALID_REQUEST');
+    }
+    
+    // Safely extract values with defaults
+    const action = typeof body?.action === 'string' ? body.action : '';
+    const keepDays = body?.keepDays;
+    const targetUserId = body?.userId;
     
     // Validate action
     if (!action || !['summarize', 'purge', 'auto'].includes(action)) {
@@ -65,8 +79,13 @@ export const POST = withAuth(async (req: NextRequest, userId) => {
     let result;
     
     if (action === 'summarize') {
-      // Build daily summaries for all history
-      const summariesCreated = await buildAllDailySummaries(userObjectId);
+      // Build daily summaries for all history with error handling
+      let summariesCreated;
+      try {
+        summariesCreated = await buildAllDailySummaries(userObjectId);
+      } catch (error) {
+        return handleApiError(error, 'Error creating summary records');
+      }
       
       result = {
         action: 'summarize',
@@ -76,37 +95,52 @@ export const POST = withAuth(async (req: NextRequest, userId) => {
     } 
     else if (action === 'purge') {
       // Validate keepDays parameter
-      const daysToKeep = keepDays && !isNaN(Number(keepDays)) 
-        ? Math.max(7, Math.min(365, Number(keepDays))) // Min 7 days, max 365 days
+      const daysToKeep = Number(keepDays);
+      const validDaysToKeep = !isNaN(daysToKeep)
+        ? Math.max(7, Math.min(365, daysToKeep)) // Min 7 days, max 365 days
         : 90; // Default to 90 days
       
       // Calculate purge threshold date
       const purgeThreshold = new Date();
-      purgeThreshold.setDate(purgeThreshold.getDate() - daysToKeep);
+      purgeThreshold.setDate(purgeThreshold.getDate() - validDaysToKeep);
       
-      // First ensure we have summaries
-      await buildAllDailySummaries(userObjectId);
+      // First ensure we have summaries with error handling
+      try {
+        await buildAllDailySummaries(userObjectId);
+      } catch (error) {
+        return handleApiError(error, 'Error creating summary records before purge');
+      }
       
-      // Then purge old history
-      const entriesPurged = await purgeOldHistory(userObjectId, purgeThreshold, true);
+      // Then purge old history with error handling
+      let entriesPurged;
+      try {
+        entriesPurged = await purgeOldHistory(userObjectId, purgeThreshold, true);
+      } catch (error) {
+        return handleApiError(error, 'Error purging old history');
+      }
       
       result = {
         action: 'purge',
-        keepDays: daysToKeep,
+        keepDays: validDaysToKeep,
         purgeDate: purgeThreshold.toISOString(),
         entriesPurged,
-        message: `Purged ${entriesPurged} history entries older than ${daysToKeep} days`
+        message: `Purged ${entriesPurged} history entries older than ${validDaysToKeep} days`
       };
     }
     else if (action === 'auto') {
-      // Run automatic maintenance
-      const { summarized, purged } = await manageHistoryStorage(userObjectId);
+      // Run automatic maintenance with error handling
+      let maintenance;
+      try {
+        maintenance = await manageHistoryStorage(userObjectId);
+      } catch (error) {
+        return handleApiError(error, 'Error performing automatic maintenance');
+      }
       
       result = {
         action: 'auto',
-        summariesCreated: summarized,
-        entriesPurged: purged,
-        message: `Created ${summarized} summaries and purged ${purged} old entries`
+        summariesCreated: maintenance?.summarized || 0,
+        entriesPurged: maintenance?.purged || 0,
+        message: `Created ${maintenance?.summarized || 0} summaries and purged ${maintenance?.purged || 0} old entries`
       };
     }
     
@@ -129,47 +163,77 @@ export const GET = withAuth(async (req: NextRequest, userId) => {
   try {
     await dbConnect();
     
+    // Defensive check for userId
+    if (!userId || !Types.ObjectId.isValid(userId)) {
+      return apiError('Invalid user ID', 400, 'ERR_INVALID_ID');
+    }
+    
     const userObjectId = userId instanceof Types.ObjectId ? userId : new Types.ObjectId(userId);
     
-    // Get the user's progress document
-    const userProgress = await UserProgress.findOne({ userId: userObjectId })
-      .select('xpHistory dailySummaries createdAt updatedAt');
+    // Get the user's progress document with error handling
+    let userProgress;
+    try {
+      userProgress = await UserProgress.findOne({ userId: userObjectId })
+        .select('xpHistory dailySummaries createdAt updatedAt');
+    } catch (error) {
+      return handleApiError(error, 'Database error while fetching user progress');
+    }
     
     if (!userProgress) {
       return apiError('User progress not found', 404, 'ERR_NOT_FOUND');
     }
     
-    // Calculate history statistics
-    const totalHistoryEntries = userProgress.xpHistory?.length || 0;
-    const totalSummaries = userProgress.dailySummaries?.length || 0;
+    // Calculate history statistics with defensive null checks
+    const totalHistoryEntries = Array.isArray(userProgress.xpHistory) ? userProgress.xpHistory.length : 0;
+    const totalSummaries = Array.isArray(userProgress.dailySummaries) ? userProgress.dailySummaries.length : 0;
     
-    // Find date range of activity
+    // Find date range of activity with defensive approach
     let earliestActivity = null;
     let latestActivity = null;
     
     if (totalHistoryEntries > 0 && Array.isArray(userProgress.xpHistory)) {
-      // Sort by date (oldest first)
-      const sortedEntries = [...userProgress.xpHistory].sort(
-        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-      );
-      
-      earliestActivity = sortedEntries[0].date;
-      latestActivity = sortedEntries[sortedEntries.length - 1].date;
+      try {
+        // Sort by date (oldest first) with defensive approach
+        const sortedEntries = [...userProgress.xpHistory]
+          .filter(entry => entry && entry.date) // Filter out entries without valid dates
+          .sort((a, b) => {
+            const dateA = new Date(a.date).getTime();
+            const dateB = new Date(b.date).getTime();
+            return isNaN(dateA) || isNaN(dateB) ? 0 : dateA - dateB;
+          });
+        
+        if (sortedEntries.length > 0) {
+          earliestActivity = sortedEntries[0].date;
+          latestActivity = sortedEntries[sortedEntries.length - 1].date;
+        }
+      } catch (error) {
+        console.error('Error sorting history entries:', error);
+        // Continue with null values
+      }
     }
     
-    // Group history entries by month for size distribution
+    // Group history entries by month for size distribution with defensive approach
     const historySizeByMonth: Record<string, number> = {};
     
     if (totalHistoryEntries > 0 && Array.isArray(userProgress.xpHistory)) {
       for (const entry of userProgress.xpHistory) {
-        const date = new Date(entry.date);
-        const monthKey = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
+        if (!entry || !entry.date) continue;
         
-        if (!historySizeByMonth[monthKey]) {
-          historySizeByMonth[monthKey] = 0;
+        try {
+          const date = new Date(entry.date);
+          if (isNaN(date.getTime())) continue; // Skip invalid dates
+          
+          const monthKey = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
+          
+          if (!historySizeByMonth[monthKey]) {
+            historySizeByMonth[monthKey] = 0;
+          }
+          
+          historySizeByMonth[monthKey]++;
+        } catch (error) {
+          // Skip this entry if there's an error
+          continue;
         }
-        
-        historySizeByMonth[monthKey]++;
       }
     }
     
