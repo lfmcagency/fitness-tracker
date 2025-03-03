@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest } from 'next/server';
 import { dbConnect } from '@/lib/db/mongodb';
 import { withAuth, AuthLevel } from '@/lib/auth-utils';
-import { apiSuccess, handleApiError } from '@/lib/api-utils';
+import { apiSuccess, apiError, handleApiError } from '@/lib/api-utils';
 import { validateRequest, schemas } from '@/lib/validation';
 import { awardXp } from '@/lib/xp-manager';
 
@@ -24,11 +24,20 @@ export const POST = withAuth(async (req: NextRequest, userId) => {
   try {
     await dbConnect();
     
-    // Validate request body
+    // Validate request body - only do this once
     const { xpAmount, category, source, details } = await validateRequest(
       req,
       schemas.xp.addXp
     );
+    
+    // Add additional defensive validation
+    if (!xpAmount || xpAmount <= 0) {
+      return apiError('XP amount must be positive', 400, 'ERR_VALIDATION');
+    }
+    
+    if (!source) {
+      return apiError('Source is required', 400, 'ERR_VALIDATION');
+    }
     
     // Award XP and get comprehensive result
     const result = await awardXp(

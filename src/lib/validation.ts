@@ -25,15 +25,16 @@ export async function validateRequest<T>(
       throw apiError(
         'Validation error',
         400,
-        { errors: formattedErrors }
+        'ERR_VALIDATION',  // Proper error code string
+        { errors: formattedErrors }  // Details as 4th parameter
       );
     }
     
-    throw apiError('Invalid request data', 400, error);
+    throw apiError('Invalid request data', 400, 'ERR_VALIDATION', error);
   }
 }
 
-// Common schema definitions for reuse
+// Define schemas outside the function to avoid module structure issues
 export const schemas = {
   // XP related schemas
   xp: {

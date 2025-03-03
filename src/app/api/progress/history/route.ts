@@ -216,7 +216,7 @@ export const GET = withAuth(async (req: NextRequest, userId: Types.ObjectId) => 
   } catch (error) {
     return handleApiError(error, 'Error retrieving progress history');
   }
-}, AuthLevel.REQUIRED);
+}, AuthLevel.DEV_OPTIONAL);
 
 /**
  * Helper function to format a date for grouping

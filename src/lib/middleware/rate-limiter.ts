@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { apiError } from '../api-utils-enhanced';
+import { apiError } from '../api-utils';
 
 // In-memory storage for rate limiting
 // In production, use Redis or another distributed cache instead

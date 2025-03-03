@@ -2,6 +2,22 @@ import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 
 /**
+ * Standardized API response interface
+ */
+export interface ApiResponse<T = any> {
+  success: boolean;
+  data?: T;
+  message?: string;
+  error?: {
+    code: string;
+    message: string;
+    details?: any;
+  };
+  timestamp: string;
+  pagination?: PaginationInfo;
+}
+
+/**
  * Pagination information interface
  */
 export interface PaginationInfo {
@@ -13,17 +29,61 @@ export interface PaginationInfo {
   hasPrevPage: boolean;
 }
 
-// Define an interface for the API response structure
-export interface ApiResponse<T> {
-  success: boolean;
-  data?: T;
-  error?: {
-    code: string;
-    message: string;
-  };
-  message?: string;
-  timestamp: string;
-  pagination?: PaginationInfo;
+/**
+ * Creates a standardized successful API response
+ * @param data Response data
+ * @param message Optional success message
+ * @param pagination Optional pagination information
+ * @param status HTTP status code (default: 200)
+ * @returns NextResponse with formatted success response
+ */
+export function apiSuccess<T>(
+  data: T, 
+  message?: string, 
+  pagination?: PaginationInfo,
+  status: number = 200
+): NextResponse<ApiResponse<T>> {
+  return NextResponse.json({
+    success: true,
+    data,
+    message,
+    timestamp: new Date().toISOString(),
+    pagination
+  }, { status });
+}
+
+/**
+ * Creates a standardized error API response
+ * @param message Error message
+ * @param status HTTP status code (default: 400)
+ * @param errorCode Optional error code string
+ * @param details Optional error details
+ * @returns NextResponse with formatted error response
+ */
+export function apiError(
+  message: string, 
+  status: number = 400, 
+  errorCode?: string,
+  details?: any
+): NextResponse<ApiResponse<never>> {
+  // Log the error for server-side debugging
+  console.error(`API Error (${status}): ${message}`, details);
+  
+  // Generate error code if not provided
+  const code = errorCode || `ERR_${status}`;
+  
+  // Only include detailed error information in development
+  const errorDetails = process.env.NODE_ENV === 'development' ? details : undefined;
+  
+  return NextResponse.json({
+    success: false,
+    error: {
+      code,
+      message,
+      details: errorDetails
+    },
+    timestamp: new Date().toISOString()
+  }, { status });
 }
 
 /**
@@ -40,64 +100,39 @@ export function apiResponse<T>(
   message?: string,
   status: number = success ? 200 : 400
 ): NextResponse<ApiResponse<T>> {
+  const timestamp = new Date().toISOString();
+  
   if (success) {
     return NextResponse.json({
       success: true,
       data,
       message,
-      timestamp: new Date().toISOString()
+      timestamp
     }, { status });
   } else {
-    // Error case - if data is a string, use it as the error message
-    const errorMessage = message || (typeof data === 'string' ? data : 'An error occurred');
+    // Error case
+    let errorMessage = message;
+    let errorDetails;
+    let errorCode = `ERR_${status}`;
+    
+    // Handle different error input types
+    if (typeof data === 'string') {
+      errorMessage = errorMessage || data;
+    } else if (data instanceof Error) {
+      errorMessage = errorMessage || data.message;
+      errorDetails = process.env.NODE_ENV === 'development' ? data.stack : undefined;
+    }
     
     return NextResponse.json({
       success: false,
       error: {
-        code: `ERR_${status}`,
-        message: errorMessage
+        code: errorCode,
+        message: errorMessage || 'An error occurred',
+        details: errorDetails
       },
-      timestamp: new Date().toISOString()
+      timestamp
     }, { status });
   }
-}
-//
-export function apiSuccess<T>(
-  data: T, 
-  message?: string, 
-  pagination?: PaginationInfo,
-  status: number = 200
-): NextResponse<ApiResponse<T>> {
-  return NextResponse.json({
-    success: true,
-    data,
-    message,
-    timestamp: new Date().toISOString(),
-    pagination
-  }, { status });
-}
-
-export function apiError(
-  message: string, 
-  status: number = 400, 
-  errorCode?: string,
-  details?: any
-): NextResponse<ApiResponse<never>> {
-  // Log the error for server-side debugging
-  console.error(`API Error (${status}): ${message}`, details);
-  
-  // Only include detailed error information in development
-  const errorDetails = process.env.NODE_ENV === 'development' ? details : undefined;
-  
-  return NextResponse.json({
-    success: false,
-    error: {
-      code: errorCode || `ERR_${status}`,
-      message,
-      details: errorDetails
-    },
-    timestamp: new Date().toISOString()
-  }, { status });
 }
 
 /**
@@ -156,10 +191,15 @@ export function handleApiError(error: unknown, defaultMessage: string = 'An unex
       { keyPattern: (error as any).keyPattern }
     );
   }
+
+  // Handle NextResponse (already formatted)
+  if (error instanceof NextResponse) {
+    return error as NextResponse;
+  }
   
   // Handle known error instances
   if (error instanceof Error) {
-    return apiError(error.message, 500, 'ERR_INTERNAL');
+    return apiError(error.message, 500, 'ERR_INTERNAL', error);
   }
   
   // Fallback for unknown error types

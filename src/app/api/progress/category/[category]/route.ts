@@ -24,14 +24,6 @@ import { Exercise } from '@/models/Exercise';
  * 
  * Query parameters:
  * - includeExercises: boolean - Whether to include unlocked exercises details
- * 
- * Returns detailed category-specific progress data, including:
- * - Total category XP and level
- * - Percentage of global XP
- * - Category rank and next rank
- * - Recent activity in the category
- * - Category-specific achievements
- * - Unlocked exercises (if requested)
  */
 export async function GET(
   req: NextRequest,
@@ -81,15 +73,39 @@ export async function GET(
       }
     }
     
-    // Get category statistics
+    // Defensive null checks for category progress
+    if (!userProgress.categoryProgress) {
+      return apiError('User progress data is corrupted', 500, 'ERR_DATA_CORRUPT');
+    }
+    
+    if (!userProgress.categoryProgress[category]) {
+      // Initialize category if it doesn't exist
+      userProgress.categoryProgress[category] = {
+        level: 1,
+        xp: 0,
+        unlockedExercises: []
+      };
+      await userProgress.save();
+    }
+    
+    // Get category statistics with defensive null checks
     const categoryStats = getCategoryStatistics(category, userProgress);
+    
+    // Safety check for categoryStats
+    if (!categoryStats) {
+      return apiError('Failed to retrieve category statistics', 500);
+    }
     
     // If requested, include unlocked exercises details
     let unlockedExercises = [];
-    if (includeExercises && userProgress.categoryProgress[category].unlockedExercises.length > 0) {
+    
+    // Add defensive null check for unlockedExercises
+    const categoryUnlockedExercises = userProgress.categoryProgress[category]?.unlockedExercises || [];
+    
+    if (includeExercises && categoryUnlockedExercises.length > 0) {
       try {
         unlockedExercises = await Exercise.find({
-          _id: { $in: userProgress.categoryProgress[category].unlockedExercises }
+          _id: { $in: categoryUnlockedExercises }
         }).select('name difficulty description category');
       } catch (error) {
         console.error('Error fetching unlocked exercises:', error);
@@ -97,10 +113,10 @@ export async function GET(
       }
     }
     
-    // Build response
+    // Build response with defensive checks
     const response = {
       ...categoryStats,
-      exercises: includeExercises ? unlockedExercises : undefined
+      exercises: includeExercises ? (unlockedExercises || []) : undefined
     };
     
     return apiResponse(response);
