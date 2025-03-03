@@ -207,6 +207,17 @@ export function handleApiError(error: unknown, defaultMessage: string = 'An unex
 }
 
 /**
+ * Safely check if a string starts with a prefix, handling undefined/null values
+ * @param str The string to check
+ * @param prefix The prefix to look for
+ * @returns Boolean indicating if the string starts with the prefix
+ */
+export function safeStartsWith(str: string | null | undefined, prefix: string): boolean {
+  if (!str) return false;
+  return str.startsWith(prefix);
+}
+
+/**
  * Helper to create pagination info from database query results
  * @param total Total number of items
  * @param page Current page number
