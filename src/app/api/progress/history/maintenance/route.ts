@@ -4,7 +4,7 @@ import { NextRequest } from 'next/server';
 import { dbConnect } from '@/lib/db/mongodb';
 import UserProgress from '@/models/UserProgress';
 import { Types } from 'mongoose';
-import { getAuth } from '@/lib/auth';
+import { withAuth, AuthLevel } from '@/lib/auth-utils';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { 
   buildAllDailySummaries, 
@@ -27,41 +27,38 @@ import {
  * 
  * This endpoint requires authentication and admin role for managing other users.
  */
-export async function POST(req: NextRequest) {
+export const POST = withAuth(async (req: NextRequest, userId) => {
   try {
     await dbConnect();
-    const session = await getAuth();
-    
-// For development, allow access without authentication
-if (!session && process.env.NODE_ENV === 'production') {
-  return apiError('Authentication required', 401);
-}
     
     // Parse request body
-    const { action, keepDays, userId: targetUserId } = await req.json();
+    const body = await req.json();
+    const { action, keepDays, userId: targetUserId } = body;
     
     // Validate action
     if (!action || !['summarize', 'purge', 'auto'].includes(action)) {
-      return apiError('Invalid action. Must be one of: summarize, purge, auto', 400);
+      return apiError('Invalid action. Must be one of: summarize, purge, auto', 400, 'ERR_VALIDATION');
     }
     
     let userObjectId: Types.ObjectId;
     
     // If managing another user's history, check admin permissions
-    if (targetUserId && targetUserId !== session.user.id) {
+    if (targetUserId && targetUserId !== userId.toString()) {
       // For production, verify admin role
-      if (process.env.NODE_ENV === 'production' && session.user.role !== 'admin') {
-        return apiError('Admin permission required to manage other users', 403);
+      if (process.env.NODE_ENV === 'production') {
+        // Admin role check would go here
+        // For now, disallow in production
+        return apiError('Admin permission required to manage other users', 403, 'ERR_FORBIDDEN');
       }
       
       try {
         userObjectId = new Types.ObjectId(targetUserId);
       } catch (error) {
-        return apiError('Invalid target user ID', 400);
+        return apiError('Invalid target user ID', 400, 'ERR_VALIDATION');
       }
     } else {
       // Self-management
-      userObjectId = new Types.ObjectId(session.user.id);
+      userObjectId = userId instanceof Types.ObjectId ? userId : new Types.ObjectId(userId);
     }
     
     // Execute the requested action
@@ -117,7 +114,7 @@ if (!session && process.env.NODE_ENV === 'production') {
   } catch (error) {
     return handleApiError(error, 'Error performing history maintenance');
   }
-}
+}, AuthLevel.DEV_OPTIONAL);
 
 /**
  * GET /api/progress/history/maintenance
@@ -128,24 +125,18 @@ if (!session && process.env.NODE_ENV === 'production') {
  * - Summary record count
  * - Earliest and latest recorded activity
  */
-export async function GET(req: NextRequest) {
+export const GET = withAuth(async (req: NextRequest, userId) => {
   try {
     await dbConnect();
-    const session = await getAuth();
     
-    // Require authentication
-    if (!session) {
-      return apiError('Authentication required', 401);
-    }
-    
-    const userObjectId = new Types.ObjectId(session.user.id);
+    const userObjectId = userId instanceof Types.ObjectId ? userId : new Types.ObjectId(userId);
     
     // Get the user's progress document
     const userProgress = await UserProgress.findOne({ userId: userObjectId })
       .select('xpHistory dailySummaries createdAt updatedAt');
     
     if (!userProgress) {
-      return apiError('User progress not found', 404);
+      return apiError('User progress not found', 404, 'ERR_NOT_FOUND');
     }
     
     // Calculate history statistics
@@ -156,7 +147,7 @@ export async function GET(req: NextRequest) {
     let earliestActivity = null;
     let latestActivity = null;
     
-    if (totalHistoryEntries > 0) {
+    if (totalHistoryEntries > 0 && Array.isArray(userProgress.xpHistory)) {
       // Sort by date (oldest first)
       const sortedEntries = [...userProgress.xpHistory].sort(
         (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
@@ -169,7 +160,7 @@ export async function GET(req: NextRequest) {
     // Group history entries by month for size distribution
     const historySizeByMonth: Record<string, number> = {};
     
-    if (totalHistoryEntries > 0) {
+    if (totalHistoryEntries > 0 && Array.isArray(userProgress.xpHistory)) {
       for (const entry of userProgress.xpHistory) {
         const date = new Date(entry.date);
         const monthKey = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
@@ -221,4 +212,4 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     return handleApiError(error, 'Error retrieving history statistics');
   }
-}
+}, AuthLevel.DEV_OPTIONAL);

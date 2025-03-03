@@ -25,19 +25,42 @@ export const GET = withAuth(async (req: NextRequest, userId: Types.ObjectId) => 
   try {
     await dbConnect();
     
-    const url = new URL(req.url);
+    // Defensive check for userId
+    if (!userId || !Types.ObjectId.isValid(userId)) {
+      return apiError('Invalid user ID', 400, 'ERR_INVALID_ID');
+    }
     
-    // Get query parameters with defaults
-    const timeRange = (url.searchParams.get('timeRange') || 'month') as TimeRange;
-    const groupBy = (url.searchParams.get('groupBy') || 'day') as GroupBy;
-    const categoryParam = url.searchParams.get('category') || undefined;
+    // Safely parse URL with defensive check
+    let url;
+    try {
+      url = new URL(req.url);
+    } catch (error) {
+      return apiError('Invalid request URL', 400, 'ERR_INVALID_URL');
+    }
+    
+    // Get query parameters with defaults and type validation
+    const timeRangeParam = url.searchParams.get('timeRange');
+    const groupByParam = url.searchParams.get('groupBy');
+    const categoryParam = url.searchParams.get('category');
+    
+    // Validate timeRange parameter
+    const validTimeRanges: TimeRange[] = ['day', 'week', 'month', 'year', 'all'];
+    const timeRange = validTimeRanges.includes(timeRangeParam as TimeRange) 
+      ? (timeRangeParam as TimeRange) 
+      : 'month';
+    
+    // Validate groupBy parameter
+    const validGroupBy: GroupBy[] = ['day', 'week', 'month'];
+    const groupBy = validGroupBy.includes(groupByParam as GroupBy) 
+      ? (groupByParam as GroupBy) 
+      : 'day';
     
     // Validate category if provided
     let category: ProgressCategory | undefined;
     
     if (categoryParam && categoryParam !== 'all') {
       if (!isValidCategory(categoryParam)) {
-        return apiError(`Invalid category: ${categoryParam}`, 400);
+        return apiError(`Invalid category: ${categoryParam}`, 400, 'ERR_INVALID_CATEGORY');
       }
       category = categoryParam as ProgressCategory;
     }
@@ -68,59 +91,79 @@ export const GET = withAuth(async (req: NextRequest, userId: Types.ObjectId) => 
         startDate = new Date(0); // Beginning of time
     }
     
-    // Get user progress
-    const userProgress = await UserProgress.findOne({ userId })
-      .select('dailySummaries xpHistory');
+    // Get user progress with defensive error handling
+    let userProgress;
+    try {
+      userProgress = await UserProgress.findOne({ userId })
+        .select('dailySummaries xpHistory');
+    } catch (error) {
+      return handleApiError(error, 'Database error while fetching user progress');
+    }
     
+    // If no progress document exists, return empty result with metadata
     if (!userProgress) {
-      return apiResponse({ data: [], dataPoints: 0, timeRange, groupBy }, true, 'No progress data found');
-    }
-    
-    // Choose data source based on time range and available data
-    let sourceData: (XpTransaction | XpDailySummary)[];
-    let dataSource: 'transactions' | 'summaries';
-    
-    // For longer time ranges, prefer daily summaries if available
-    if ((timeRange === 'month' || timeRange === 'year' || timeRange === 'all') 
-        && userProgress.dailySummaries 
-        && userProgress.dailySummaries.length > 0) {
-      
-      // Get summaries in range
-      const relevantSummaries = userProgress.dailySummaries.filter(
-        summary => new Date(summary.date) >= startDate
-      );
-      
-      if (relevantSummaries.length > 0) {
-        sourceData = relevantSummaries;
-        dataSource = 'summaries';
-      } else {
-        // Fall back to transactions
-        sourceData = userProgress.xpHistory.filter(
-          tx => new Date(tx.date) >= startDate
-        );
-        dataSource = 'transactions';
-      }
-    } else {
-      // Use transactions for shorter ranges or if no summaries
-      sourceData = userProgress.xpHistory.filter(
-        tx => new Date(tx.date) >= startDate
-      );
-      dataSource = 'transactions';
-    }
-    
-    // If no data in range, return empty result
-    if (sourceData.length === 0) {
       return apiResponse({
         data: [],
         dataPoints: 0,
         totalXp: 0,
         timeRange,
         groupBy,
-        category: categoryParam,
+        category: categoryParam || 'all',
         dataSource: 'none',
         startDate: startDate.toISOString(),
         endDate: now.toISOString()
-      }, true);
+      }, true, 'No progress data found');
+    }
+    
+    // Choose data source based on time range and available data
+    let sourceData: (XpTransaction | XpDailySummary)[] = [];
+    let dataSource: 'transactions' | 'summaries' | 'none' = 'none';
+    
+    // Defensively check for dailySummaries and xpHistory
+    const hasSummaries = Array.isArray(userProgress.dailySummaries) && userProgress.dailySummaries.length > 0;
+    const hasHistory = Array.isArray(userProgress.xpHistory) && userProgress.xpHistory.length > 0;
+    
+    // For longer time ranges, prefer daily summaries if available
+    if ((timeRange === 'month' || timeRange === 'year' || timeRange === 'all') && hasSummaries) {
+      // Get summaries in range with defensive null check
+      const summaries = userProgress.dailySummaries || [];
+      const relevantSummaries = summaries.filter(
+        summary => summary && summary.date && new Date(summary.date) >= startDate
+      );
+      
+      if (relevantSummaries.length > 0) {
+        sourceData = relevantSummaries;
+        dataSource = 'summaries';
+      } else if (hasHistory) {
+        // Fall back to transactions
+        const history = userProgress.xpHistory || [];
+        sourceData = history.filter(
+          tx => tx && tx.date && new Date(tx.date) >= startDate
+        );
+        dataSource = 'transactions';
+      }
+    } else if (hasHistory) {
+      // Use transactions for shorter ranges or if no summaries
+      const history = userProgress.xpHistory || [];
+      sourceData = history.filter(
+        tx => tx && tx.date && new Date(tx.date) >= startDate
+      );
+      dataSource = 'transactions';
+    }
+    
+    // If no data in range, return empty result with metadata
+    if (!sourceData || sourceData.length === 0) {
+      return apiResponse({
+        data: [],
+        dataPoints: 0,
+        totalXp: 0,
+        timeRange,
+        groupBy,
+        category: categoryParam || 'all',
+        dataSource: 'none',
+        startDate: startDate.toISOString(),
+        endDate: now.toISOString()
+      }, true, 'No data found for selected time range');
     }
     
     // Group the data
@@ -132,11 +175,14 @@ export const GET = withAuth(async (req: NextRequest, userId: Types.ObjectId) => 
     
     let cumulativeXp = 0;
     
-    // Process the data based on source type
+    // Process the data based on source type with defensive checks
     if (dataSource === 'summaries') {
       // Using dailySummaries
       for (const summary of sourceData as XpDailySummary[]) {
+        if (!summary || !summary.date) continue;
+        
         const date = new Date(summary.date);
+        if (isNaN(date.getTime())) continue; // Skip invalid dates
         
         // Generate group key based on groupBy
         const groupKey = formatDateForGrouping(date, groupBy);
@@ -150,23 +196,30 @@ export const GET = withAuth(async (req: NextRequest, userId: Types.ObjectId) => 
           };
         }
         
-        // Add the XP amount based on category filter
+        // Add the XP amount based on category filter with defensive checks
+        let xpToAdd = 0;
+        
         if (categoryParam === 'all') {
-          groupedData[groupKey].xp = summary.totalXp;
-        } else if (category) {
-          groupedData[groupKey].xp = summary.categories[category];
-        } else {
-          groupedData[groupKey].xp = summary.totalXp;
+          xpToAdd = typeof summary.totalXp === 'number' ? summary.totalXp : 0;
+        } else if (category && summary.categories && typeof summary.categories[category] === 'number') {
+          xpToAdd = summary.categories[category];
+        } else if (typeof summary.totalXp === 'number') {
+          xpToAdd = summary.totalXp;
         }
         
+        groupedData[groupKey].xp += xpToAdd;
+        
         // Add to cumulative XP 
-        cumulativeXp += groupedData[groupKey].xp;
+        cumulativeXp += xpToAdd;
         groupedData[groupKey].totalXp = cumulativeXp;
       }
-    } else {
+    } else if (dataSource === 'transactions') {
       // Using transaction data
       for (const tx of sourceData as XpTransaction[]) {
+        if (!tx || !tx.date) continue;
+        
         const date = new Date(tx.date);
+        if (isNaN(date.getTime())) continue; // Skip invalid dates
         
         // Generate group key based on groupBy
         const groupKey = formatDateForGrouping(date, groupBy);
@@ -185,8 +238,9 @@ export const GET = withAuth(async (req: NextRequest, userId: Types.ObjectId) => 
           };
         }
         
-        // Add the XP amount
-        groupedData[groupKey].xp += tx.amount;
+        // Add the XP amount with defensive check
+        const xpToAdd = typeof tx.amount === 'number' ? tx.amount : 0;
+        groupedData[groupKey].xp += xpToAdd;
       }
       
       // Calculate cumulative totals
@@ -203,12 +257,12 @@ export const GET = withAuth(async (req: NextRequest, userId: Types.ObjectId) => 
     });
     
     return apiResponse({
-      data: result,
+      data: result || [],
       dataPoints: result.length,
       totalXp: cumulativeXp,
       timeRange,
       groupBy,
-      category: categoryParam,
+      category: categoryParam || 'all',
       dataSource,
       startDate: startDate.toISOString(),
       endDate: now.toISOString()
@@ -222,6 +276,10 @@ export const GET = withAuth(async (req: NextRequest, userId: Types.ObjectId) => 
  * Helper function to format a date for grouping
  */
 function formatDateForGrouping(date: Date, groupBy: GroupBy): string {
+  if (!date || isNaN(date.getTime())) {
+    return new Date().toISOString().split('T')[0]; // Default to today if invalid
+  }
+  
   switch (groupBy) {
     case 'day':
       return date.toISOString().split('T')[0]; // YYYY-MM-DD
@@ -246,6 +304,10 @@ function formatDateForGrouping(date: Date, groupBy: GroupBy): string {
  * Helper function to format a date for display
  */
 function formatDateForDisplay(date: Date, groupBy: GroupBy): string {
+  if (!date || isNaN(date.getTime())) {
+    return new Date().toISOString().split('T')[0]; // Default to today if invalid
+  }
+  
   switch (groupBy) {
     case 'day':
       return date.toISOString().split('T')[0]; // YYYY-MM-DD
