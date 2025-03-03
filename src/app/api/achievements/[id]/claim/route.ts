@@ -3,8 +3,8 @@ export const dynamic = 'force-dynamic';
 import { NextRequest } from 'next/server';
 import { dbConnect } from '@/lib/db/mongodb';
 import { withAuth, AuthLevel } from '@/lib/auth-utils';
-import { apiSuccess, apiError, handleApiError } from '@/lib/api-utils';
-import { getAchievements, checkEligibility, isAchievementUnlocked } from '@/lib/achievements';
+import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
+import { getAchievements, checkEligibility, isAchievementUnlocked, awardAchievements } from '@/lib/achievements';
 
 /**
  * POST /api/achievements/:id/claim
@@ -22,7 +22,7 @@ export const POST = withAuth(async (req: NextRequest, userId, { params }) => {
     }
     
     // Get all achievements and check if the specified one exists
-    const achievements = await getAchievements();
+    const achievements = getAchievements();
     const achievement = achievements.find(a => a.id === achievementId);
     
     if (!achievement) {
@@ -33,10 +33,10 @@ export const POST = withAuth(async (req: NextRequest, userId, { params }) => {
     const isUnlocked = await isAchievementUnlocked(userId, achievementId);
     
     if (isUnlocked) {
-      return apiSuccess({ 
+      return apiResponse({ 
         claimed: false,
         message: 'Achievement already unlocked' 
-      }, 'Achievement already unlocked');
+      }, true, 'Achievement already unlocked');
     }
     
     // Check eligibility
@@ -49,10 +49,20 @@ export const POST = withAuth(async (req: NextRequest, userId, { params }) => {
       );
     }
     
-    // Award the achievement
-    const result = await awardAchievement(userId, achievement);
+    // Import UserProgress model
+    const UserProgress = (await import('@/models/UserProgress')).default;
     
-    return apiSuccess({
+    // Get user progress
+    const userProgress = await UserProgress.findOne({ userId });
+    
+    if (!userProgress) {
+      return apiError('User progress not found', 404);
+    }
+    
+    // Award the achievement
+    const result = await awardAchievements(userProgress, [achievement]);
+    
+    return apiResponse({
       claimed: true,
       achievement: {
         id: achievement.id,
@@ -60,7 +70,7 @@ export const POST = withAuth(async (req: NextRequest, userId, { params }) => {
         xpReward: achievement.xpReward
       },
       xpAwarded: achievement.xpReward
-    }, `Achievement "${achievement.title}" claimed successfully!`);
+    }, true, `Achievement "${achievement.title}" claimed successfully!`);
   } catch (error) {
     return handleApiError(error, 'Error claiming achievement');
   }

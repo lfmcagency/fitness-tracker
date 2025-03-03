@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest } from 'next/server';
 import { dbConnect } from '@/lib/db/mongodb';
 import { withAuth, AuthLevel } from '@/lib/auth-utils';
-import { apiSuccess, apiError, handleApiError } from '@/lib/api-utils';
+import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { validateRequest, schemas } from '@/lib/validation';
 import { awardXp } from '@/lib/xp-manager';
 
@@ -11,14 +11,6 @@ import { awardXp } from '@/lib/xp-manager';
  * POST /api/progress/add-xp
  * 
  * Adds XP to a user's progress and returns updated progress information.
- * Detects level-ups and updates category-specific XP if provided.
- * Checks for and awards any newly unlocked achievements.
- * 
- * Request payload:
- * - xpAmount: number (required) - Amount of XP to award
- * - category: string (optional) - One of: "core", "push", "pull", "legs"
- * - source: string (required) - Describes the activity that earned the XP
- * - details: string (optional) - Additional context about the XP award
  */
 export const POST = withAuth(async (req: NextRequest, userId) => {
   try {
@@ -69,7 +61,7 @@ export const POST = withAuth(async (req: NextRequest, userId) => {
       message = `You've earned ${xpAmount} XP from ${source}. ${result.xpToNextLevel} XP until next level.`;
     }
     
-    return apiSuccess(result, message);
+    return apiResponse(result, true, message);
   } catch (error) {
     return handleApiError(error, 'Error processing XP award');
   }

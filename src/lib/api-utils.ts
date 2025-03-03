@@ -1,238 +1,88 @@
+// src/lib/api-utils.ts
 import { NextResponse } from 'next/server';
-import mongoose from 'mongoose';
 
 /**
- * Standardized API response interface
+ * Standard API success response
  */
-export interface ApiResponse<T = any> {
-  success: boolean;
-  data?: T;
-  message?: string;
-  error?: {
-    code: string;
-    message: string;
-    details?: any;
-  };
-  timestamp: string;
-  pagination?: PaginationInfo;
-}
-
-/**
- * Pagination information interface
- */
-export interface PaginationInfo {
-  total: number;
-  page: number;
-  limit: number;
-  pages: number;
-  hasNextPage: boolean;
-  hasPrevPage: boolean;
-}
-
-/**
- * Creates a standardized successful API response
- * @param data Response data
- * @param message Optional success message
- * @param pagination Optional pagination information
- * @param status HTTP status code (default: 200)
- * @returns NextResponse with formatted success response
- */
-export function apiSuccess<T>(
-  data: T, 
-  message?: string, 
-  pagination?: PaginationInfo,
-  status: number = 200
-): NextResponse<ApiResponse<T>> {
+export function apiResponse(data: any, success = true, message = '', status = 200) {
+  const timestamp = new Date().toISOString();
+  
   return NextResponse.json({
-    success: true,
+    success,
     data,
     message,
-    timestamp: new Date().toISOString(),
-    pagination
+    timestamp
   }, { status });
 }
 
 /**
- * Creates a standardized error API response
- * @param message Error message
- * @param status HTTP status code (default: 400)
- * @param errorCode Optional error code string
- * @param details Optional error details
- * @returns NextResponse with formatted error response
+ * Standard API error response
  */
-export function apiError(
-  message: string, 
-  status: number = 400, 
-  errorCode?: string,
-  details?: any
-): NextResponse<ApiResponse<never>> {
-  // Log the error for server-side debugging
-  console.error(`API Error (${status}): ${message}`, details);
-  
-  // Generate error code if not provided
-  const code = errorCode || `ERR_${status}`;
-  
-  // Only include detailed error information in development
-  const errorDetails = process.env.NODE_ENV === 'development' ? details : undefined;
+export function apiError(message: string, status = 500, code = 'ERR_INTERNAL', details?: any) {
+  const timestamp = new Date().toISOString();
   
   return NextResponse.json({
     success: false,
     error: {
       code,
       message,
-      details: errorDetails
+      details: process.env.NODE_ENV === 'development' ? details : undefined
+    },
+    timestamp
+  }, { status });
+}
+
+/**
+ * Error handler for API routes
+ */
+export function handleApiError(error: unknown, contextMessage: string) {
+  console.error(`API Error: ${contextMessage}`, error);
+  
+  // Default error values
+  let status = 500;
+  let errorCode = 'ERR_INTERNAL';
+  let errorMessage = contextMessage || 'An internal error occurred';
+  let errorDetails;
+  
+  // Handle specific error types
+  if (error instanceof Error) {
+    errorDetails = error.message;
+    
+    // Handle MongoDB/Mongoose specific errors
+    if ('name' in error && error.name === 'ValidationError') {
+      status = 400;
+      errorCode = 'ERR_VALIDATION';
+      errorMessage = 'Validation error';
+      errorDetails = formatValidationErrors(error);
+    } else if ('name' in error && error.name === 'CastError') {
+      status = 400;
+      errorCode = 'ERR_INVALID_ID';
+      errorMessage = 'Invalid ID format';
+    }
+  }
+  
+  return NextResponse.json({
+    success: false,
+    error: {
+      code: errorCode,
+      message: errorMessage,
+      details: process.env.NODE_ENV === 'development' ? errorDetails : undefined
     },
     timestamp: new Date().toISOString()
   }, { status });
 }
 
 /**
- * General API response function that can handle both success and error cases
- * @param data Response data or error details
- * @param success Whether the response is a success (true) or error (false)
- * @param message Optional message
- * @param status HTTP status code
- * @returns NextResponse with formatted response
- */
-export function apiResponse<T>(
-  data: T, 
-  success: boolean = true,
-  message?: string,
-  status: number = success ? 200 : 400
-): NextResponse<ApiResponse<T>> {
-  const timestamp = new Date().toISOString();
-  
-  if (success) {
-    return NextResponse.json({
-      success: true,
-      data,
-      message,
-      timestamp
-    }, { status });
-  } else {
-    // Error case
-    let errorMessage = message;
-    let errorDetails;
-    let errorCode = `ERR_${status}`;
-    
-    // Handle different error input types
-    if (typeof data === 'string') {
-      errorMessage = errorMessage || data;
-    } else if (data instanceof Error) {
-      errorMessage = errorMessage || data.message;
-      errorDetails = process.env.NODE_ENV === 'development' ? data.stack : undefined;
-    }
-    
-    return NextResponse.json({
-      success: false,
-      error: {
-        code: errorCode,
-        message: errorMessage || 'An error occurred',
-        details: errorDetails
-      },
-      timestamp
-    }, { status });
-  }
-}
-
-/**
  * Format Mongoose validation errors into a structured object
- * @param error Mongoose validation error
- * @returns Structured validation error object
  */
-export function formatValidationErrors(error: mongoose.Error.ValidationError) {
-  const formattedErrors: Record<string, { message: string; value?: any }> = {};
+function formatValidationErrors(error: any) {
+  if (!error.errors) return error.message;
   
-  for (const field in error.errors) {
-    const err = error.errors[field];
-    formattedErrors[field] = {
-      message: err.message,
-      value: err.value
-    };
-  }
+  const formattedErrors: Record<string, string> = {};
+  
+  Object.keys(error.errors).forEach(key => {
+    formattedErrors[key] = error.errors[key].message;
+  });
   
   return formattedErrors;
-}
-
-/**
- * Standardized error handler for Mongoose and other common errors
- * @param error The caught error
- * @param defaultMessage Default error message if not a recognized error type
- * @returns NextResponse with appropriate error format
- */
-export function handleApiError(error: unknown, defaultMessage: string = 'An unexpected error occurred'): NextResponse {
-  // Handle Mongoose validation errors
-  if (error instanceof mongoose.Error.ValidationError) {
-    const errors = formatValidationErrors(error);
-    return apiError('Validation error', 400, 'ERR_VALIDATION', errors);
-  }
-  
-  // Handle Mongoose CastError (usually invalid ObjectId)
-  if (error instanceof mongoose.Error.CastError) {
-    return apiError(
-      `Invalid ${error.path}: ${error.value}`, 
-      400, 
-      'ERR_INVALID_ID',
-      { path: error.path, value: error.value }
-    );
-  }
-
-  // Handle document not found error
-  if (error instanceof mongoose.Error.DocumentNotFoundError) {
-    return apiError('Resource not found', 404, 'ERR_NOT_FOUND');
-  }
-  
-  // Handle MongoDB duplicate key error (code 11000)
-  if (error instanceof Error && 'code' in error && (error as any).code === 11000) {
-    return apiError(
-      'Duplicate entry', 
-      409, 
-      'ERR_DUPLICATE', 
-      { keyPattern: (error as any).keyPattern }
-    );
-  }
-
-  // Handle NextResponse (already formatted)
-  if (error instanceof NextResponse) {
-    return error as NextResponse;
-  }
-  
-  // Handle known error instances
-  if (error instanceof Error) {
-    return apiError(error.message, 500, 'ERR_INTERNAL', error);
-  }
-  
-  // Fallback for unknown error types
-  return apiError(defaultMessage, 500, 'ERR_UNKNOWN');
-}
-
-/**
- * Safely check if a string starts with a prefix, handling undefined/null values
- * @param str The string to check
- * @param prefix The prefix to look for
- * @returns Boolean indicating if the string starts with the prefix
- */
-export function safeStartsWith(str: string | null | undefined, prefix: string): boolean {
-  if (!str) return false;
-  return str.startsWith(prefix);
-}
-
-/**
- * Helper to create pagination info from database query results
- * @param total Total number of items
- * @param page Current page number
- * @param limit Items per page
- * @returns Pagination info object
- */
-export function createPaginationInfo(total: number, page: number, limit: number): PaginationInfo {
-  const pages = Math.ceil(total / limit);
-  
-  return {
-    total,
-    page,
-    limit,
-    pages,
-    hasNextPage: page < pages,
-    hasPrevPage: page > 1
-  };
 }

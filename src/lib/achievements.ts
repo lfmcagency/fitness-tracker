@@ -244,6 +244,14 @@ export const ACHIEVEMENTS: AchievementDefinition[] = [
 ];
 
 /**
+ * Retrieve all achievements from the system
+ * @returns Array of achievement definitions
+ */
+export function getAchievements(): AchievementDefinition[] {
+  return ACHIEVEMENTS;
+}
+
+/**
  * Check if a user meets an achievement's requirements
  * @param achievement Achievement definition to check
  * @param userProgress User's progress document
@@ -284,6 +292,90 @@ export function meetsRequirements(
   
   // If we've passed all applicable checks, the user meets the requirements
   return true;
+}
+
+/**
+ * Check if a specific achievement is unlocked for a user
+ * @param userId User ID to check
+ * @param achievementId Achievement ID to check
+ * @returns Boolean indicating if the achievement is unlocked
+ */
+export async function isAchievementUnlocked(
+  userId: string | Types.ObjectId,
+  achievementId: string
+): Promise<boolean> {
+  // Get the user progress
+  const userProgress = await getUserProgressForAchievements(userId);
+  if (!userProgress) return false;
+  
+  // Check if achievement is in the user's list
+  // Convert all IDs to strings for comparison
+  const userAchievementIds = userProgress.achievements.map(id => 
+    id instanceof Types.ObjectId ? id.toString() : String(id)
+  );
+  
+  // First check direct ID match (for predefined achievements)
+  if (userAchievementIds.includes(achievementId)) {
+    return true;
+  }
+  
+  // Then check database-stored achievements by fetching actual achievement IDs
+  const achievementDocs = await Achievement.find({
+    _id: { $in: userProgress.achievements }
+  });
+  
+  // Check if any of the achievement documents match the requested ID
+  // This handles cases where achievementId is a database ID
+  return achievementDocs.some(doc => doc._id.toString() === achievementId);
+}
+
+/**
+ * Check if a user is eligible for an achievement
+ * @param userId User ID to check
+ * @param achievement Achievement to check eligibility for
+ * @returns Object with eligibility status and reason
+ */
+export async function checkEligibility(
+  userId: string | Types.ObjectId,
+  achievement: AchievementDefinition
+): Promise<{ eligible: boolean; reason?: string }> {
+  // Get the user progress
+  const userProgress = await getUserProgressForAchievements(userId);
+  if (!userProgress) {
+    return { eligible: false, reason: 'User progress not found' };
+  }
+  
+  // Check if already unlocked
+  const userAchievementIds = userProgress.achievements.map(id => 
+    id instanceof Types.ObjectId ? id.toString() : String(id)
+  );
+  
+  if (userAchievementIds.includes(achievement.id)) {
+    return { eligible: false, reason: 'Achievement already unlocked' };
+  }
+  
+  // Check requirements
+  if (meetsRequirements(achievement, userProgress)) {
+    return { eligible: true };
+  }
+  
+  // Determine which requirement was not met
+  const req = achievement.requirements;
+  let reason = 'Requirements not met';
+  
+  if (req.level && userProgress.level < req.level) {
+    reason = `Level requirement not met: ${userProgress.level}/${req.level}`;
+  } else if (req.totalXp && userProgress.totalXp < req.totalXp) {
+    reason = `XP requirement not met: ${userProgress.totalXp}/${req.totalXp}`;
+  } else if (req.categoryLevel) {
+    const { category, level } = req.categoryLevel;
+    const currentLevel = userProgress.categoryProgress[category].level;
+    if (currentLevel < level) {
+      reason = `${category.charAt(0).toUpperCase() + category.slice(1)} level requirement not met: ${currentLevel}/${level}`;
+    }
+  }
+  
+  return { eligible: false, reason };
 }
 
 /**
@@ -447,4 +539,20 @@ function calculateAchievementProgress(
   // For other types of achievements, we'd need more context
   // Default to 0 if we can't calculate
   return 0;
+}
+
+/**
+ * Helper function to retrieve user progress for achievement checking
+ * @param userId User ID to retrieve progress for
+ * @returns User progress document or null if not found
+ */
+async function getUserProgressForAchievements(userId: string | Types.ObjectId): Promise<HydratedDocument<IUserProgress> | null> {
+  // Import UserProgress model dynamically to avoid circular dependencies
+  const UserProgress = (await import('@/models/UserProgress')).default;
+  
+  // Convert string ID to ObjectId if necessary
+  const userObjectId = typeof userId === 'string' ? new Types.ObjectId(userId) : userId;
+  
+  // Get the user progress
+  return await UserProgress.findOne({ userId: userObjectId });
 }
