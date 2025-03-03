@@ -294,24 +294,19 @@ export function meetsRequirements(
 export async function checkAchievements(
   userProgress: HydratedDocument<IUserProgress>
 ): Promise<AchievementDefinition[]> {
-  // First, get IDs of achievements the user already has
+  // Explicitly convert achievement IDs to strings
   const userAchievementIds = userProgress.achievements.map(id => 
-    id instanceof Types.ObjectId ? id.toString() : id.toString()
+    id instanceof Types.ObjectId ? id.toString() : String(id)
   );
   
-  // Check each achievement to see if:
-  // 1. User doesn't already have it
-  // 2. User meets the requirements
+  // Rest of the function remains the same
   const newlyUnlockedAchievements: AchievementDefinition[] = [];
   
-  // Check predefined achievements
   for (const achievement of ACHIEVEMENTS) {
-    // Skip if user already has this achievement
     if (userAchievementIds.includes(achievement.id)) {
       continue;
     }
     
-    // Check if user meets requirements
     if (meetsRequirements(achievement, userProgress)) {
       newlyUnlockedAchievements.push(achievement);
     }

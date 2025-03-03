@@ -1,4 +1,4 @@
-import UserProgress, { XpDailySummary } from '@/models/UserProgress';
+import UserProgress, { XpDailySummary, XpTransaction } from '@/models/UserProgress';
 import { Types } from 'mongoose';
 
 /**
@@ -154,8 +154,8 @@ export async function getProgressHistoryData(
   
   // Choose which data source to use based on time range and available data
   let historyData;
-  let dataSource: 'transactions' | 'summaries';
-  
+  let dataSource: 'transactions' | 'summaries' = 'transactions'; // Default to transactions
+
   // For longer time ranges, prefer daily summaries if available
   if ((timeRange === 'month' || timeRange === 'year' || timeRange === 'all') 
       && userProgress.dailySummaries 
@@ -180,7 +180,7 @@ export async function getProgressHistoryData(
     );
     
     historyData = relevantTransactions;
-    dataSource = 'transactions';
+    // dataSource is already set to 'transactions' by default
   }
   
   // If we have no data, return empty result
@@ -200,6 +200,7 @@ export async function getProgressHistoryData(
   
   // Process the data based on its type
   if (dataSource === 'summaries') {
+    // Process summary data
     for (const summary of historyData as XpDailySummary[]) {
       const date = new Date(summary.date);
       
@@ -215,6 +216,11 @@ export async function getProgressHistoryData(
       } else {
         // Month grouping
         groupKey = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
+      }
+      
+      // Filter by category if specified
+      if (category && summary.categories[category] === 0) {
+        continue; // Skip this summary if it has no XP for the requested category
       }
       
       // If this is a new group, initialize it
@@ -254,7 +260,7 @@ export async function getProgressHistoryData(
     }
   } else {
     // Process transaction data
-    for (const tx of historyData) {
+    for (const tx of historyData as XpTransaction[]) {
       const date = new Date(tx.date);
       
       // Generate group key based on groupBy

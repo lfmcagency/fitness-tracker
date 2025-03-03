@@ -2,6 +2,31 @@ import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 
 /**
+ * Pagination information interface
+ */
+export interface PaginationInfo {
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+  hasNextPage: boolean;
+  hasPrevPage: boolean;
+}
+
+// Define an interface for the API response structure
+export interface ApiResponse<T> {
+  success: boolean;
+  data?: T;
+  error?: {
+    code: string;
+    message: string;
+  };
+  message?: string;
+  timestamp: string;
+  pagination?: PaginationInfo;
+}
+
+/**
  * General API response function that can handle both success and error cases
  * @param data Response data or error details
  * @param success Whether the response is a success (true) or error (false)
@@ -36,27 +61,7 @@ export function apiResponse<T>(
     }, { status });
   }
 }
-
-/**
- * Pagination information interface
- */
-export interface PaginationInfo {
-  total: number;
-  page: number;
-  limit: number;
-  pages: number;
-  hasNextPage: boolean;
-  hasPrevPage: boolean;
-}
-
-/**
- * Creates a standardized successful API response
- * @param data Response data
- * @param message Optional success message
- * @param pagination Optional pagination information
- * @param status HTTP status code (default: 200)
- * @returns NextResponse with formatted success response
- */
+//
 export function apiSuccess<T>(
   data: T, 
   message?: string, 
@@ -72,14 +77,6 @@ export function apiSuccess<T>(
   }, { status });
 }
 
-/**
- * Creates a standardized error API response
- * @param message Error message
- * @param status HTTP status code (default: 400)
- * @param errorCode Optional error code
- * @param details Optional error details
- * @returns NextResponse with formatted error response
- */
 export function apiError(
   message: string, 
   status: number = 400, 

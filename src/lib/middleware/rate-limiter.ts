@@ -64,7 +64,7 @@ export function rateLimiter(options: Partial<RateLimitOptions> = {}) {
       headers.set('Retry-After', resetInSeconds.toString());
       
       return apiError(
-        config.message,
+        config.message || 'Too many requests, please try again later',  // Ensure a non-optional string
         429,
         'ERR_RATE_LIMIT', 
         { retryAfter: resetInSeconds }

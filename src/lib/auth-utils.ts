@@ -96,7 +96,7 @@ export function withAuth<T = any>(
       
       // Otherwise, create a 500 error response
       console.error('Unhandled error in API route:', error);
-      return apiError('Internal server error', 500, error);
+      return apiError('Internal server error', 500, error instanceof Error ? error.message : String(error));
     }
   };
 }
