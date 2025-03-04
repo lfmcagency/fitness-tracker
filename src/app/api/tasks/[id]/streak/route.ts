@@ -15,27 +15,44 @@ export const GET = withAuth(async (req: NextRequest, userId, { params }) => {
   try {
     await dbConnect();
     
-    const taskId = params.id;
+    // Defensive taskId validation
+    const taskId = params?.id;
+    if (!taskId || typeof taskId !== 'string' || taskId.trim() === '') {
+      return apiError('Invalid task ID', 400, 'ERR_INVALID_ID');
+    }
     
-    // Find task by ID
-    const task = await Task.findOne({ _id: taskId, user: userId }) as ITask | null;
+    // Find task by ID with defensive error handling
+    let task = null;
+    try {
+      task = await Task.findOne({ _id: taskId, user: userId }) as ITask | null;
+    } catch (error) {
+      return handleApiError(error, 'Error querying task database');
+    }
     
     if (!task) {
       return apiError('Task not found', 404, 'ERR_NOT_FOUND');
     }
     
-    // Calculate if the task is due today
-    const isDueToday = task.isTaskDueToday(new Date());
+    // Calculate if the task is due today with defensive date handling
+    let isDueToday = false;
+    try {
+      isDueToday = task.isTaskDueToday(new Date());
+    } catch (error) {
+      console.error('Error checking if task is due today:', error);
+      // Continue without due check rather than failing the request
+    }
     
-    // Get streak information
+    // Get streak information with defensive property access
     const streakInfo = {
-      taskId: task._id,
-      name: task.name,
-      currentStreak: task.currentStreak,
-      bestStreak: task.bestStreak,
-      lastCompletedDate: task.lastCompletedDate,
+      taskId: task._id?.toString() || taskId,
+      name: task.name || 'Unknown task',
+      currentStreak: task.currentStreak || 0,
+      bestStreak: task.bestStreak || 0,
+      lastCompletedDate: task.lastCompletedDate ? task.lastCompletedDate.toISOString() : null,
       isDueToday,
-      completionHistory: task.completionHistory
+      completionHistory: Array.isArray(task.completionHistory) 
+        ? task.completionHistory.map(date => date.toISOString()) 
+        : []
     };
     
     return apiResponse(streakInfo);
@@ -53,34 +70,68 @@ export const POST = withAuth(async (req: NextRequest, userId, { params }) => {
   try {
     await dbConnect();
     
-    const taskId = params.id;
-    const body = await req.json();
-    const date = body.date ? new Date(body.date) : new Date();
+    // Defensive taskId validation
+    const taskId = params?.id;
+    if (!taskId || typeof taskId !== 'string' || taskId.trim() === '') {
+      return apiError('Invalid task ID', 400, 'ERR_INVALID_ID');
+    }
     
-    // Find task by ID
-    const task = await Task.findOne({ _id: taskId, user: userId }) as ITask | null;
+    // Defensive request body parsing
+    let body;
+    try {
+      body = await req.json();
+    } catch (error) {
+      return apiError('Invalid JSON in request body', 400, 'ERR_INVALID_JSON');
+    }
+    
+    // Defensive date parsing
+    let date = new Date();
+    if (body?.date) {
+      const parsedDate = new Date(body.date);
+      if (isNaN(parsedDate.getTime())) {
+        return apiError('Invalid date format', 400, 'ERR_INVALID_DATE');
+      }
+      date = parsedDate;
+    }
+    
+    // Find task by ID with defensive error handling
+    let task = null;
+    try {
+      task = await Task.findOne({ _id: taskId, user: userId }) as ITask | null;
+    } catch (error) {
+      return handleApiError(error, 'Error querying task database');
+    }
     
     if (!task) {
       return apiError('Task not found', 404, 'ERR_NOT_FOUND');
     }
     
-    // Check if task is due on the specified date
-    const isDue = task.isTaskDueToday(date);
+    // Check if task is due on the specified date with defensive error handling
+    let isDue = false;
+    try {
+      isDue = task.isTaskDueToday(date);
+    } catch (error) {
+      return handleApiError(error, 'Error checking if task is due');
+    }
     
     if (!isDue) {
       return apiError('Task is not scheduled for this date', 400, 'ERR_INVALID_DATE');
     }
     
-    // Complete the task using the method that handles streak calculation
-    task.completeTask(date);
-    await task.save();
+    // Complete the task using the method that handles streak calculation with error handling
+    try {
+      task.completeTask(date);
+      await task.save();
+    } catch (error) {
+      return handleApiError(error, 'Error updating task streak');
+    }
     
     return apiResponse({
-      taskId: task._id,
-      name: task.name,
-      currentStreak: task.currentStreak,
-      bestStreak: task.bestStreak,
-      lastCompletedDate: task.lastCompletedDate
+      taskId: task._id?.toString() || taskId,
+      name: task.name || 'Unknown task',
+      currentStreak: task.currentStreak || 0,
+      bestStreak: task.bestStreak || 0,
+      lastCompletedDate: task.lastCompletedDate ? task.lastCompletedDate.toISOString() : null
     }, true, 'Streak updated successfully');
   } catch (error) {
     return handleApiError(error, 'Error updating streak');
@@ -96,24 +147,42 @@ export const DELETE = withAuth(async (req: NextRequest, userId, { params }) => {
   try {
     await dbConnect();
     
-    const taskId = params.id;
+    // Defensive taskId validation
+    const taskId = params?.id;
+    if (!taskId || typeof taskId !== 'string' || taskId.trim() === '') {
+      return apiError('Invalid task ID', 400, 'ERR_INVALID_ID');
+    }
     
-    // Find task by ID
-    const task = await Task.findOne({ _id: taskId, user: userId }) as ITask | null;
+    // Find task by ID with defensive error handling
+    let task = null;
+    try {
+      task = await Task.findOne({ _id: taskId, user: userId }) as ITask | null;
+    } catch (error) {
+      return handleApiError(error, 'Error querying task database');
+    }
     
     if (!task) {
       return apiError('Task not found', 404, 'ERR_NOT_FOUND');
     }
     
-    // Reset the streak
-    task.resetStreak();
-    await task.save();
+    // Reset the streak with error handling
+    try {
+      if (typeof task.resetStreak === 'function') {
+        task.resetStreak();
+      } else {
+        // Fallback if method doesn't exist
+        task.currentStreak = 0;
+      }
+      await task.save();
+    } catch (error) {
+      return handleApiError(error, 'Error resetting task streak');
+    }
     
     return apiResponse({
-      taskId: task._id,
-      name: task.name,
+      taskId: task._id?.toString() || taskId,
+      name: task.name || 'Unknown task',
       currentStreak: 0,
-      bestStreak: task.bestStreak
+      bestStreak: task.bestStreak || 0
     }, true, 'Streak reset successfully');
   } catch (error) {
     return handleApiError(error, 'Error resetting streak');

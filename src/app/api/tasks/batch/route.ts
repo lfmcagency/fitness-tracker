@@ -17,10 +17,18 @@ export const POST = withAuth(async (req: NextRequest, userId) => {
   try {
     await dbConnect();
     
-    const { operation, taskIds, data } = await req.json();
+    // Defensive request body parsing
+    let requestBody;
+    try {
+      requestBody = await req.json();
+    } catch (error) {
+      return apiError('Invalid JSON in request body', 400, 'ERR_INVALID_JSON');
+    }
     
-    // Validate operation type
-    if (!operation || !['complete', 'delete', 'update'].includes(operation)) {
+    // Extract and validate operation with defensive checks
+    const operation = requestBody?.operation;
+    if (!operation || typeof operation !== 'string' || 
+        !['complete', 'delete', 'update'].includes(operation)) {
       return apiError(
         'Invalid operation. Supported operations: complete, delete, update.',
         400,
@@ -28,51 +36,100 @@ export const POST = withAuth(async (req: NextRequest, userId) => {
       );
     }
     
-    // Validate taskIds
+    // Extract and validate taskIds with defensive checks
+    const taskIds = requestBody?.taskIds;
     if (!Array.isArray(taskIds) || taskIds.length === 0) {
       return apiError('No task IDs provided.', 400, 'ERR_VALIDATION');
     }
     
+    // Filter out invalid task IDs
+    const validTaskIds = taskIds.filter(id => 
+      id && typeof id === 'string' && id.trim() !== ''
+    );
+    
+    if (validTaskIds.length === 0) {
+      return apiError('No valid task IDs provided.', 400, 'ERR_VALIDATION');
+    }
+    
+    // Extract data object with defensive checks
+    const data = requestBody?.data;
+    
     // Filter tasks to only include those owned by the user
     const query = {
-      _id: { $in: taskIds },
+      _id: { $in: validTaskIds },
       user: userId
     };
     
-    // Perform the requested operation
+    // Perform the requested operation with specific error handling for each
     switch (operation) {
       case 'complete': {
         // For 'complete' operation, we need to update each task individually
         // to correctly calculate streaks
-        const completionDate = data?.completionDate ? new Date(data.completionDate) : new Date();
-        const completedTasks = [];
-        
-        for (const taskId of taskIds) {
-          const task = await Task.findOne({ _id: taskId, user: userId }) as ITask | null;
-          
-          if (task && !task.completed) {
-            task.completeTask(completionDate);
-            await task.save();
-            completedTasks.push(convertTaskToEnhancedTask(task));
+        try {
+          const completionDate = data?.completionDate 
+            ? new Date(data.completionDate) 
+            : new Date();
+            
+          if (isNaN(completionDate.getTime())) {
+            return apiError('Invalid completion date', 400, 'ERR_INVALID_DATE');
           }
+          
+          const completedTasks = [];
+          
+          for (const taskId of validTaskIds) {
+            try {
+              const task = await Task.findOne({ _id: taskId, user: userId }) as ITask | null;
+              
+              if (task && !task.completed) {
+                task.completeTask(completionDate);
+                await task.save();
+                
+                // Convert task with defensive error handling
+                try {
+                  const enhancedTask = convertTaskToEnhancedTask(task);
+                  completedTasks.push(enhancedTask);
+                } catch (error) {
+                  console.error(`Error converting task ${taskId}:`, error);
+                  // Add basic task info instead
+                  completedTasks.push({
+                    id: task._id?.toString() || taskId,
+                    name: task.name || 'Unknown task',
+                    completed: true
+                  });
+                }
+              }
+            } catch (error) {
+              console.error(`Error completing task ${taskId}:`, error);
+              // Continue with other tasks even if one fails
+            }
+          }
+          
+          return apiResponse(
+            completedTasks,
+            true,
+            `${completedTasks.length} tasks marked as completed.`
+          );
+        } catch (error) {
+          return handleApiError(error, 'Error completing tasks');
         }
-        
-        return apiResponse(
-          completedTasks,
-          true,
-          `${completedTasks.length} tasks marked as completed.`
-        );
       }
       
       case 'delete': {
-        // For 'delete' operation, we can use deleteMany
-        const deleteResult = await Task.deleteMany(query);
-        
-        return apiResponse(
-          { count: deleteResult.deletedCount, taskIds },
-          true,
-          `${deleteResult.deletedCount} tasks deleted.`
-        );
+        // For 'delete' operation, we can use deleteMany with error handling
+        try {
+          const deleteResult = await Task.deleteMany(query);
+          
+          return apiResponse(
+            { 
+              count: deleteResult?.deletedCount || 0, 
+              taskIds: validTaskIds 
+            },
+            true,
+            `${deleteResult?.deletedCount || 0} tasks deleted.`
+          );
+        } catch (error) {
+          return handleApiError(error, 'Error deleting tasks');
+        }
       }
       
       case 'update': {
@@ -81,28 +138,49 @@ export const POST = withAuth(async (req: NextRequest, userId) => {
           return apiError('No update data provided.', 400, 'ERR_VALIDATION');
         }
         
-        // Perform updates for each task individually
-        // This ensures proper handling of special cases like recurrence patterns
-        const updatedTasks = [];
-        
-        for (const taskId of taskIds) {
-          // Update the task with validation
-          const updatedTask = await Task.findOneAndUpdate(
-            { _id: taskId, user: userId },
-            data,
-            { new: true, runValidators: true }
-          ) as ITask | null;
+        try {
+          // Perform updates for each task individually
+          // This ensures proper handling of special cases like recurrence patterns
+          const updatedTasks = [];
           
-          if (updatedTask) {
-            updatedTasks.push(convertTaskToEnhancedTask(updatedTask));
+          for (const taskId of validTaskIds) {
+            try {
+              // Update the task with validation
+              const updatedTask = await Task.findOneAndUpdate(
+                { _id: taskId, user: userId },
+                data,
+                { new: true, runValidators: true }
+              ) as ITask | null;
+              
+              if (updatedTask) {
+                // Convert task with defensive error handling
+                try {
+                  const enhancedTask = convertTaskToEnhancedTask(updatedTask);
+                  updatedTasks.push(enhancedTask);
+                } catch (error) {
+                  console.error(`Error converting task ${taskId}:`, error);
+                  // Add basic task info instead
+                  updatedTasks.push({
+                    id: updatedTask._id?.toString() || taskId,
+                    name: updatedTask.name || 'Unknown task',
+                    completed: !!updatedTask.completed
+                  });
+                }
+              }
+            } catch (error) {
+              console.error(`Error updating task ${taskId}:`, error);
+              // Continue with other tasks even if one fails
+            }
           }
+          
+          return apiResponse(
+            updatedTasks,
+            true,
+            `${updatedTasks.length} tasks updated.`
+          );
+        } catch (error) {
+          return handleApiError(error, 'Error updating tasks');
         }
-        
-        return apiResponse(
-          updatedTasks,
-          true,
-          `${updatedTasks.length} tasks updated.`
-        );
       }
       
       default:
