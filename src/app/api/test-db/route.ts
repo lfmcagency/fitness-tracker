@@ -1,49 +1,76 @@
-export const dynamic = 'force-dynamic'
-import { NextResponse } from 'next/server';
-import { dbConnect } from '@/lib/db/mongodb';
-import mongoose from 'mongoose';
+// src/app/api/test-db/route.ts (with defensive programming)
+export const dynamic = 'force-dynamic';
 
-export async function GET() {
+import { NextRequest } from "next/server";
+import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
+import { dbConnect } from '@/lib/db/mongodb';
+import mongoose from "mongoose";
+
+/**
+ * GET /api/test-db
+ * Simple database connection test endpoint
+ */
+export async function GET(req: NextRequest) {
+  // Record start time for response time metrics
+  const startTime = Date.now();
+  
   try {
-    const conn = await dbConnect();
-    
-    // Get connection status information
-    const connectionState = mongoose.connection.readyState;
-    const stateMap = {
-      0: 'disconnected',
-      1: 'connected',
-      2: 'connecting',
-      3: 'disconnecting',
-      4: 'invalid'
+    // Create response object
+    const response = {
+      success: false,
+      database: {
+        connected: false,
+        readyState: 0,
+        host: null,
+        name: null
+      },
+      timing: {
+        start: startTime,
+        end: 0,
+        duration: 0
+      }
     };
     
-    // Get database information
-    const dbInfo = mongoose.connection.db ? {
-      databaseName: mongoose.connection.db.databaseName,
-      collections: await mongoose.connection.db.collections()
-        .then(cols => cols.map(c => c.collectionName))
-    } : null;
+    try {
+      // Try to connect to database
+      await dbConnect();
+      
+      // Get connection state
+      response.database.readyState = mongoose.connection.readyState;
+      response.database.connected = mongoose.connection.readyState === 1;
+      
+      // Only include connection details if connected
+      if (response.database.connected) {
+        response.database.host = mongoose.connection.host;
+        response.database.name = mongoose.connection.name;
+      }
+      
+      response.success = response.database.connected;
+    } catch (dbError) {
+      console.error('Database connection test error:', dbError);
+      
+      // Add error details
+      response.error = {
+        message: 'Database connection failed',
+        details: process.env.NODE_ENV === 'development' ? dbError.message : 'Connection error'
+      };
+    }
     
-    return NextResponse.json({ 
-      success: true, 
-      message: 'Database connection test',
-      connection: {
-        state: connectionState,
-        stateDescription: stateMap[connectionState as keyof typeof stateMap] || 'unknown',
-        host: mongoose.connection.host,
-        ready: mongoose.connection.readyState === 1
-      },
-      database: dbInfo,
-      env: process.env.NODE_ENV,
-      timestamp: new Date().toISOString()
-    });
+    // Calculate response time
+    const endTime = Date.now();
+    response.timing.end = endTime;
+    response.timing.duration = endTime - startTime;
+    
+    // Set appropriate HTTP status
+    const httpStatus = response.success ? 200 : 500;
+    
+    return apiResponse(
+      response, 
+      response.success, 
+      response.success ? 'Database connected successfully' : 'Database connection failed',
+      httpStatus
+    );
   } catch (error) {
-    console.error('Database connection error:', error);
-    return NextResponse.json({ 
-      success: false, 
-      message: 'Failed to connect to database',
-      error: error instanceof Error ? error.message : 'Unknown error',
-      stack: process.env.NODE_ENV === 'development' ? (error as Error).stack : undefined
-    }, { status: 500 });
+    return handleApiError(error, "Error testing database connection");
   }
 }
