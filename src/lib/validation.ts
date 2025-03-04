@@ -13,24 +13,40 @@ export async function validateRequest<T>(
   schema: z.Schema<T>
 ): Promise<T> {
   try {
-    const body = await req.json();
-    return schema.parse(body);
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      const formattedErrors = error.errors.map(err => ({
-        path: err.path.join('.'),
-        message: err.message
-      }));
-      
-      throw apiError(
-        'Validation error',
-        400,
-        'ERR_VALIDATION',  // Proper error code string
-        { errors: formattedErrors }  // Details as 4th parameter
-      );
+    // Defensively handle JSON parsing
+    let body;
+    try {
+      body = await req.json();
+    } catch (error) {
+      throw apiError('Invalid JSON format in request body', 400, 'ERR_INVALID_JSON');
     }
     
-    throw apiError('Invalid request data', 400, 'ERR_VALIDATION', error);
+    // Validate with zod schema
+    try {
+      return schema.parse(body);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const formattedErrors = error.errors.map(err => ({
+          path: err.path.join('.'),
+          message: err.message
+        }));
+        
+        throw apiError(
+          'Validation error',
+          400,
+          'ERR_VALIDATION',
+          { errors: formattedErrors }
+        );
+      }
+      throw error;
+    }
+  } catch (error) {
+    // If the error is already an API error response, propagate it
+    if (error.status && error.json) {
+      throw error;
+    }
+    
+    throw apiError('Invalid request data', 400, 'ERR_VALIDATION');
   }
 }
 
@@ -79,8 +95,11 @@ export const schemas = {
  * @returns Validated pagination parameters
  */
 export function extractPagination(url: URL): { page: number; limit: number } {
-  const page = parseInt(url.searchParams.get('page') || '1');
-  const limit = parseInt(url.searchParams.get('limit') || '20');
+  const pageParam = url.searchParams.get('page');
+  const limitParam = url.searchParams.get('limit');
+  
+  const page = pageParam ? parseInt(pageParam) : 1;
+  const limit = limitParam ? parseInt(limitParam) : 20;
   
   return {
     page: isNaN(page) || page < 1 ? 1 : page,

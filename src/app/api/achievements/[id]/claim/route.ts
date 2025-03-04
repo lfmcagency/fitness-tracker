@@ -61,10 +61,9 @@ export const POST = withAuth(async (req: NextRequest, userId, { params }) => {
       eligible: false, 
       reason: 'Unknown error checking eligibility' 
     };
+    
     try {
       eligibility = await checkEligibility(userId, achievement);
-    }
-    
     } catch (error) {
       return handleApiError(error, 'Error checking achievement eligibility');
     }
@@ -104,12 +103,8 @@ export const POST = withAuth(async (req: NextRequest, userId, { params }) => {
     // Award the achievement with defensive error handling
     let result;
     try {
-      if (typeof awardAchievement === 'function') {
-        result = await awardAchievement(userProgress, achievement);
-      } else {
-        // Fallback to awardAchievements function if awardAchievement doesn't exist
-        result = await awardAchievements(userProgress, [achievement]);
-      }
+      // Use awardAchievements directly as awardAchievement doesn't exist
+      result = await awardAchievements(userProgress, [achievement]);
     } catch (error) {
       return handleApiError(error, 'Error awarding achievement');
     }

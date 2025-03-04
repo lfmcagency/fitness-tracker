@@ -6,6 +6,7 @@ import { withAuth, AuthLevel } from '@/lib/auth-utils';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { validateRequest, schemas } from '@/lib/validation';
 import { awardXp } from '@/lib/xp-manager-improved';
+import { Types } from 'mongoose';
 
 /**
  * POST /api/progress/add-xp

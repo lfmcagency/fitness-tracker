@@ -3,6 +3,11 @@ import { NextResponse } from 'next/server';
 
 /**
  * Standard API success response
+ * @param data Response data
+ * @param success Success flag (default: true)
+ * @param message Optional success message
+ * @param status HTTP status code (default: 200)
+ * @returns NextResponse with formatted API response
  */
 export function apiResponse(data: any, success = true, message = '', status = 200) {
   const timestamp = new Date().toISOString();
@@ -17,6 +22,11 @@ export function apiResponse(data: any, success = true, message = '', status = 20
 
 /**
  * Standard API error response
+ * @param message Error message
+ * @param status HTTP status code (default: 500)
+ * @param code Error code (default: 'ERR_INTERNAL')
+ * @param details Additional error details (optional)
+ * @returns NextResponse with formatted error response
  */
 export function apiError(message: string, status = 500, code = 'ERR_INTERNAL', details?: any) {
   const timestamp = new Date().toISOString();
@@ -34,6 +44,9 @@ export function apiError(message: string, status = 500, code = 'ERR_INTERNAL', d
 
 /**
  * Error handler for API routes
+ * @param error Error object
+ * @param contextMessage Context message for logging
+ * @returns NextResponse with formatted error response
  */
 export function handleApiError(error: unknown, contextMessage: string) {
   console.error(`API Error: ${contextMessage}`, error);
@@ -43,6 +56,11 @@ export function handleApiError(error: unknown, contextMessage: string) {
   let errorCode = 'ERR_INTERNAL';
   let errorMessage = contextMessage || 'An internal error occurred';
   let errorDetails;
+  
+  // If the error is already a NextResponse, return it
+  if (error instanceof NextResponse) {
+    return error;
+  }
   
   // Handle specific error types
   if (error instanceof Error) {
@@ -74,8 +92,10 @@ export function handleApiError(error: unknown, contextMessage: string) {
 
 /**
  * Format Mongoose validation errors into a structured object
+ * @param error Mongoose validation error
+ * @returns Formatted error object
  */
-function formatValidationErrors(error: any) {
+export function formatValidationErrors(error: any) {
   if (!error.errors) return error.message;
   
   const formattedErrors: Record<string, string> = {};
