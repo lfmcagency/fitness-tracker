@@ -1,65 +1,87 @@
+// src/app/api/achievements/route.ts
 export const dynamic = 'force-dynamic';
 
 import { NextRequest } from 'next/server';
 import { dbConnect } from '@/lib/db/mongodb';
-import UserProgress from '@/models/UserProgress';
-import { Types } from 'mongoose';
-import { getAuth } from '@/lib/auth';
+import { withAuth, AuthLevel } from '@/lib/auth-utils';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
-import { ACHIEVEMENTS, getAllAchievementsWithStatus } from '@/lib/achievements';
+import { 
+  getAchievements, 
+  getAllAchievementsWithStatus, 
+  meetsRequirements, 
+  awardAchievements 
+} from '@/lib/achievements';
 
 /**
  * GET /api/achievements
  * 
  * Returns all available achievements with unlock status for the authenticated user.
- * If user is not authenticated, returns all achievements without unlock status.
- * 
- * Query parameters:
- * - unlocked: 'true' to filter only unlocked achievements
- * - type: achievement type filter (e.g., 'strength', 'milestone', etc.)
  */
-export async function GET(req: NextRequest) {
+export const GET = withAuth(async (req: NextRequest, userId) => {
   try {
     await dbConnect();
-    const session = await getAuth();
     
-    // Get query parameters
+    // Get query parameters with defensive checks
     const url = new URL(req.url);
     const unlockedFilter = url.searchParams.get('unlocked') === 'true';
     const typeFilter = url.searchParams.get('type');
     
+    if (typeFilter && 
+        typeof typeFilter === 'string' && 
+        !['strength', 'consistency', 'nutrition', 'milestone'].includes(typeFilter)) {
+      return apiError('Invalid achievement type', 400, 'ERR_VALIDATION');
+    }
+    
     let userProgress = null;
     
-    // If user is authenticated, get their progress
-    if (session?.user?.id) {
+    // Get user progress with defensive error handling
+    if (userId) {
       try {
-        const userObjectId = new Types.ObjectId(session.user.id);
-        userProgress = await UserProgress.findOne({ userId: userObjectId });
+        const UserProgress = (await import('@/models/UserProgress')).default;
+        if (!UserProgress) {
+          console.error('UserProgress model not found');
+        } else {
+          userProgress = await UserProgress.findOne({ userId });
+        }
       } catch (error) {
-        // Continue even if getting user progress fails
         console.error('Error getting user progress:', error);
+        // Continue even if getting user progress fails
       }
     }
     
     // Get all achievements with user's unlock status
-    const achievements = await getAllAchievementsWithStatus(userProgress);
+    let achievements = [];
+    try {
+      achievements = await getAllAchievementsWithStatus(userProgress);
+    } catch (error) {
+      console.error('Error getting achievements with status:', error);
+      // Continue with empty achievements rather than failing the request
+    }
+    
+    if (!Array.isArray(achievements)) {
+      achievements = [];
+    }
     
     // Apply filters if any
     let filteredAchievements = achievements;
     
     if (unlockedFilter && userProgress) {
-      filteredAchievements = filteredAchievements.filter(achievement => achievement.unlocked);
-    }
-    
-    if (typeFilter) {
-      filteredAchievements = filteredAchievements.filter(
-        achievement => achievement.type === typeFilter
+      filteredAchievements = filteredAchievements.filter(achievement => 
+        achievement && achievement.unlocked === true
       );
     }
     
-    // Group achievements by type
+    if (typeFilter && typeof typeFilter === 'string') {
+      filteredAchievements = filteredAchievements.filter(
+        achievement => achievement && achievement.type === typeFilter
+      );
+    }
+    
+    // Group achievements by type with defensive checks
     const groupedAchievements = filteredAchievements.reduce((groups, achievement) => {
-      const type = achievement.type;
+      if (!achievement) return groups;
+      
+      const type = achievement.type || 'other';
       if (!groups[type]) {
         groups[type] = [];
       }
@@ -69,59 +91,84 @@ export async function GET(req: NextRequest) {
     
     return apiResponse({
       total: filteredAchievements.length,
-      unlocked: filteredAchievements.filter(a => a.unlocked).length,
+      unlocked: filteredAchievements.filter(a => a && a.unlocked).length,
       byType: groupedAchievements,
       all: filteredAchievements
     });
   } catch (error) {
     return handleApiError(error, 'Error fetching achievements');
   }
-}
+}, AuthLevel.DEV_OPTIONAL);
 
 /**
- * POST /api/achievements/:id/claim
+ * POST /api/achievements
  * 
- * Claims an achievement if the user meets the requirements but doesn't
- * already have it. Primarily used for achievements that require manual
- * verification or claim.
- * 
- * This is NOT usually needed as achievements are typically awarded automatically,
- * but exists as a fallback mechanism.
+ * Claims an achievement if the user meets the requirements.
  */
-export async function POST(req: NextRequest) {
+export const POST = withAuth(async (req: NextRequest, userId) => {
   try {
     await dbConnect();
-    const session = await getAuth();
     
-    // Require authentication
-    if (!session?.user?.id) {
-      return apiError('Authentication required', 401);
+    // Validate request payload
+    let payload;
+    try {
+      payload = await req.json();
+    } catch (error) {
+      return apiError('Invalid JSON payload', 400, 'ERR_INVALID_JSON');
     }
     
-    // Parse request payload
-    const { achievementId } = await req.json();
+    // Check for required fields
+    const achievementId = payload?.achievementId;
     
-    if (!achievementId) {
-      return apiError('Achievement ID is required', 400);
+    if (!achievementId || typeof achievementId !== 'string' || achievementId.trim() === '') {
+      return apiError('Achievement ID is required', 400, 'ERR_MISSING_ID');
     }
     
-    // Find the achievement definition
-    const achievementDef = ACHIEVEMENTS.find(a => a.id === achievementId);
+    // Find the achievement definition with defensive error handling
+    let achievementDef;
+    try {
+      const allAchievements = getAchievements();
+      
+      if (!Array.isArray(allAchievements)) {
+        return apiError('Failed to retrieve achievements', 500, 'ERR_ACHIEVEMENTS');
+      }
+      
+      achievementDef = allAchievements.find(a => a && a.id === achievementId);
+    } catch (error) {
+      return handleApiError(error, 'Error retrieving achievement definitions');
+    }
     
     if (!achievementDef) {
-      return apiError('Achievement not found', 404);
+      return apiError('Achievement not found', 404, 'ERR_NOT_FOUND');
     }
     
-    // Get user progress
-    const userObjectId = new Types.ObjectId(session.user.id);
-    const userProgress = await UserProgress.findOne({ userId: userObjectId });
+    // Get user progress with defensive error handling
+    let UserProgress;
+    try {
+      UserProgress = (await import('@/models/UserProgress')).default;
+    } catch (error) {
+      return handleApiError(error, 'Error loading UserProgress model');
+    }
+    
+    if (!UserProgress) {
+      return apiError('Failed to load required models', 500, 'ERR_MODEL_LOADING');
+    }
+    
+    let userProgress;
+    try {
+      userProgress = await UserProgress.findOne({ userId });
+    } catch (error) {
+      return handleApiError(error, 'Error fetching user progress');
+    }
     
     if (!userProgress) {
-      return apiError('User progress not found', 404);
+      return apiError('User progress not found', 404, 'ERR_NOT_FOUND');
     }
     
-    // Check if user already has this achievement
-    const userAchievementIds = userProgress.achievements.map(id => id.toString());
+    // Check if user already has this achievement with defensive array handling
+    const userAchievementIds = Array.isArray(userProgress.achievements) 
+      ? userProgress.achievements.map(id => id?.toString() || '')
+      : [];
     
     if (userAchievementIds.includes(achievementId)) {
       return apiResponse({
@@ -130,30 +177,38 @@ export async function POST(req: NextRequest) {
       }, false, 'Achievement already claimed', 200);
     }
     
-    // Import achievement checking and awarding functions
-    const { meetsRequirements, awardAchievements } = await import('@/lib/achievements');
+    // Check if user meets requirements with defensive error handling
+    let meetsRequirementsResult = false;
+    try {
+      meetsRequirementsResult = meetsRequirements(achievementDef, userProgress);
+    } catch (error) {
+      return handleApiError(error, 'Error checking achievement requirements');
+    }
     
-    // Check if user meets requirements
-    if (!meetsRequirements(achievementDef, userProgress)) {
+    if (!meetsRequirementsResult) {
       return apiResponse({
         success: false,
         requirementsMet: false
-      }, false,'Requirements not met for this achievement', 400);
+      }, false, 'Requirements not met for this achievement', 400);
     }
     
-    // Award the achievement
-    const { updatedProgress, totalXpAwarded } = await awardAchievements(
-      userProgress,
-      [achievementDef]
-    );
+    // Award the achievement with defensive error handling
+    let awardResult;
+    try {
+      awardResult = await awardAchievements(userProgress, [achievementDef]);
+    } catch (error) {
+      return handleApiError(error, 'Error awarding achievement');
+    }
+    
+    const { updatedProgress, totalXpAwarded } = awardResult || { updatedProgress: userProgress, totalXpAwarded: 0 };
     
     return apiResponse({
       success: true,
       achievement: achievementDef,
       xpAwarded: totalXpAwarded,
-      newLevel: updatedProgress.level
+      newLevel: updatedProgress?.level || userProgress.level
     }, true, `Achievement '${achievementDef.title}' unlocked!`);
   } catch (error) {
     return handleApiError(error, 'Error claiming achievement');
   }
-}
+}, AuthLevel.DEV_OPTIONAL);
