@@ -1,93 +1,221 @@
-import { NextRequest, NextResponse } from "next/server";
-import { withRoleProtection } from "@/lib/auth";
+// src/app/api/admin/users/route.ts (with defensive programming)
+export const dynamic = 'force-dynamic';
+
+import { NextRequest } from "next/server";
+import { withRoleProtection } from "@/lib/auth-utils";
 import { dbConnect } from '@/lib/db/mongodb';
 import User from "@/models/User";
+import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
+import { isValidObjectId } from "mongoose";
 
-// GET: List all users (admin only)
-export async function GET(req: NextRequest) {
+/**
+ * GET /api/admin/users
+ * List all users (admin only)
+ */
+export const GET = async (req: NextRequest) => {
   return withRoleProtection(['admin'])(req, async () => {
     try {
       await dbConnect();
       
-      // Get users (excluding password field)
-      const users = await User.find({}).select('-password');
+      // Parse query parameters with defensive handling
+      const url = new URL(req.url);
       
-      // Map the users to add id field and transform _id
-      const formattedUsers = users.map(user => {
-        const userObj = user.toObject();
-        return {
+      // Get pagination parameters
+      let page = 1;
+      let limit = 50;
+      
+      try {
+        const pageParam = url.searchParams.get('page');
+        if (pageParam) {
+          const parsedPage = parseInt(pageParam);
+          if (!isNaN(parsedPage) && parsedPage > 0) {
+            page = parsedPage;
+          }
+        }
+        
+        const limitParam = url.searchParams.get('limit');
+        if (limitParam) {
+          const parsedLimit = parseInt(limitParam);
+          if (!isNaN(parsedLimit) && parsedLimit > 0) {
+            limit = Math.min(parsedLimit, 100); // Cap at 100 to prevent abuse
+          }
+        }
+      } catch (error) {
+        console.error('Error parsing pagination parameters:', error);
+        // Continue with default values
+      }
+      
+      const skip = (page - 1) * limit;
+      
+      // Get search parameter
+      const search = url.searchParams.get('search') || '';
+      
+      // Build query
+      let query = {};
+      if (search && typeof search === 'string' && search.trim() !== '') {
+        query = {
+          $or: [
+            { name: { $regex: search, $options: 'i' } },
+            { email: { $regex: search, $options: 'i' } }
+          ]
+        };
+      }
+      
+      // Get users with defensive error handling
+      let users = [];
+      let total = 0;
+      
+      try {
+        // Count total for pagination
+        total = await User.countDocuments(query);
+        
+        // Get users (excluding sensitive fields)
+        users = await User.find(query)
+          .select('-password -__v')
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit);
+      } catch (error) {
+        return handleApiError(error, 'Error querying users database');
+      }
+      
+      // Safely map the users to add id field and transform _id
+      const formattedUsers = [];
+      for (const user of users) {
+        try {
+          const userObj = user.toObject();
+          formattedUsers.push({
+            ...userObj,
+            id: userObj._id.toString(),
+            _id: undefined,
+            // Ensure critical fields have defaults
+            name: userObj.name || 'Unknown',
+            email: userObj.email || '',
+            role: userObj.role || 'user',
+            createdAt: userObj.createdAt || new Date(),
+          });
+        } catch (error) {
+          console.error('Error formatting user object:', error);
+          // Add minimal user data if transformation fails
+          formattedUsers.push({
+            id: user._id?.toString() || 'unknown',
+            name: user.name || 'Unknown',
+            email: user.email || '',
+            role: user.role || 'user'
+          });
+        }
+      }
+      
+      // Calculate pagination info
+      const totalPages = Math.max(1, Math.ceil(total / Math.max(1, limit)));
+      
+      return apiResponse({
+        users: formattedUsers,
+        pagination: {
+          total,
+          page,
+          limit,
+          pages: totalPages
+        }
+      }, true, `Retrieved ${formattedUsers.length} users`);
+    } catch (error) {
+      return handleApiError(error, "Error fetching users");
+    }
+  });
+};
+
+/**
+ * POST /api/admin/users
+ * Update user role (admin only)
+ */
+export const POST = async (req: NextRequest) => {
+  return withRoleProtection(['admin'])(req, async () => {
+    try {
+      await dbConnect();
+      
+      // Parse request body with defensive error handling
+      let body;
+      try {
+        body = await req.json();
+      } catch (error) {
+        return apiError('Invalid JSON in request body', 400, 'ERR_INVALID_JSON');
+      }
+      
+      // Validate body
+      if (!body || typeof body !== 'object') {
+        return apiError('Invalid request data', 400, 'ERR_INVALID_DATA');
+      }
+      
+      const { userId, role } = body;
+      
+      // Validate userId
+      if (!userId || typeof userId !== 'string') {
+        return apiError('Missing or invalid user ID', 400, 'ERR_VALIDATION');
+      }
+      
+      // Check if userId is a valid MongoDB ObjectId
+      if (!isValidObjectId(userId)) {
+        return apiError('Invalid user ID format', 400, 'ERR_VALIDATION');
+      }
+      
+      // Validate role
+      if (!role || typeof role !== 'string') {
+        return apiError('Missing or invalid role', 400, 'ERR_VALIDATION');
+      }
+      
+      // Validate allowed roles
+      const allowedRoles = ['user', 'admin', 'trainer'];
+      if (!allowedRoles.includes(role)) {
+        return apiError(
+          `Invalid role. Allowed roles: ${allowedRoles.join(', ')}`, 
+          400, 
+          'ERR_VALIDATION'
+        );
+      }
+      
+      // Update user role with defensive error handling
+      let updatedUser;
+      try {
+        updatedUser = await User.findByIdAndUpdate(
+          userId,
+          { role },
+          { new: true, runValidators: true }
+        ).select('-password -__v');
+        
+        if (!updatedUser) {
+          return apiError('User not found', 404, 'ERR_NOT_FOUND');
+        }
+      } catch (error) {
+        return handleApiError(error, 'Error updating user role');
+      }
+      
+      // Format user response safely
+      let userData;
+      try {
+        const userObj = updatedUser.toObject();
+        userData = {
           ...userObj,
           id: userObj._id.toString(),
           _id: undefined
         };
-      });
+      } catch (error) {
+        console.error('Error formatting updated user data:', error);
+        // Provide minimal fallback user data
+        userData = {
+          id: userId,
+          email: updatedUser.email || '',
+          name: updatedUser.name || 'User',
+          role: updatedUser.role || 'user'
+        };
+      }
       
-      return NextResponse.json(formattedUsers);
-    } catch (error) {
-      console.error("Error fetching users:", error);
-      return NextResponse.json(
-        { error: "Failed to fetch users" },
-        { status: 500 }
+      return apiResponse(
+        { user: userData },
+        true,
+        `User role updated to ${role}`
       );
+    } catch (error) {
+      return handleApiError(error, "Error updating user role");
     }
   });
-}
-
-// POST: Update user role (admin only)
-export async function POST(req: NextRequest) {
-  return withRoleProtection(['admin'])(req, async () => {
-    try {
-      const body = await req.json();
-      const { userId, role } = body;
-      
-      if (!userId || !role) {
-        return NextResponse.json(
-          { error: "Missing required fields" },
-          { status: 400 }
-        );
-      }
-      
-      // Validate role
-      if (!['user', 'admin', 'trainer'].includes(role)) {
-        return NextResponse.json(
-          { error: "Invalid role. Allowed roles: user, admin, trainer" },
-          { status: 400 }
-        );
-      }
-      
-      await dbConnect();
-      
-      // Update user role
-      const updatedUser = await User.findByIdAndUpdate(
-        userId,
-        { role },
-        { new: true, runValidators: true }
-      ).select('-password');
-      
-      if (!updatedUser) {
-        return NextResponse.json(
-          { error: "User not found" },
-          { status: 404 }
-        );
-      }
-      
-      const userObj = updatedUser.toObject();
-      
-      return NextResponse.json({
-        user: {
-          ...userObj,
-          id: userObj._id.toString(),
-          _id: undefined
-        },
-        message: `User role updated to ${role}`
-      });
-      
-    } catch (error) {
-      console.error("Error updating user role:", error);
-      return NextResponse.json(
-        { error: "Failed to update user role" },
-        { status: 500 }
-      );
-    }
-  });
-}
+};
