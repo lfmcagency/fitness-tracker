@@ -11,9 +11,12 @@ import { getAchievements, checkEligibility, isAchievementUnlocked, awardAchievem
  * 
  * Manually claim an achievement if eligible
  */
-export const POST = withAuth(async (req: NextRequest, userId, { params }) => {
+export const POST = withAuth(async (req: NextRequest, userId, context) => {
   try {
     await dbConnect();
+    
+    // Safely extract params with proper type checking
+    const params = context?.params;
     
     // Validate achievement ID with defensive checks
     const achievementId = params?.id;

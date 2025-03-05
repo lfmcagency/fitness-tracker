@@ -12,6 +12,17 @@ import {
   awardAchievements 
 } from '@/lib/achievements';
 
+// Define Achievement interface to properly type the achievements array
+interface Achievement {
+  id: string;
+  title: string;
+  description?: string;
+  type: string;
+  unlocked: boolean;
+  xpReward?: number;
+  [key: string]: any; // For any other properties
+}
+
 /**
  * GET /api/achievements
  * 
@@ -50,7 +61,7 @@ export const GET = withAuth(async (req: NextRequest, userId) => {
     }
     
     // Get all achievements with user's unlock status
-    let achievements = [];
+    let achievements: Achievement[] = [];
     try {
       achievements = await getAllAchievementsWithStatus(userProgress);
     } catch (error) {

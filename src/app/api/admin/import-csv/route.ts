@@ -147,7 +147,11 @@ export const POST = async (req: NextRequest) => {
             }
           } catch (batchError) {
             console.error(`Error processing batch ${i+1}/${batches}:`, batchError);
-            results.errors.push(`Batch ${i+1}/${batches} error: ${batchError.message}`);
+            // Safely handle unknown error type
+            const errorMessage = batchError instanceof Error 
+              ? batchError.message 
+              : 'Unknown batch processing error';
+            results.errors.push(`Batch ${i+1}/${batches} error: ${errorMessage}`);
           }
         }
       } else {
@@ -189,8 +193,12 @@ export const POST = async (req: NextRequest) => {
             
             // Collect error (limit to avoid huge response)
             if (results.errors.length < 50) {
+              // Safely handle unknown error type
+              const errorMessage = itemError instanceof Error 
+                ? itemError.message 
+                : 'Unknown item processing error';
               results.errors.push(
-                `Error processing item ${results.processed}: ${itemError.message}`
+                `Error processing item ${results.processed}: ${errorMessage}`
               );
             }
           }
@@ -258,7 +266,11 @@ async function processBatch(Model, batchData, options) {
       }
     } catch (error) {
       results.skipped++;
-      results.errors.push(`Error processing item ${results.processed}: ${error.message}`);
+      // Safely handle unknown error type
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : 'Unknown error during batch preparation';
+      results.errors.push(`Error processing item ${results.processed}: ${errorMessage}`);
     }
   }
   
@@ -277,7 +289,11 @@ async function processBatch(Model, batchData, options) {
       }
     } catch (bulkError) {
       console.error('Bulk operation error:', bulkError);
-      results.errors.push(`Bulk operation error: ${bulkError.message}`);
+      // Safely handle unknown error type
+      const errorMessage = bulkError instanceof Error 
+        ? bulkError.message 
+        : 'Unknown bulk operation error';
+      results.errors.push(`Bulk operation error: ${errorMessage}`);
       
       // Fall back to individual processing if bulk fails
       for (const item of batchData) {
@@ -310,7 +326,11 @@ async function processBatch(Model, batchData, options) {
           }
         } catch (itemError) {
           results.skipped++;
-          results.errors.push(`Fallback processing error: ${itemError.message}`);
+          // Safely handle unknown error type
+          const errorMessage = itemError instanceof Error 
+            ? itemError.message 
+            : 'Unknown fallback processing error';
+          results.errors.push(`Fallback processing error: ${errorMessage}`);
         }
       }
     }
