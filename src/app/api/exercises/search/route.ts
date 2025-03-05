@@ -1,106 +1,270 @@
+// src/app/api/exercises/search/route.ts (with defensive programming)
 export const dynamic = 'force-dynamic';
 
-import { NextRequest } from 'next/server';
+import { NextRequest } from "next/server";
+import { withAuth, AuthLevel } from "@/lib/auth-utils";
 import { dbConnect } from '@/lib/db/mongodb';
-import Exercise from '@/models/Exercise';
+import Exercise from "@/models/Exercise";
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
+
+// Default pagination values
+const DEFAULT_PAGE = 1;
+const DEFAULT_LIMIT = 20;
+const MAX_LIMIT = 50;
 
 /**
  * GET /api/exercises/search
- * 
- * Search exercises by text query with advanced filtering
+ * Search exercises with advanced filtering and pagination
  */
-export async function GET(req: NextRequest) {
+export const GET = withAuth(async (req: NextRequest, userId) => {
   try {
     await dbConnect();
     
-    const searchParams = req.nextUrl.searchParams;
-    const q = searchParams.get('q'); // Search query
+    // Get query parameters with defensive handling
+    const url = new URL(req.url);
     
-    // Filtering parameters
-    const category = searchParams.get('category');
-    const subcategory = searchParams.get('subcategory');
-    const difficulty = searchParams.get('difficulty');
-    const minLevel = searchParams.get('minLevel');
-    const maxLevel = searchParams.get('maxLevel');
+    // Search term (required)
+    const search = url.searchParams.get('q') || url.searchParams.get('query') || '';
     
-    // Pagination parameters
-    const limit = Math.min(parseInt(searchParams.get('limit') || '20', 10), 100);
-    const page = parseInt(searchParams.get('page') || '1', 10);
+    if (!search || typeof search !== 'string' || search.trim() === '') {
+      return apiError('Search query is required', 400, 'ERR_VALIDATION');
+    }
     
-    // Build the search query
-    const searchQuery: any = {};
+    // Pagination with defensive parsing
+    let page = DEFAULT_PAGE;
+    let limit = DEFAULT_LIMIT;
     
-    // Text search if query is provided
-    if (q && q.trim().length > 0) {
-      // Use text search if query has multiple words
-      if (q.trim().includes(' ')) {
-        searchQuery.$text = { $search: q };
-      } else {
-        // For single word, use regex for more flexible matching
-        searchQuery.$or = [
-          { name: { $regex: q, $options: 'i' } },
-          { description: { $regex: q, $options: 'i' } },
-          { formCues: { $regex: q, $options: 'i' } },
-          { primaryMuscleGroup: { $regex: q, $options: 'i' } },
-          { secondaryMuscleGroups: { $regex: q, $options: 'i' } }
-        ];
+    try {
+      const pageParam = url.searchParams.get('page');
+      if (pageParam) {
+        const parsedPage = parseInt(pageParam);
+        if (!isNaN(parsedPage) && parsedPage > 0) {
+          page = parsedPage;
+        }
+      }
+    } catch (error) {
+      console.error('Error parsing page parameter:', error);
+    }
+    
+    try {
+      const limitParam = url.searchParams.get('limit');
+      if (limitParam) {
+        const parsedLimit = parseInt(limitParam);
+        if (!isNaN(parsedLimit) && parsedLimit > 0) {
+          limit = Math.min(parsedLimit, MAX_LIMIT);
+        }
+      }
+    } catch (error) {
+      console.error('Error parsing limit parameter:', error);
+    }
+    
+    const skip = (page - 1) * limit;
+    
+    // Additional filters
+    const filters: any = {};
+    
+    // Category filter
+    const category = url.searchParams.get('category');
+    if (category && typeof category === 'string' && category.trim() !== '') {
+      filters.category = { $regex: new RegExp(category.trim(), 'i') };
+    }
+    
+    // Subcategory filter
+    const subcategory = url.searchParams.get('subcategory');
+    if (subcategory && typeof subcategory === 'string' && subcategory.trim() !== '') {
+      filters.subcategory = { $regex: new RegExp(subcategory.trim(), 'i') };
+    }
+    
+    // Difficulty filter
+    const difficulty = url.searchParams.get('difficulty');
+    if (difficulty && typeof difficulty === 'string') {
+      const validDifficulties = ['beginner', 'intermediate', 'advanced', 'elite'];
+      const normalizedDifficulty = difficulty.trim().toLowerCase();
+      
+      if (validDifficulties.includes(normalizedDifficulty)) {
+        filters.difficulty = normalizedDifficulty;
       }
     }
     
-    // Add filters if provided
-    if (category) searchQuery.category = category;
-    if (subcategory) searchQuery.subcategory = subcategory;
-    if (difficulty) searchQuery.difficulty = difficulty;
+    // Muscle group filter
+    const muscleGroup = url.searchParams.get('muscle') || url.searchParams.get('muscleGroup');
+    if (muscleGroup && typeof muscleGroup === 'string' && muscleGroup.trim() !== '') {
+      const musclePattern = new RegExp(muscleGroup.trim(), 'i');
+      filters.$or = [
+        { primaryMuscleGroup: { $regex: musclePattern } },
+        { secondaryMuscleGroups: { $elemMatch: { $regex: musclePattern } } }
+      ];
+    }
     
-    // Add progression level range if provided
+    // Progression level filter
+    const minLevel = url.searchParams.get('minLevel');
+    const maxLevel = url.searchParams.get('maxLevel');
+    
     if (minLevel || maxLevel) {
-      searchQuery.progressionLevel = {};
-      if (minLevel) searchQuery.progressionLevel.$gte = parseInt(minLevel, 10);
-      if (maxLevel) searchQuery.progressionLevel.$lte = parseInt(maxLevel, 10);
+      filters.progressionLevel = {};
+      
+      if (minLevel) {
+        try {
+          const parsedMinLevel = parseInt(minLevel);
+          if (!isNaN(parsedMinLevel) && parsedMinLevel > 0) {
+            filters.progressionLevel.$gte = parsedMinLevel;
+          }
+        } catch (error) {
+          console.error('Error parsing minLevel parameter:', error);
+        }
+      }
+      
+      if (maxLevel) {
+        try {
+          const parsedMaxLevel = parseInt(maxLevel);
+          if (!isNaN(parsedMaxLevel) && parsedMaxLevel > 0) {
+            filters.progressionLevel.$lte = parsedMaxLevel;
+          }
+        } catch (error) {
+          console.error('Error parsing maxLevel parameter:', error);
+        }
+      }
     }
     
-    // Calculate pagination
-    const skip = (page - 1) * limit;
+    // Build search query
+    const searchTerms = search.trim().split(/\s+/).filter(Boolean);
+    const searchPattern = searchTerms.map(term => `(?=.*${term})`).join('');
+    const searchRegex = new RegExp(searchPattern, 'i');
     
-    // Build the query
-    let query = Exercise.find(searchQuery);
+    const query = {
+      $and: [
+        {
+          $or: [
+            { name: { $regex: searchRegex } },
+            { description: { $regex: searchRegex } },
+            { primaryMuscleGroup: { $regex: searchRegex } },
+            { formCues: { $elemMatch: { $regex: searchRegex } } }
+          ]
+        },
+        filters
+      ]
+    };
     
-    // Add text score sorting if using text search
-    if (q && q.trim().includes(' ')) {
-      query = query.sort({ score: { $meta: 'textScore' } });
-    } else {
-      // Otherwise sort by category and progression level
-      query = query.sort({ category: 1, progressionLevel: 1 });
+    // Get count for pagination with defensive error handling
+    let total = 0;
+    try {
+      total = await Exercise.countDocuments(query);
+    } catch (countError) {
+      console.error('Error counting search results:', countError);
     }
     
-    // Apply pagination and field selection
-    const exercises = await query
-      .select('name category subcategory progressionLevel difficulty description uniqueId')
-      .skip(skip)
-      .limit(limit);
+    // Execute search with defensive error handling
+    let exercises = [];
+    try {
+      exercises = await Exercise.find(query)
+        .sort({ name: 1 })
+        .skip(skip)
+        .limit(limit);
+    } catch (error) {
+      return handleApiError(error, 'Error executing exercise search');
+    }
     
-    // Get total count for pagination
-    const total = await Exercise.countDocuments(searchQuery);
+    // Calculate pagination info with defensive math
+    const totalPages = Math.max(1, Math.ceil(total / Math.max(1, limit)));
     
+    // Process search results with defensive handling
+    const searchResults = [];
+    
+    for (const exercise of exercises) {
+      try {
+        const exerciseObj = exercise.toObject();
+        
+        // Create search result with matched highlight info
+        searchResults.push({
+          id: exerciseObj._id.toString(),
+          name: exerciseObj.name || 'Unknown Exercise',
+          category: exerciseObj.category || 'Uncategorized',
+          subcategory: exerciseObj.subcategory || '',
+          progressionLevel: exerciseObj.progressionLevel || 1,
+          difficulty: exerciseObj.difficulty || 'beginner',
+          description: exerciseObj.description || '',
+          primaryMuscleGroup: exerciseObj.primaryMuscleGroup || '',
+          // Only include key fields in search results
+          secondaryMuscleGroups: Array.isArray(exerciseObj.secondaryMuscleGroups) 
+            ? exerciseObj.secondaryMuscleGroups 
+            : [],
+          // Generate relevance score - for now just a simple match count
+          relevance: countMatches(
+            [
+              exerciseObj.name, 
+              exerciseObj.description, 
+              exerciseObj.primaryMuscleGroup
+            ].join(' '), 
+            searchTerms
+          )
+        });
+      } catch (error) {
+        console.error('Error processing search result:', error);
+        // Add minimal exercise data as fallback
+        searchResults.push({
+          id: exercise._id?.toString() || 'unknown',
+          name: exercise.name || 'Unknown Exercise',
+          category: exercise.category || 'Uncategorized',
+          relevance: 0
+        });
+      }
+    }
+    
+    // Sort by relevance if we have relevance scores
+    searchResults.sort((a, b) => (b.relevance || 0) - (a.relevance || 0));
+    
+    // Return search results
     return apiResponse({
-      exercises,
-      query: q || '',
+      query: search,
+      results: searchResults,
       filters: {
-        category,
-        subcategory,
-        difficulty,
-        minLevel: minLevel ? parseInt(minLevel, 10) : undefined,
-        maxLevel: maxLevel ? parseInt(maxLevel, 10) : undefined
+        category: category || null,
+        subcategory: subcategory || null,
+        difficulty: difficulty || null,
+        muscleGroup: muscleGroup || null,
+        progressionLevel: {
+          min: filters.progressionLevel?.$gte || null,
+          max: filters.progressionLevel?.$lte || null
+        }
       },
       pagination: {
         total,
         page,
         limit,
-        pages: Math.ceil(total / limit)
+        pages: totalPages
       }
-    });
+    }, true, `Found ${total} exercises matching "${search}"`);
   } catch (error) {
-    return handleApiError(error, 'Error searching exercises');
+    return handleApiError(error, "Error searching exercises");
+  }
+}, AuthLevel.DEV_OPTIONAL);
+
+/**
+ * Helper function to count matches of search terms in text
+ */
+function countMatches(text: string, terms: string[]): number {
+  if (!text || !terms || terms.length === 0) return 0;
+  
+  try {
+    text = text.toLowerCase();
+    let matches = 0;
+    
+    for (const term of terms) {
+      if (!term) continue;
+      
+      const regex = new RegExp(term.toLowerCase(), 'g');
+      const count = (text.match(regex) || []).length;
+      matches += count;
+      
+      // Exact match bonus
+      if (text.includes(` ${term.toLowerCase()} `)) {
+        matches += 2;
+      }
+    }
+    
+    return matches;
+  } catch (error) {
+    console.error('Error counting matches:', error);
+    return 0;
   }
 }

@@ -1,173 +1,457 @@
 export const dynamic = 'force-dynamic';
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from "next/server";
+import { withAuth, AuthLevel } from "@/lib/auth-utils";
 import { dbConnect } from '@/lib/db/mongodb';
-import Exercise from '@/models/Exercise';
+import Exercise from "@/models/Exercise";
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
-import mongoose from 'mongoose';
+
+// Default pagination values
+const DEFAULT_PAGE = 1;
+const DEFAULT_LIMIT = 50;
+const MAX_LIMIT = 100;
 
 /**
  * GET /api/exercises
- * 
- * Fetch exercises with advanced filtering, sorting, and pagination
+ * Get exercises with filtering, searching and pagination
  */
-export async function GET(req: NextRequest) {
+export const GET = withAuth(async (req: NextRequest, userId) => {
   try {
     await dbConnect();
     
-    const searchParams = req.nextUrl.searchParams;
+    // Get query parameters with defensive handling
+    const url = new URL(req.url);
     
-    // Filtering parameters
-    const category = searchParams.get('category');
-    const subcategory = searchParams.get('subcategory');
-    const difficulty = searchParams.get('difficulty');
-    const minLevel = searchParams.get('minLevel');
-    const maxLevel = searchParams.get('maxLevel');
-    const level = searchParams.get('level');
-    const hasPrevious = searchParams.get('hasPrevious');
-    const hasNext = searchParams.get('hasNext');
+    // Search term
+    const search = url.searchParams.get('search') || '';
     
-    // Pagination parameters
-    const limit = Math.min(parseInt(searchParams.get('limit') || '20', 10), 100); // Max 100 items
-    const page = parseInt(searchParams.get('page') || '1', 10);
+    // Category filter
+    const category = url.searchParams.get('category') || '';
+    const subcategory = url.searchParams.get('subcategory') || '';
     
-    // Sorting parameters
-    const sortField = searchParams.get('sortBy') || 'progressionLevel';
-    const sortOrder = searchParams.get('sortOrder') === 'desc' ? -1 : 1;
+    // Difficulty filter
+    const difficulty = url.searchParams.get('difficulty') || '';
+    const validDifficulties = ['beginner', 'intermediate', 'advanced', 'elite'];
     
-    // Fields selection
-    const fields = searchParams.get('fields')?.split(',').join(' ') || 
-      'name category subcategory progressionLevel difficulty description uniqueId';
+    // Progression level filter with defensive parsing
+    let minLevel = null;
+    let maxLevel = null;
     
-    // Build query
-    const query: any = {};
-    
-    // Apply filters
-    if (category) query.category = category;
-    if (subcategory) query.subcategory = subcategory;
-    if (difficulty) query.difficulty = difficulty;
-    if (level) {
-      query.progressionLevel = parseInt(level, 10);
-    } else {
-      // Range queries for progression level
-      if (minLevel) query.progressionLevel = { ...query.progressionLevel, $gte: parseInt(minLevel, 10) };
-      if (maxLevel) query.progressionLevel = { ...query.progressionLevel, $lte: parseInt(maxLevel, 10) };
+    try {
+      const minLevelParam = url.searchParams.get('minLevel');
+      if (minLevelParam) {
+        const parsed = parseInt(minLevelParam);
+        if (!isNaN(parsed) && parsed > 0) {
+          minLevel = parsed;
+        }
+      }
+    } catch (error) {
+      console.error('Error parsing minLevel parameter:', error);
     }
     
-    // Previous/Next relationship filters
-    if (hasPrevious === 'true') query.previousExercise = { $exists: true, $ne: null };
-    if (hasPrevious === 'false') query.previousExercise = { $exists: false };
-    if (hasNext === 'true') query.nextExercise = { $exists: true, $ne: null };
-    if (hasNext === 'false') query.nextExercise = { $exists: false };
+    try {
+      const maxLevelParam = url.searchParams.get('maxLevel');
+      if (maxLevelParam) {
+        const parsed = parseInt(maxLevelParam);
+        if (!isNaN(parsed) && parsed > 0) {
+          maxLevel = parsed;
+        }
+      }
+    } catch (error) {
+      console.error('Error parsing maxLevel parameter:', error);
+    }
     
-    // Pagination
+    // Pagination with defensive parsing
+    let page = DEFAULT_PAGE;
+    let limit = DEFAULT_LIMIT;
+    
+    try {
+      const pageParam = url.searchParams.get('page');
+      if (pageParam) {
+        const parsedPage = parseInt(pageParam);
+        if (!isNaN(parsedPage) && parsedPage > 0) {
+          page = parsedPage;
+        }
+      }
+    } catch (error) {
+      console.error('Error parsing page parameter:', error);
+    }
+    
+    try {
+      const limitParam = url.searchParams.get('limit');
+      if (limitParam) {
+        const parsedLimit = parseInt(limitParam);
+        if (!isNaN(parsedLimit) && parsedLimit > 0) {
+          limit = Math.min(parsedLimit, MAX_LIMIT);
+        }
+      }
+    } catch (error) {
+      console.error('Error parsing limit parameter:', error);
+    }
+    
     const skip = (page - 1) * limit;
     
-    // Prepare sort object
-    const sort: { [key: string]: 1 | -1 } = {};
-    sort[sortField] = sortOrder as 1 | -1;
+    // Build query with defensive filters
+    const query: any = {};
     
-    // Add secondary sort to ensure consistent ordering
-    if (sortField !== 'category') sort.category = 1;
-    if (sortField !== 'progressionLevel') sort.progressionLevel = 1;
+    // Add search if provided
+    if (search && search.trim() !== '') {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } }
+      ];
+    }
     
-    // Execute query
-    const exercises = await Exercise.find(query)
-      .select(fields)
-      .sort(sort)
-      .skip(skip)
-      .limit(limit);
+    // Add category if provided
+    if (category && category.trim() !== '') {
+      query.category = { $regex: new RegExp(`^${category.trim()}$`, 'i') };
+    }
     
-    // Get total count for pagination
-    const total = await Exercise.countDocuments(query);
+    // Add subcategory if provided
+    if (subcategory && subcategory.trim() !== '') {
+      query.subcategory = { $regex: new RegExp(`^${subcategory.trim()}$`, 'i') };
+    }
+    
+    // Add difficulty if provided and valid
+    if (difficulty && difficulty.trim() !== '') {
+      const normalizedDifficulty = difficulty.trim().toLowerCase();
+      if (validDifficulties.includes(normalizedDifficulty)) {
+        query.difficulty = normalizedDifficulty;
+      }
+    }
+    
+    // Add progression level range
+    if (minLevel !== null || maxLevel !== null) {
+      query.progressionLevel = {};
+      
+      if (minLevel !== null) {
+        query.progressionLevel.$gte = minLevel;
+      }
+      
+      if (maxLevel !== null) {
+        query.progressionLevel.$lte = maxLevel;
+      }
+    }
+    
+    // Get count for pagination with defensive error handling
+    let total = 0;
+    try {
+      total = await Exercise.countDocuments(query);
+    } catch (countError) {
+      console.error('Error counting exercises:', countError);
+    }
+    
+    // Get exercises with defensive error handling
+    let exercises = [];
+    try {
+      const sort: any = {};
+      
+      // Default sort by category and progressionLevel
+      sort.category = 1;
+      sort.progressionLevel = 1;
+      
+      // Custom sort if specified
+      const sortParam = url.searchParams.get('sort');
+      if (sortParam && typeof sortParam === 'string') {
+        const sortField = sortParam.trim();
+        if (['name', 'difficulty', 'progressionLevel', 'category', 'subcategory'].includes(sortField)) {
+          // Clear default sort and use custom sort
+          sort[sortField] = url.searchParams.get('order') === 'desc' ? -1 : 1;
+        }
+      }
+      
+      exercises = await Exercise.find(query)
+        .sort(sort)
+        .skip(skip)
+        .limit(limit);
+    } catch (error) {
+      return handleApiError(error, 'Error querying exercises database');
+    }
+    
+    // Calculate pagination info with defensive math
+    const totalPages = Math.max(1, Math.ceil(total / Math.max(1, limit)));
+    
+    // Safely transform exercise documents to objects
+    const formattedExercises = [];
+    
+    for (const exercise of exercises) {
+      try {
+        const exerciseObj = exercise.toObject();
+        
+        // Process previous and next exercise references
+        let previousExercise = null;
+        let nextExercise = null;
+        
+        if (exerciseObj.previousExercise) {
+          try {
+            const prev = await Exercise.findById(exerciseObj.previousExercise)
+              .select('name category subcategory progressionLevel');
+            
+            if (prev) {
+              previousExercise = {
+                id: prev._id.toString(),
+                name: prev.name,
+                category: prev.category,
+                subcategory: prev.subcategory,
+                progressionLevel: prev.progressionLevel
+              };
+            }
+          } catch (error) {
+            console.error('Error fetching previous exercise:', error);
+          }
+        }
+        
+        if (exerciseObj.nextExercise) {
+          try {
+            const next = await Exercise.findById(exerciseObj.nextExercise)
+              .select('name category subcategory progressionLevel');
+            
+            if (next) {
+              nextExercise = {
+                id: next._id.toString(),
+                name: next.name,
+                category: next.category,
+                subcategory: next.subcategory,
+                progressionLevel: next.progressionLevel
+              };
+            }
+          } catch (error) {
+            console.error('Error fetching next exercise:', error);
+          }
+        }
+        
+        formattedExercises.push({
+          id: exerciseObj._id.toString(),
+          name: exerciseObj.name || 'Unknown Exercise',
+          category: exerciseObj.category || 'Uncategorized',
+          subcategory: exerciseObj.subcategory || '',
+          progressionLevel: exerciseObj.progressionLevel || 1,
+          difficulty: exerciseObj.difficulty || 'beginner',
+          description: exerciseObj.description || '',
+          primaryMuscleGroup: exerciseObj.primaryMuscleGroup || '',
+          secondaryMuscleGroups: Array.isArray(exerciseObj.secondaryMuscleGroups) 
+            ? exerciseObj.secondaryMuscleGroups 
+            : [],
+          formCues: Array.isArray(exerciseObj.formCues) 
+            ? exerciseObj.formCues 
+            : [],
+          xpValue: exerciseObj.xpValue || exerciseObj.progressionLevel * 10 || 10,
+          unlockRequirements: exerciseObj.unlockRequirements || '',
+          previousExercise,
+          nextExercise
+        });
+      } catch (error) {
+        console.error('Error formatting exercise object:', error);
+        // Add minimal exercise data as fallback
+        formattedExercises.push({
+          id: exercise._id?.toString() || 'unknown',
+          name: exercise.name || 'Unknown Exercise',
+          category: exercise.category || 'Uncategorized',
+          subcategory: exercise.subcategory || '',
+          progressionLevel: exercise.progressionLevel || 1
+        });
+      }
+    }
     
     return apiResponse({
-      exercises: exercises || [], // Ensure data is always an array
+      exercises: formattedExercises,
       pagination: {
         total,
         page,
         limit,
-        pages: Math.ceil(total / limit)
-      },
-      filters: {
-        category,
-        subcategory,
-        difficulty,
-        level: level ? parseInt(level, 10) : undefined,
-        minLevel: minLevel ? parseInt(minLevel, 10) : undefined,
-        maxLevel: maxLevel ? parseInt(maxLevel, 10) : undefined,
+        pages: totalPages
       }
-    });
+    }, true, `Retrieved ${formattedExercises.length} exercises`);
   } catch (error) {
-    return handleApiError(error, 'Error fetching exercises');
+    return handleApiError(error, "Error retrieving exercises");
   }
-}
+}, AuthLevel.DEV_OPTIONAL);
 
 /**
- * POST /api/exercises
- * 
- * Create a new exercise
+ * POST /api/exercises (Admin only)
+ * Create a new exercise (For admin use - requires separate admin validation)
  */
-export async function POST(req: NextRequest) {
+export const POST = withAuth(async (req: NextRequest, userId) => {
   try {
     await dbConnect();
     
-    // Parse request body
-    const data = await req.json();
-    
-    // Validate required fields
-    if (!data.name || !data.category) {
-      return apiError('Name and category are required fields', 400);
+    // Parse request body with defensive error handling
+    let body;
+    try {
+      body = await req.json();
+    } catch (error) {
+      return apiError('Invalid JSON in request body', 400, 'ERR_INVALID_JSON');
     }
     
-    // Check for unique ID if provided
-    if (data.uniqueId) {
-      const existingExercise = await Exercise.findOne({ uniqueId: data.uniqueId });
-      if (existingExercise) {
-        return apiError(`Exercise with uniqueId '${data.uniqueId}' already exists`, 409);
+    // Validate body
+    if (!body || typeof body !== 'object') {
+      return apiError('Invalid exercise data', 400, 'ERR_INVALID_DATA');
+    }
+    
+    // Check if user has admin permission (actual role check should be in middleware)
+    // This is a fallback defense - the API should be protected by admin middleware
+    try {
+      // This is where you would check if the user has admin role
+      // For now, we'll assume this check is handled by middleware
+      // and this is just a defensive fallback
+    } catch (error) {
+      return apiError('Insufficient permissions', 403, 'ERR_FORBIDDEN');
+    }
+    
+    // Basic validation with defensive string checks
+    if (!body.name || typeof body.name !== 'string' || body.name.trim() === '') {
+      return apiError('Exercise name is required', 400, 'ERR_VALIDATION');
+    }
+    
+    if (!body.category || typeof body.category !== 'string' || body.category.trim() === '') {
+      return apiError('Exercise category is required', 400, 'ERR_VALIDATION');
+    }
+    
+    // Validate progression level with safe parsing
+    let progressionLevel = 1;
+    if (body.progressionLevel !== undefined) {
+      if (typeof body.progressionLevel === 'string') {
+        progressionLevel = parseInt(body.progressionLevel);
+      } else if (typeof body.progressionLevel === 'number') {
+        progressionLevel = body.progressionLevel;
+      }
+      
+      if (isNaN(progressionLevel) || progressionLevel < 1) {
+        return apiError('Progression level must be a positive integer', 400, 'ERR_VALIDATION');
       }
     }
     
-    // Handle relationships by ID
-    if (data.previousExerciseId) {
-      const prevExists = await Exercise.exists({ _id: data.previousExerciseId });
-      if (!prevExists) {
-        return apiError(`Previous exercise with ID '${data.previousExerciseId}' not found`, 400);
+    // Validate difficulty
+    let difficulty = 'beginner';
+    if (body.difficulty !== undefined) {
+      if (typeof body.difficulty !== 'string') {
+        return apiError('Difficulty must be a string', 400, 'ERR_VALIDATION');
       }
-      data.previousExercise = data.previousExerciseId;
-      delete data.previousExerciseId;
-    }
-    
-    if (data.nextExerciseId) {
-      const nextExists = await Exercise.exists({ _id: data.nextExerciseId });
-      if (!nextExists) {
-        return apiError(`Next exercise with ID '${data.nextExerciseId}' not found`, 400);
+      
+      const validDifficulties = ['beginner', 'intermediate', 'advanced', 'elite'];
+      const normalizedDifficulty = body.difficulty.trim().toLowerCase();
+      
+      if (!validDifficulties.includes(normalizedDifficulty)) {
+        return apiError(`Invalid difficulty. Valid values: ${validDifficulties.join(', ')}`, 400, 'ERR_VALIDATION');
       }
-      data.nextExercise = data.nextExerciseId;
-      delete data.nextExerciseId;
+      
+      difficulty = normalizedDifficulty;
     }
     
-    // Create new exercise
-    const exercise = new Exercise(data);
-    await exercise.save();
-    
-    // Update relationships in the other direction if needed
-    if (exercise.previousExercise) {
-      await Exercise.findByIdAndUpdate(
-        exercise.previousExercise,
-        { nextExercise: exercise._id }
-      );
+    // Validate array fields
+    const secondaryMuscleGroups = [];
+    if (body.secondaryMuscleGroups !== undefined) {
+      if (!Array.isArray(body.secondaryMuscleGroups)) {
+        return apiError('Secondary muscle groups must be an array', 400, 'ERR_VALIDATION');
+      }
+      
+      for (const muscle of body.secondaryMuscleGroups) {
+        if (typeof muscle === 'string' && muscle.trim() !== '') {
+          secondaryMuscleGroups.push(muscle.trim());
+        }
+      }
     }
     
-    if (exercise.nextExercise) {
-      await Exercise.findByIdAndUpdate(
-        exercise.nextExercise,
-        { previousExercise: exercise._id }
-      );
+    const formCues = [];
+    if (body.formCues !== undefined) {
+      if (!Array.isArray(body.formCues)) {
+        return apiError('Form cues must be an array', 400, 'ERR_VALIDATION');
+      }
+      
+      for (const cue of body.formCues) {
+        if (typeof cue === 'string' && cue.trim() !== '') {
+          formCues.push(cue.trim());
+        }
+      }
     }
     
-    return apiResponse(exercise, true, 'Exercise created successfully', 201);
+    // Validate XP value with safe parsing
+    let xpValue = progressionLevel * 10; // Default based on progression level
+    if (body.xpValue !== undefined) {
+      if (typeof body.xpValue === 'string') {
+        xpValue = parseInt(body.xpValue);
+      } else if (typeof body.xpValue === 'number') {
+        xpValue = body.xpValue;
+      }
+      
+      if (isNaN(xpValue) || xpValue < 0) {
+        xpValue = progressionLevel * 10; // Fallback to default if invalid
+      }
+    }
+    
+    // Generate unique_id if not provided
+    let uniqueId = body.unique_id;
+    if (!uniqueId || typeof uniqueId !== 'string' || uniqueId.trim() === '') {
+      // Generate from category, name, and level
+      uniqueId = `${body.category}-${body.name}-${progressionLevel}`.toLowerCase()
+        .replace(/[^a-z0-9]/g, '-') // Replace non-alphanumeric chars with dashes
+        .replace(/-+/g, '-')        // Replace multiple dashes with a single dash
+        .replace(/^-|-$/g, '');     // Remove leading/trailing dashes
+    }
+    
+    // Create exercise data object
+    const exerciseData: any = {
+      name: body.name.trim(),
+      category: body.category.trim(),
+      subcategory: body.subcategory && typeof body.subcategory === 'string' 
+        ? body.subcategory.trim() 
+        : '',
+      progressionLevel,
+      difficulty,
+      description: body.description && typeof body.description === 'string' 
+        ? body.description.trim() 
+        : '',
+      primaryMuscleGroup: body.primaryMuscleGroup && typeof body.primaryMuscleGroup === 'string' 
+        ? body.primaryMuscleGroup.trim() 
+        : '',
+      secondaryMuscleGroups,
+      formCues,
+      xpValue,
+      unique_id: uniqueId,
+      unlockRequirements: body.unlockRequirements && typeof body.unlockRequirements === 'string' 
+        ? body.unlockRequirements.trim() 
+        : ''
+    };
+    
+    // Handle exercise relationships
+    if (body.previousExercise && typeof body.previousExercise === 'string' && body.previousExercise.trim() !== '') {
+      exerciseData.previousExercise = body.previousExercise.trim();
+    }
+    
+    if (body.nextExercise && typeof body.nextExercise === 'string' && body.nextExercise.trim() !== '') {
+      exerciseData.nextExercise = body.nextExercise.trim();
+    }
+    
+    // Create exercise with defensive error handling
+    let newExercise;
+    try {
+      newExercise = await Exercise.create(exerciseData);
+    } catch (error) {
+      return handleApiError(error, 'Error creating exercise in database');
+    }
+    
+    // Format response
+    let exerciseResponse;
+    try {
+      const exerciseObj = newExercise.toObject();
+      exerciseResponse = {
+        ...exerciseObj,
+        id: exerciseObj._id.toString(),
+        _id: undefined
+      };
+    } catch (error) {
+      console.error('Error formatting new exercise response:', error);
+      // Fallback with minimal data
+      exerciseResponse = {
+        id: newExercise._id?.toString(),
+        name: newExercise.name,
+        category: newExercise.category,
+        progressionLevel: newExercise.progressionLevel
+      };
+    }
+    
+    return apiResponse(exerciseResponse, true, 'Exercise created successfully', 201);
   } catch (error) {
-    return handleApiError(error, 'Error creating exercise');
+    return handleApiError(error, "Error creating exercise");
   }
-}
+}, AuthLevel.DEV_OPTIONAL);

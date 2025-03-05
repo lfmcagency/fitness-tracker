@@ -1,256 +1,305 @@
+// src/app/api/exercises/progression/route.ts (with defensive programming)
 export const dynamic = 'force-dynamic';
 
-import { NextRequest } from 'next/server';
+import { NextRequest } from "next/server";
+import { withAuth, AuthLevel } from "@/lib/auth-utils";
 import { dbConnect } from '@/lib/db/mongodb';
-import Exercise from '@/models/Exercise';
+import Exercise from "@/models/Exercise";
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
-import mongoose from 'mongoose';
+import { isValidObjectId } from "mongoose";
 
 /**
  * GET /api/exercises/progression
- * 
- * Fetch complete exercise progression paths
- * Based on category/subcategory or starting from specific exercise
+ * Get progression path for a specific exercise or category
  */
-export async function GET(req: NextRequest) {
+export const GET = withAuth(async (req: NextRequest, userId) => {
   try {
     await dbConnect();
     
-    const searchParams = req.nextUrl.searchParams;
-    const exerciseId = searchParams.get('exerciseId');
-    const category = searchParams.get('category');
-    const subcategory = searchParams.get('subcategory');
-    const difficulty = searchParams.get('difficulty');
+    // Get query parameters with defensive handling
+    const url = new URL(req.url);
     
-    // Return progression paths based on different query types
-    if (exerciseId) {
-      // Case 1: Progression path from a specific exercise
-      if (!mongoose.Types.ObjectId.isValid(exerciseId)) {
-        return apiError(`Invalid exercise ID: ${exerciseId}`, 400);
-      }
-      
-      const exercise = await Exercise.findById(exerciseId);
-      
-      if (!exercise) {
-        return apiError(`Exercise with ID ${exerciseId} not found`, 404);
-      }
-      
-      const progressionPath = await getFullProgressionPath(exercise);
-      
-      return apiResponse({
-        progressionPath,
-        exerciseName: exercise.name,
-        category: exercise.category,
-        subcategory: exercise.subcategory
-      });
-    } else if (category) {
-      // Case 2: Progression paths for a category/subcategory
-      
-      // Find all root exercises (those without previous exercises)
-      // or the lowest progression level exercises in each subcategory
-      const query: any = { category };
-      
-      if (subcategory) {
-        query.subcategory = subcategory;
-      }
-      
-      if (difficulty) {
-        query.difficulty = difficulty;
-      }
-      
-      // Find all exercises in each category/subcategory grouped by subcategory
-      const exercises = await Exercise.find(query)
-        .sort({ subcategory: 1, progressionLevel: 1 })
-        .select('name category subcategory progressionLevel difficulty uniqueId previousExercise nextExercise');
-      
-      // Group exercises by subcategory
-      const subcategories: Record<string, any[]> = {};
-      
-      for (const exercise of exercises) {
-        const sub = exercise.subcategory || 'general';
-        
-        if (!subcategories[sub]) {
-          subcategories[sub] = [];
-        }
-        
-        subcategories[sub].push(exercise);
-      }
-      
-      // Build progression paths for each subcategory
-      const progressionPaths: Record<string, any[]> = {};
-      
-      for (const sub in subcategories) {
-        // Find potential root exercises (lowest progression level in subcategory)
-        const exercisesInSub = subcategories[sub];
-        
-        // Group exercises by unique progression paths
-        const paths = [];
-        const processedIds = new Set();
-        
-        // First, find all real root exercises (no previous exercise)
-        const rootExercises = exercisesInSub.filter(ex => !ex.previousExercise);
-        
-        // Build paths from each root exercise
-        for (const rootExercise of rootExercises) {
-          if (!processedIds.has(rootExercise._id.toString())) {
-            const path = await getForwardProgressionPath(rootExercise);
-            
-            // Mark all exercises in this path as processed
-            path.forEach(ex => processedIds.add(ex._id.toString()));
-            
-            paths.push(path);
-          }
-        }
-        
-        // Then look for orphaned paths (exercises without roots)
-        for (const exercise of exercisesInSub) {
-          if (!processedIds.has(exercise._id.toString())) {
-            // This exercise is not part of any path yet
-            // Find the head of its path
-            const head = await findHeadOfPath(exercise);
-            const path = await getForwardProgressionPath(head);
-            
-            // Mark all exercises in this path as processed
-            path.forEach(ex => processedIds.add(ex._id.toString()));
-            
-            paths.push(path);
-          }
-        }
-        
-        progressionPaths[sub] = paths;
-      }
-      
-      return apiResponse({
-        category,
-        subcategory: subcategory || 'all',
-        progressionPaths
-      });
-    } else {
-      // Case 3: No specific parameters provided
-      // Return category summary with count of exercise paths
-      
-      // Get all categories
-      const categories = await Exercise.distinct('category');
-      
-      const summary = [];
-      
-      for (const cat of categories) {
-        // Get subcategories for this category
-        const subcategories = await Exercise.distinct('subcategory', { category: cat });
-        
-        // Get count of root exercises in this category
-        const rootExerciseCount = await Exercise.countDocuments({ 
-          category: cat,
-          previousExercise: { $exists: false }
-        });
-        
-        // Get total exercise count in this category
-        const totalExerciseCount = await Exercise.countDocuments({ category: cat });
-        
-        summary.push({
-          category: cat,
-          subcategories,
-          rootExerciseCount,
-          totalExerciseCount
-        });
-      }
-      
-      return apiResponse({
-        categories: summary,
-        message: 'Provide category or exerciseId parameter for detailed progression paths'
-      });
+    // Exercise ID or category are required
+    const exerciseId = url.searchParams.get('exerciseId') || null;
+    const category = url.searchParams.get('category') || null;
+    const subcategory = url.searchParams.get('subcategory') || null;
+    
+    // At least one filter is required
+    if (!exerciseId && !category) {
+      return apiError('Either exerciseId or category is required', 400, 'ERR_VALIDATION');
     }
+    
+    // Validate exerciseId if provided
+    if (exerciseId && !isValidObjectId(exerciseId)) {
+      return apiError('Invalid exercise ID format', 400, 'ERR_VALIDATION');
+    }
+    
+    // Initialize response data
+    let progressionPath = null;
+    let targetExercise = null;
+    let rootExercise = null;
+    
+    // Case 1: Progression for a specific exercise
+    if (exerciseId) {
+      try {
+        // Find the target exercise
+        targetExercise = await Exercise.findById(exerciseId);
+        
+        if (!targetExercise) {
+          return apiError('Exercise not found', 404, 'ERR_NOT_FOUND');
+        }
+        
+        // Create a basic exercise info object
+        const exerciseInfo = {
+          id: targetExercise._id.toString(),
+          name: targetExercise.name || 'Unknown Exercise',
+          category: targetExercise.category || 'Uncategorized',
+          subcategory: targetExercise.subcategory || '',
+          progressionLevel: targetExercise.progressionLevel || 1,
+          difficulty: targetExercise.difficulty || 'beginner'
+        };
+        
+        // Find the root exercise (lowest progression level in the chain)
+        rootExercise = await findRootExercise(targetExercise);
+        
+        // Build the full progression path
+        progressionPath = await buildProgressionPath(rootExercise);
+        
+        return apiResponse({
+          exercise: exerciseInfo,
+          progressionPath,
+          root: rootExercise ? {
+            id: rootExercise._id.toString(),
+            name: rootExercise.name,
+            progressionLevel: rootExercise.progressionLevel
+          } : null
+        }, true, 'Exercise progression retrieved successfully');
+      } catch (error) {
+        return handleApiError(error, 'Error retrieving exercise progression');
+      }
+    }
+    // Case 2: Progression for a category/subcategory
+    else if (category) {
+      try {
+        // Find all exercises in the category
+        const query: any = { category: { $regex: new RegExp(`^${category}$`, 'i') } };
+        
+        // Add subcategory if provided
+        if (subcategory) {
+          query.subcategory = { $regex: new RegExp(`^${subcategory}$`, 'i') };
+        }
+        
+        // Get exercises sorted by progression level
+        const exercises = await Exercise.find(query)
+          .sort({ progressionLevel: 1 });
+        
+        if (!exercises || exercises.length === 0) {
+          return apiError('No exercises found in the specified category', 404, 'ERR_NOT_FOUND');
+        }
+        
+        // Process exercises to build progression tree(s)
+        const progressionTrees = await buildCategoryProgressionTrees(exercises);
+        
+        return apiResponse({
+          category,
+          subcategory: subcategory || null,
+          progressionTrees,
+          exerciseCount: exercises.length
+        }, true, `Category progression trees retrieved successfully`);
+      } catch (error) {
+        return handleApiError(error, 'Error retrieving category progression');
+      }
+    }
+    
+    // This should never be reached due to the validation above
+    return apiError('Invalid request parameters', 400, 'ERR_VALIDATION');
   } catch (error) {
-    return handleApiError(error, 'Error fetching exercise progressions');
+    return handleApiError(error, "Error retrieving exercise progression");
+  }
+}, AuthLevel.DEV_OPTIONAL);
+
+/**
+ * Helper function to find the root exercise in a progression chain
+ * (the exercise with the lowest progression level with no previous exercise)
+ */
+async function findRootExercise(exercise) {
+  try {
+    if (!exercise) return null;
+    
+    let current = exercise;
+    let root = current;
+    let visited = new Set([current._id.toString()]);
+    
+    // Trace backwards until we find an exercise with no previous link
+    // or until we detect a cycle
+    while (current.previousExercise) {
+      try {
+        const previousId = current.previousExercise.toString();
+        
+        // Detect cycles to prevent infinite loops
+        if (visited.has(previousId)) {
+          console.error('Cycle detected in exercise progression chain');
+          break;
+        }
+        
+        visited.add(previousId);
+        
+        // Get the previous exercise
+        const prev = await Exercise.findById(previousId);
+        
+        // If previous exercise doesn't exist, break the chain
+        if (!prev) break;
+        
+        current = prev;
+        
+        // Update root if this exercise has a lower progression level
+        if (!root.progressionLevel || current.progressionLevel < root.progressionLevel) {
+          root = current;
+        }
+      } catch (error) {
+        console.error('Error tracing previous exercise:', error);
+        break;
+      }
+    }
+    
+    return root;
+  } catch (error) {
+    console.error('Error finding root exercise:', error);
+    return exercise; // Return the original exercise as fallback
   }
 }
 
 /**
- * Helper function to get the full progression path (previous and next) for an exercise
+ * Helper function to build a complete progression path from root to end
  */
-async function getFullProgressionPath(exercise: any) {
-  const path = [exercise];
-  
-  // Get all previous exercises in the progression
-  let current = exercise;
-  while (current.previousExercise) {
-    const previousId = typeof current.previousExercise === 'object' 
-      ? current.previousExercise._id 
-      : current.previousExercise;
-      
-    const prev = await Exercise.findById(previousId)
-      .select('name progressionLevel difficulty uniqueId previousExercise nextExercise subcategory');
-      
-    if (!prev) break;
+async function buildProgressionPath(rootExercise) {
+  try {
+    if (!rootExercise) return [];
     
-    path.unshift(prev);
-    current = prev;
-  }
-  
-  // Reset to the original exercise
-  current = exercise;
-  
-  // Get all next exercises in the progression
-  while (current.nextExercise) {
-    const nextId = typeof current.nextExercise === 'object'
-      ? current.nextExercise._id
-      : current.nextExercise;
-      
-    const next = await Exercise.findById(nextId)
-      .select('name progressionLevel difficulty uniqueId previousExercise nextExercise subcategory');
-      
-    if (!next) break;
+    const path = [];
+    let current = rootExercise;
+    let visited = new Set([current._id.toString()]);
     
-    path.push(next);
-    current = next;
+    // Start with the root
+    path.push({
+      id: current._id.toString(),
+      name: current.name,
+      category: current.category,
+      subcategory: current.subcategory || '',
+      progressionLevel: current.progressionLevel || 1,
+      difficulty: current.difficulty || 'beginner',
+      xpValue: current.xpValue || current.progressionLevel * 10 || 10,
+      unlockRequirements: current.unlockRequirements || ''
+    });
+    
+    // Follow the next links to build the complete path
+    while (current.nextExercise) {
+      try {
+        const nextId = current.nextExercise.toString();
+        
+        // Detect cycles to prevent infinite loops
+        if (visited.has(nextId)) {
+          console.error('Cycle detected in exercise progression chain');
+          break;
+        }
+        
+        visited.add(nextId);
+        
+        // Get the next exercise
+        const next = await Exercise.findById(nextId);
+        
+        // If next exercise doesn't exist, break the chain
+        if (!next) break;
+        
+        current = next;
+        
+        // Add to path
+        path.push({
+          id: current._id.toString(),
+          name: current.name,
+          category: current.category,
+          subcategory: current.subcategory || '',
+          progressionLevel: current.progressionLevel || path.length + 1,
+          difficulty: current.difficulty || 'beginner',
+          xpValue: current.xpValue || current.progressionLevel * 10 || 10,
+          unlockRequirements: current.unlockRequirements || ''
+        });
+      } catch (error) {
+        console.error('Error tracing next exercise:', error);
+        break;
+      }
+    }
+    
+    return path;
+  } catch (error) {
+    console.error('Error building progression path:', error);
+    return []; // Return empty array as fallback
   }
-  
-  return path;
 }
 
 /**
- * Helper function to get only the forward path from an exercise
+ * Helper function to build progression trees for a category
  */
-async function getForwardProgressionPath(exercise: any) {
-  const path = [exercise];
-  
-  // Get all next exercises in the progression
-  let current = exercise;
-  while (current.nextExercise) {
-    const nextId = typeof current.nextExercise === 'object'
-      ? current.nextExercise._id
-      : current.nextExercise;
-      
-    const next = await Exercise.findById(nextId)
-      .select('name progressionLevel difficulty uniqueId previousExercise nextExercise subcategory');
-      
-    if (!next) break;
+async function buildCategoryProgressionTrees(exercises) {
+  try {
+    if (!exercises || exercises.length === 0) return [];
     
-    path.push(next);
-    current = next;
-  }
-  
-  return path;
-}
-
-/**
- * Find the head of a progression path by following previousExercise links
- */
-async function findHeadOfPath(exercise: any) {
-  let current = exercise;
-  
-  while (current.previousExercise) {
-    const previousId = typeof current.previousExercise === 'object'
-      ? current.previousExercise._id
-      : current.previousExercise;
-      
-    const prev = await Exercise.findById(previousId)
-      .select('name progressionLevel difficulty uniqueId previousExercise nextExercise subcategory');
-      
-    if (!prev) break;
+    // Find all potential root exercises (those with no previous exercise)
+    const roots = exercises.filter(ex => !ex.previousExercise);
     
-    current = prev;
+    // If no roots are found, find exercises with the lowest progression level
+    if (roots.length === 0) {
+      let minLevel = Math.min(...exercises.map(ex => ex.progressionLevel || 999));
+      const lowestLevelExercises = exercises.filter(ex => (ex.progressionLevel || 999) === minLevel);
+      
+      // Add them as roots
+      roots.push(...lowestLevelExercises);
+    }
+    
+    // Build progression path for each root
+    const trees = [];
+    
+    for (const root of roots) {
+      try {
+        // Build path for this root
+        const path = await buildProgressionPath(root);
+        
+        // Only add non-empty paths
+        if (path.length > 0) {
+          trees.push({
+            root: {
+              id: root._id.toString(),
+              name: root.name,
+              progressionLevel: root.progressionLevel || 1
+            },
+            exercises: path,
+            length: path.length,
+            category: root.category,
+            subcategory: root.subcategory || null
+          });
+        }
+      } catch (error) {
+        console.error(`Error building progression tree for ${root.name}:`, error);
+      }
+    }
+    
+    // Group trees by subcategory if any exist
+    const subcategories = {};
+    for (const tree of trees) {
+      const subcategory = tree.subcategory || 'Uncategorized';
+      if (!subcategories[subcategory]) {
+        subcategories[subcategory] = [];
+      }
+      subcategories[subcategory].push(tree);
+    }
+    
+    return {
+      trees,
+      bySubcategory: subcategories,
+      rootCount: roots.length
+    };
+  } catch (error) {
+    console.error('Error building category progression trees:', error);
+    return []; // Return empty array as fallback
   }
-  
-  return current;
 }

@@ -1,4 +1,4 @@
-// src/lib/auth-utils.ts (with defensive programming)
+// src/lib/auth-utils.ts (with defensive programming and params support)
 import { NextRequest } from "next/server";
 import { getAuth, getUserById } from "@/lib/auth";
 import { apiError } from "./api-utils";
@@ -20,18 +20,23 @@ export enum AuthLevel {
 
 /**
  * Higher-order function to protect API routes with authentication
+ * Supports route parameters through context
  * @param handler The API route handler
  * @param level Authentication level required
  * @returns Protected handler function
  */
-export function withAuth(
-  handler: (req: NextRequest, userId: string) => Promise<Response>,
+export function withAuth<Params = any>(
+  handler: (
+    req: NextRequest, 
+    userId: string, 
+    context?: { params: Params }
+  ) => Promise<Response>,
   level: AuthLevel = AuthLevel.REQUIRED
 ) {
-  return async (req: NextRequest) => {
+  return async (req: NextRequest, context?: { params: Params }) => {
     // For AuthLevel.NONE, proceed directly to handler with null userId
     if (level === AuthLevel.NONE) {
-      return handler(req, "anonymous");
+      return handler(req, "anonymous", context);
     }
     
     try {
@@ -48,7 +53,7 @@ export function withAuth(
         if (level === AuthLevel.DEV_OPTIONAL && isDevelopment) {
           console.warn('⚠️ [Auth] Development authentication bypass active');
           // Use a development test user ID
-          return handler(req, "dev-user-id");
+          return handler(req, "dev-user-id", context);
         }
         
         return apiError('Authentication required', 401, 'ERR_401');
@@ -67,7 +72,7 @@ export function withAuth(
       }
       
       // Proceed with authenticated handler
-      return handler(req, userId);
+      return handler(req, userId, context);
     } catch (error) {
       console.error('[Auth] Authentication error:', error);
       return apiError(

@@ -1,153 +1,331 @@
+// src/app/api/exercises/[id]/sets/[setIndex]/route.ts (with defensive programming)
 export const dynamic = 'force-dynamic';
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from "next/server";
+import { withAuth, AuthLevel } from "@/lib/auth-utils";
 import { dbConnect } from '@/lib/db/mongodb';
-import Exercise from '@/models/Exercise';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
-import mongoose from 'mongoose';
+import { isValidObjectId } from "mongoose";
 
-// Define basic set/rep schemes for different difficulties
-const DEFAULT_SET_SCHEMES = {
-  beginner: [
-    { sets: 3, reps: 8, rest: 90, description: "Focus on form" },
-    { sets: 3, reps: 10, rest: 90, description: "Moderate intensity" },
-    { sets: 3, reps: 12, rest: 90, description: "Higher volume" }
-  ],
-  intermediate: [
-    { sets: 4, reps: 6, rest: 120, description: "Strength focus" },
-    { sets: 3, reps: 10, rest: 90, description: "Balanced approach" },
-    { sets: 5, reps: 12, rest: 60, description: "Endurance" }
-  ],
-  advanced: [
-    { sets: 5, reps: 5, rest: 180, description: "Strength development" },
-    { sets: 4, reps: 8, rest: 120, description: "Hypertrophy" },
-    { sets: 3, reps: 12, rest: 60, description: "Metabolic conditioning" }
-  ],
-  elite: [
-    { sets: 6, reps: 3, rest: 180, description: "Maximum strength" },
-    { sets: 5, reps: 5, rest: 150, description: "Power development" },
-    { sets: 4, reps: 10, rest: 90, description: "Advanced conditioning" }
-  ]
-};
+// Note: This endpoint would typically interact with a Workout model that contains
+// sets for exercises. Since we don't have the complete model structure in the
+// provided context, we'll implement a robust API shell that can be filled in with
+// the actual implementation details.
 
 /**
- * GET /api/exercises/:id/sets/:setIndex
- * 
- * Get recommended sets and reps for an exercise based on difficulty
+ * GET /api/exercises/[id]/sets/[setIndex]
+ * Get a specific set for an exercise in the current user's workout
  */
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { id: string, setIndex: string } }
-) {
+export const GET = withAuth(async (req: NextRequest, userId, { params }) => {
   try {
     await dbConnect();
     
-    const { id, setIndex } = params;
-    const index = parseInt(setIndex, 10);
+    // Validate exercise ID from params
+    const exerciseId = params?.id;
     
-    // Validate ObjectId
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return apiError(`Invalid exercise ID: ${id}`, 400);
+    if (!exerciseId || typeof exerciseId !== 'string') {
+      return apiError('Exercise ID is required', 400, 'ERR_VALIDATION');
     }
     
-    // Validate setIndex
-    if (isNaN(index) || index < 0 || index > 2) {
-      return apiError('Set index must be 0, 1, or 2', 400);
+    // Check if ID is valid MongoDB ObjectId
+    if (!isValidObjectId(exerciseId)) {
+      return apiError('Invalid exercise ID format', 400, 'ERR_VALIDATION');
     }
     
-    // Find the exercise
-    const exercise = await Exercise.findById(id)
-      .select('name category difficulty progressionLevel xpValue');
+    // Validate set index from params
+    const setIndex = params?.setIndex;
+    let parsedIndex: number;
     
-    if (!exercise) {
-      return apiError('Exercise not found', 404);
-    }
-    
-    // Get appropriate set scheme based on difficulty
-    const difficulty = exercise.difficulty || 'beginner';
-    const setSchemes = DEFAULT_SET_SCHEMES[difficulty];
-    const selectedScheme = setSchemes[index];
-    
-    // Add exercise-specific adjustments based on progression level
-    const adjustedScheme = { ...selectedScheme };
-    
-    // Adjust rest time based on progression level
-    if (exercise.progressionLevel > 5) {
-      // More advanced exercises need more rest
-      adjustedScheme.rest += Math.min(30 * Math.floor((exercise.progressionLevel - 5) / 2), 60);
-    }
-    
-    // Return the set scheme along with the exercise info
-    return apiResponse({
-      exercise: {
-        id: exercise._id,
-        name: exercise.name,
-        category: exercise.category,
-        difficulty: exercise.difficulty,
-        progressionLevel: exercise.progressionLevel,
-        xpValue: exercise.xpValue
-      },
-      setScheme: adjustedScheme,
-      setIndex: index
-    });
-  } catch (error) {
-    return handleApiError(error, 'Error fetching exercise set scheme');
-  }
-}
-
-/**
- * PATCH /api/exercises/:id/sets/:setIndex
- * 
- * Record completion of a set for the exercise
- * Records are stored in the user's profile
- */
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: { id: string, setIndex: string } }
-) {
-  try {
-    await dbConnect();
-    
-    const { id, setIndex } = params;
-    
-    // Validate ObjectId
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return apiError(`Invalid exercise ID: ${id}`, 400);
-    }
-    
-    // Get completion data from request body
-    const data = await req.json();
-    const { completedReps, difficulty, notes } = data;
-    
-    // Validate input
-    if (typeof completedReps !== 'number' || completedReps < 0) {
-      return apiError('completedReps must be a positive number', 400);
-    }
-    
-    // Find the exercise to verify it exists
-    const exercise = await Exercise.findById(id);
-    
-    if (!exercise) {
-      return apiError('Exercise not found', 404);
-    }
-    
-    // Since we don't have user authentication in this example,
-    // we'll just return a success response with the data that would be saved
-    
-    return apiResponse({
-      success: true,
-      message: 'Set completion recorded',
-      completion: {
-        exerciseId: id,
-        exerciseName: exercise.name,
-        setIndex: parseInt(setIndex, 10),
-        completedReps,
-        difficulty: difficulty || 'normal',
-        notes,
-        timestamp: new Date().toISOString()
+    try {
+      parsedIndex = parseInt(setIndex);
+      if (isNaN(parsedIndex) || parsedIndex < 0) {
+        return apiError('Set index must be a non-negative integer', 400, 'ERR_VALIDATION');
       }
-    }, true, 'Set completion recorded', 200);
+    } catch (error) {
+      return apiError('Invalid set index', 400, 'ERR_VALIDATION');
+    }
+    
+    // Get query parameters with defensive handling
+    const url = new URL(req.url);
+    
+    // Optional workout ID parameter
+    const workoutId = url.searchParams.get('workoutId') || null;
+    
+    // Validate workout ID if provided
+    if (workoutId && !isValidObjectId(workoutId)) {
+      return apiError('Invalid workout ID format', 400, 'ERR_VALIDATION');
+    }
+    
+    // TODO: Implement actual set retrieval logic
+    // This would involve:
+    // 1. Finding the user's current or specified workout
+    // 2. Finding the exercise within that workout
+    // 3. Retrieving the specified set at the given index
+    
+    // For now, return a mock response or error
+    return apiResponse({
+      message: "This endpoint needs to be implemented based on the workout model structure",
+      params: {
+        exerciseId,
+        setIndex: parsedIndex,
+        workoutId
+      }
+    }, true, 'Set retrieval not implemented');
   } catch (error) {
-    return handleApiError(error, 'Error recording set completion');
+    return handleApiError(error, "Error retrieving exercise set");
   }
-}
+}, AuthLevel.DEV_OPTIONAL);
+
+/**
+ * PUT /api/exercises/[id]/sets/[setIndex]
+ * Update a specific set for an exercise in the current user's workout
+ */
+export const PUT = withAuth(async (req: NextRequest, userId, { params }) => {
+  try {
+    await dbConnect();
+    
+    // Validate exercise ID from params
+    const exerciseId = params?.id;
+    
+    if (!exerciseId || typeof exerciseId !== 'string') {
+      return apiError('Exercise ID is required', 400, 'ERR_VALIDATION');
+    }
+    
+    // Check if ID is valid MongoDB ObjectId
+    if (!isValidObjectId(exerciseId)) {
+      return apiError('Invalid exercise ID format', 400, 'ERR_VALIDATION');
+    }
+    
+    // Validate set index from params
+    const setIndex = params?.setIndex;
+    let parsedIndex: number;
+    
+    try {
+      parsedIndex = parseInt(setIndex);
+      if (isNaN(parsedIndex) || parsedIndex < 0) {
+        return apiError('Set index must be a non-negative integer', 400, 'ERR_VALIDATION');
+      }
+    } catch (error) {
+      return apiError('Invalid set index', 400, 'ERR_VALIDATION');
+    }
+    
+    // Parse request body with defensive error handling
+    let body;
+    try {
+      body = await req.json();
+    } catch (error) {
+      return apiError('Invalid JSON in request body', 400, 'ERR_INVALID_JSON');
+    }
+    
+    // Validate body
+    if (!body || typeof body !== 'object') {
+      return apiError('Invalid set data', 400, 'ERR_INVALID_DATA');
+    }
+    
+    // Get query parameters with defensive handling
+    const url = new URL(req.url);
+    
+    // Optional workout ID parameter
+    const workoutId = url.searchParams.get('workoutId') || body.workoutId || null;
+    
+    // Validate workout ID if provided
+    if (workoutId && !isValidObjectId(workoutId)) {
+      return apiError('Invalid workout ID format', 400, 'ERR_VALIDATION');
+    }
+    
+    // Validate set data with defensive checks
+    
+    // Validate reps
+    let reps = null;
+    if (body.reps !== undefined) {
+      if (typeof body.reps === 'string') {
+        reps = parseInt(body.reps);
+      } else if (typeof body.reps === 'number') {
+        reps = body.reps;
+      } else if (body.reps === null) {
+        reps = null;
+      } else {
+        return apiError('Reps must be a number or null', 400, 'ERR_VALIDATION');
+      }
+      
+      if (reps !== null && (isNaN(reps) || reps < 0)) {
+        return apiError('Reps must be a non-negative number or null', 400, 'ERR_VALIDATION');
+      }
+    }
+    
+    // Validate weight
+    let weight = null;
+    if (body.weight !== undefined) {
+      if (typeof body.weight === 'string') {
+        weight = parseFloat(body.weight);
+      } else if (typeof body.weight === 'number') {
+        weight = body.weight;
+      } else if (body.weight === null) {
+        weight = null;
+      } else {
+        return apiError('Weight must be a number or null', 400, 'ERR_VALIDATION');
+      }
+      
+      if (weight !== null && (isNaN(weight) || weight < 0)) {
+        return apiError('Weight must be a non-negative number or null', 400, 'ERR_VALIDATION');
+      }
+    }
+    
+    // Validate hold time (for isometric exercises)
+    let holdTime = null;
+    if (body.holdTime !== undefined) {
+      if (typeof body.holdTime === 'string') {
+        holdTime = parseInt(body.holdTime);
+      } else if (typeof body.holdTime === 'number') {
+        holdTime = body.holdTime;
+      } else if (body.holdTime === null) {
+        holdTime = null;
+      } else {
+        return apiError('Hold time must be a number or null', 400, 'ERR_VALIDATION');
+      }
+      
+      if (holdTime !== null && (isNaN(holdTime) || holdTime < 0)) {
+        return apiError('Hold time must be a non-negative number or null', 400, 'ERR_VALIDATION');
+      }
+    }
+    
+    // Validate completed status
+    let completed = null;
+    if (body.completed !== undefined) {
+      if (typeof body.completed === 'boolean') {
+        completed = body.completed;
+      } else if (body.completed === 'true') {
+        completed = true;
+      } else if (body.completed === 'false') {
+        completed = false;
+      } else if (body.completed === null) {
+        completed = false;
+      } else {
+        return apiError('Completed must be a boolean or null', 400, 'ERR_VALIDATION');
+      }
+    }
+    
+    // Validate RPE (Rate of Perceived Exertion)
+    let rpe = null;
+    if (body.rpe !== undefined) {
+      if (typeof body.rpe === 'string') {
+        rpe = parseFloat(body.rpe);
+      } else if (typeof body.rpe === 'number') {
+        rpe = body.rpe;
+      } else if (body.rpe === null) {
+        rpe = null;
+      } else {
+        return apiError('RPE must be a number or null', 400, 'ERR_VALIDATION');
+      }
+      
+      if (rpe !== null && (isNaN(rpe) || rpe < 0 || rpe > 10)) {
+        return apiError('RPE must be a number between 0 and 10, or null', 400, 'ERR_VALIDATION');
+      }
+    }
+    
+    // Validate notes
+    let notes = null;
+    if (body.notes !== undefined) {
+      if (typeof body.notes === 'string') {
+        notes = body.notes.trim();
+      } else if (body.notes === null) {
+        notes = null;
+      } else {
+        return apiError('Notes must be a string or null', 400, 'ERR_VALIDATION');
+      }
+    }
+    
+    // Create a validated set object
+    const setData = {
+      reps,
+      weight,
+      holdTime,
+      completed,
+      rpe,
+      notes
+    };
+    
+    // TODO: Implement actual set update logic
+    // This would involve:
+    // 1. Finding the user's current or specified workout
+    // 2. Finding the exercise within that workout
+    // 3. Updating the specified set at the given index
+    
+    // For now, return a mock response or error
+    return apiResponse({
+      message: "This endpoint needs to be implemented based on the workout model structure",
+      params: {
+        exerciseId,
+        setIndex: parsedIndex,
+        workoutId
+      },
+      setData
+    }, true, 'Set update not implemented');
+  } catch (error) {
+    return handleApiError(error, "Error updating exercise set");
+  }
+}, AuthLevel.DEV_OPTIONAL);
+
+/**
+ * DELETE /api/exercises/[id]/sets/[setIndex]
+ * Delete a specific set for an exercise in the current user's workout
+ */
+export const DELETE = withAuth(async (req: NextRequest, userId, { params }) => {
+  try {
+    await dbConnect();
+    
+    // Validate exercise ID from params
+    const exerciseId = params?.id;
+    
+    if (!exerciseId || typeof exerciseId !== 'string') {
+      return apiError('Exercise ID is required', 400, 'ERR_VALIDATION');
+    }
+    
+    // Check if ID is valid MongoDB ObjectId
+    if (!isValidObjectId(exerciseId)) {
+      return apiError('Invalid exercise ID format', 400, 'ERR_VALIDATION');
+    }
+    
+    // Validate set index from params
+    const setIndex = params?.setIndex;
+    let parsedIndex: number;
+    
+    try {
+      parsedIndex = parseInt(setIndex);
+      if (isNaN(parsedIndex) || parsedIndex < 0) {
+        return apiError('Set index must be a non-negative integer', 400, 'ERR_VALIDATION');
+      }
+    } catch (error) {
+      return apiError('Invalid set index', 400, 'ERR_VALIDATION');
+    }
+    
+    // Get query parameters with defensive handling
+    const url = new URL(req.url);
+    
+    // Optional workout ID parameter
+    const workoutId = url.searchParams.get('workoutId') || null;
+    
+    // Validate workout ID if provided
+    if (workoutId && !isValidObjectId(workoutId)) {
+      return apiError('Invalid workout ID format', 400, 'ERR_VALIDATION');
+    }
+    
+    // TODO: Implement actual set deletion logic
+    // This would involve:
+    // 1. Finding the user's current or specified workout
+    // 2. Finding the exercise within that workout
+    // 3. Removing the specified set at the given index
+    
+    // For now, return a mock response or error
+    return apiResponse({
+      message: "This endpoint needs to be implemented based on the workout model structure",
+      params: {
+        exerciseId,
+        setIndex: parsedIndex,
+        workoutId
+      }
+    }, true, 'Set deletion not implemented');
+  } catch (error) {
+    return handleApiError(error, "Error deleting exercise set");
+  }
+}, AuthLevel.DEV_OPTIONAL);

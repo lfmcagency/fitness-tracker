@@ -5,7 +5,7 @@ import { NextRequest } from "next/server";
 import { withRoleProtection } from "@/lib/auth-utils";
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { dbConnect } from '@/lib/db/mongodb';
-import { initializeDatabase } from '@/lib/db/init-db';
+import { initDatabase } from '@/lib/db/init-db';
 import mongoose from "mongoose";
 
 /**

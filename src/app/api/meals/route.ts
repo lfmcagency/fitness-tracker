@@ -1,554 +1,481 @@
+// src/app/api/meals/route.ts (with defensive programming)
 export const dynamic = 'force-dynamic';
 
-import { NextRequest } from 'next/server';
+import { NextRequest } from "next/server";
+import { withAuth, AuthLevel } from "@/lib/auth-utils";
 import { dbConnect } from '@/lib/db/mongodb';
-import Meal from '@/models/Meal';
-import mongoose from 'mongoose';
-import { withAuth, AuthLevel } from '@/lib/auth-utils';
+import Meal from "@/models/Meal";
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
+import mongoose, { isValidObjectId } from "mongoose";
 
-type FilterOptions = {
-  startDate?: Date;
-  endDate?: Date;
-  userId?: mongoose.Types.ObjectId;
-  sortBy?: string;
-  sortOrder?: 1 | -1;
-};
+// Default pagination values
+const DEFAULT_PAGE = 1;
+const DEFAULT_LIMIT = 20;
+const MAX_LIMIT = 50;
 
-// GET - Fetch meals with optional filtering
+/**
+ * GET /api/meals
+ * Get meals with filtering and pagination
+ */
 export const GET = withAuth(async (req: NextRequest, userId) => {
   try {
     await dbConnect();
     
-    // Get query parameters with defensive checks
+    // Get query parameters with defensive handling
     const url = new URL(req.url);
     
-    // Parse pagination parameters with defensive parsing
-    let limit = 50;  // Default limit
+    // Date filters
+    let startDate = null;
+    let endDate = null;
+    
     try {
-      const limitParam = url.searchParams.get('limit');
-      if (limitParam) {
-        const parsedLimit = parseInt(limitParam, 10);
-        if (!isNaN(parsedLimit) && parsedLimit > 0) {
-          limit = Math.min(parsedLimit, 100); // Cap at 100 items
+      const startDateParam = url.searchParams.get('startDate');
+      if (startDateParam) {
+        startDate = new Date(startDateParam);
+        if (isNaN(startDate.getTime())) {
+          startDate = null;
         }
       }
     } catch (error) {
-      console.error('Error parsing limit parameter:', error);
-      // Continue with default value
+      console.error('Error parsing startDate parameter:', error);
     }
     
-    let page = 1;  // Default page
+    try {
+      const endDateParam = url.searchParams.get('endDate');
+      if (endDateParam) {
+        endDate = new Date(endDateParam);
+        if (isNaN(endDate.getTime())) {
+          endDate = null;
+        }
+      }
+    } catch (error) {
+      console.error('Error parsing endDate parameter:', error);
+    }
+    
+    // Single date query (for a specific day)
+    let date = null;
+    try {
+      const dateParam = url.searchParams.get('date');
+      if (dateParam) {
+        date = new Date(dateParam);
+        if (isNaN(date.getTime())) {
+          date = null;
+        } else {
+          // Set to start of day
+          date.setHours(0, 0, 0, 0);
+        }
+      }
+    } catch (error) {
+      console.error('Error parsing date parameter:', error);
+    }
+    
+    // Pagination with defensive parsing
+    let page = DEFAULT_PAGE;
+    let limit = DEFAULT_LIMIT;
+    
     try {
       const pageParam = url.searchParams.get('page');
       if (pageParam) {
-        const parsedPage = parseInt(pageParam, 10);
+        const parsedPage = parseInt(pageParam);
         if (!isNaN(parsedPage) && parsedPage > 0) {
           page = parsedPage;
         }
       }
     } catch (error) {
       console.error('Error parsing page parameter:', error);
-      // Continue with default value
+    }
+    
+    try {
+      const limitParam = url.searchParams.get('limit');
+      if (limitParam) {
+        const parsedLimit = parseInt(limitParam);
+        if (!isNaN(parsedLimit) && parsedLimit > 0) {
+          limit = Math.min(parsedLimit, MAX_LIMIT);
+        }
+      }
+    } catch (error) {
+      console.error('Error parsing limit parameter:', error);
     }
     
     const skip = (page - 1) * limit;
     
-    // Parse sorting parameters with validation
-    let sortField = 'date';
-    const sortParam = url.searchParams.get('sort');
-    if (sortParam && typeof sortParam === 'string' && 
-        ['date', 'name', 'time', 'protein', 'carbs', 'fat', 'calories'].includes(sortParam)) {
-      sortField = sortParam;
-    }
+    // Build query
+    const query: any = { userId };
     
-    const sortOrder = url.searchParams.get('order')?.toLowerCase() === 'asc' ? 1 : -1;
-    
-    // Build filter options with defensive checks
-    const filterOptions: FilterOptions = {
-      userId: new mongoose.Types.ObjectId(userId),
-      sortBy: sortField,
-      sortOrder: sortOrder
-    };
-    
-    // Date filtering with defensive date parsing
-    const dateStr = url.searchParams.get('date');
-    const startDateStr = url.searchParams.get('startDate');
-    const endDateStr = url.searchParams.get('endDate');
-    
-    if (dateStr) {
-      // Parse date with error handling
-      try {
-        const targetDate = new Date(dateStr);
-        
-        if (isNaN(targetDate.getTime())) {
-          return apiError('Invalid date format', 400, 'ERR_INVALID_DATE');
-        }
-        
-        const startOfDay = new Date(targetDate);
-        startOfDay.setHours(0, 0, 0, 0);
-        
-        const endOfDay = new Date(targetDate);
-        endOfDay.setHours(23, 59, 59, 999);
-        
-        filterOptions.startDate = startOfDay;
-        filterOptions.endDate = endOfDay;
-      } catch (error) {
-        return apiError('Invalid date format', 400, 'ERR_INVALID_DATE');
-      }
-    } else if (startDateStr || endDateStr) {
-      // Date range filter with defensive parsing
-      if (startDateStr) {
-        try {
-          const startDate = new Date(startDateStr);
-          if (isNaN(startDate.getTime())) {
-            return apiError('Invalid startDate format', 400, 'ERR_INVALID_DATE');
-          }
-          
-          startDate.setHours(0, 0, 0, 0);
-          filterOptions.startDate = startDate;
-        } catch (error) {
-          return apiError('Invalid startDate format', 400, 'ERR_INVALID_DATE');
-        }
+    // Date filtering
+    if (date) {
+      // Find meals for this specific day
+      const nextDay = new Date(date);
+      nextDay.setDate(nextDay.getDate() + 1);
+      
+      query.date = {
+        $gte: date,
+        $lt: nextDay
+      };
+    } else if (startDate || endDate) {
+      query.date = {};
+      
+      if (startDate) {
+        query.date.$gte = startDate;
       }
       
-      if (endDateStr) {
-        try {
-          const endDate = new Date(endDateStr);
-          if (isNaN(endDate.getTime())) {
-            return apiError('Invalid endDate format', 400, 'ERR_INVALID_DATE');
-          }
-          
-          endDate.setHours(23, 59, 59, 999);
-          filterOptions.endDate = endDate;
-        } catch (error) {
-          return apiError('Invalid endDate format', 400, 'ERR_INVALID_DATE');
-        }
+      if (endDate) {
+        query.date.$lte = endDate;
       }
     }
     
-    // Build MongoDB query from filter options
-    const query: any = { userId: filterOptions.userId };
-    
-    if (filterOptions.startDate && filterOptions.endDate) {
-      query.date = { $gte: filterOptions.startDate, $lte: filterOptions.endDate };
-    } else if (filterOptions.startDate) {
-      query.date = { $gte: filterOptions.startDate };
-    } else if (filterOptions.endDate) {
-      query.date = { $lte: filterOptions.endDate };
-    }
-    
-    // If specific userId requested and requester is admin
-    const requestedUserId = url.searchParams.get('userId');
-    if (requestedUserId && requestedUserId.trim() !== '') {
-      // Validate ObjectId format
-      if (!mongoose.Types.ObjectId.isValid(requestedUserId)) {
-        return apiError('Invalid user ID format', 400, 'ERR_INVALID_FORMAT');
-      }
-      
-      // Override the userId in the query
-      try {
-        query.userId = new mongoose.Types.ObjectId(requestedUserId);
-      } catch (error) {
-        return apiError('Invalid user ID format', 400, 'ERR_INVALID_FORMAT');
-      }
-    }
-    
-    // Execute query with pagination and sorting with defensive error handling
-    const sortOptions: Record<string, 1 | -1> = {};
-    sortOptions[sortField] = sortOrder;
-    
-    // Initialize meals and total with defaults
-    let meals = [];
+    // Get count for pagination with defensive error handling
     let total = 0;
-    
     try {
-      // Count documents with error handling
       total = await Meal.countDocuments(query);
     } catch (countError) {
       console.error('Error counting meals:', countError);
-      // Continue with default 0
     }
     
+    // Get meals with defensive error handling
+    let meals = [];
     try {
-      // Fetch meals with error handling
       meals = await Meal.find(query)
-        .sort(sortOptions)
+        .sort({ date: -1 })
         .skip(skip)
-        .limit(limit)
-        .lean();
-      
-      // Ensure meals is always an array
-      if (!Array.isArray(meals)) {
-        meals = [];
-      }
-    } catch (findError) {
-      return handleApiError(findError, 'Error fetching meals');
+        .limit(limit);
+    } catch (error) {
+      return handleApiError(error, 'Error querying meals database');
     }
     
     // Calculate pagination info with defensive math
-    const totalPages = Math.ceil(Math.max(total, 0) / Math.max(limit, 1));
+    const totalPages = Math.max(1, Math.ceil(total / Math.max(1, limit)));
+    
+    // Calculate nutritional totals for returned meals
+    const nutritionTotals = {
+      protein: 0,
+      carbs: 0,
+      fat: 0,
+      calories: 0
+    };
+    
+    // Process meals with nutritional calculations and formatting
+    const processedMeals = [];
+    
+    for (const meal of meals) {
+      try {
+        const mealObj = meal.toObject();
+        
+        // Calculate meal nutritional totals
+        let mealTotals = {
+          protein: 0,
+          carbs: 0,
+          fat: 0,
+          calories: 0
+        };
+        
+        // Process foods with defensive array handling
+        const processedFoods = [];
+        if (Array.isArray(mealObj.foods)) {
+          for (const food of mealObj.foods) {
+            // Safely add food nutritional values
+            mealTotals.protein += food.protein || 0;
+            mealTotals.carbs += food.carbs || 0;
+            mealTotals.fat += food.fat || 0;
+            mealTotals.calories += food.calories || 0;
+            
+            // Add processed food
+            processedFoods.push({
+              ...food,
+              // Ensure critical fields exist
+              name: food.name || 'Unknown Food',
+              protein: food.protein || 0,
+              carbs: food.carbs || 0,
+              fat: food.fat || 0,
+              calories: food.calories || 0,
+              amount: food.amount || 0
+            });
+          }
+        }
+        
+        // Add meal totals to overall totals
+        nutritionTotals.protein += mealTotals.protein;
+        nutritionTotals.carbs += mealTotals.carbs;
+        nutritionTotals.fat += mealTotals.fat;
+        nutritionTotals.calories += mealTotals.calories;
+        
+        // Add processed meal to result
+        processedMeals.push({
+          id: mealObj._id.toString(),
+          name: mealObj.name || 'Unnamed Meal',
+          date: mealObj.date,
+          time: mealObj.time || '',
+          notes: mealObj.notes || '',
+          foods: processedFoods,
+          totals: mealTotals
+        });
+      } catch (error) {
+        console.error('Error processing meal:', error);
+        // Add minimal meal data as fallback
+        processedMeals.push({
+          id: meal._id?.toString() || 'unknown',
+          name: meal.name || 'Unnamed Meal',
+          date: meal.date,
+          foods: []
+        });
+      }
+    }
     
     return apiResponse({
-      meals,
+      meals: processedMeals,
+      totals: nutritionTotals,
       pagination: {
         total,
         page,
         limit,
-        pages: totalPages,
-        hasNextPage: skip + meals.length < total,
-        hasPrevPage: page > 1
+        pages: totalPages
       }
-    });
+    }, true, `Retrieved ${processedMeals.length} meals`);
   } catch (error) {
-    return handleApiError(error, 'Error processing meal request');
+    return handleApiError(error, "Error retrieving meals");
   }
 }, AuthLevel.DEV_OPTIONAL);
 
-// POST - Create new meal
+/**
+ * POST /api/meals
+ * Create a new meal
+ */
 export const POST = withAuth(async (req: NextRequest, userId) => {
   try {
     await dbConnect();
     
-    // Parse and validate request body with defensive error handling
+    // Parse request body with defensive error handling
     let body;
     try {
       body = await req.json();
     } catch (error) {
-      return apiError('Invalid request body', 400, 'ERR_INVALID_JSON');
+      return apiError('Invalid JSON in request body', 400, 'ERR_INVALID_JSON');
     }
     
-    // Validate body is an object
+    // Validate body
     if (!body || typeof body !== 'object') {
-      return apiError('Invalid request body', 400, 'ERR_INVALID_FORMAT');
+      return apiError('Invalid meal data', 400, 'ERR_INVALID_DATA');
     }
     
-    // Always use the authenticated user's ID
-    body.userId = userId;
-    
-    // Validate essential fields
+    // Validate meal name
     if (!body.name || typeof body.name !== 'string' || body.name.trim() === '') {
       return apiError('Meal name is required', 400, 'ERR_VALIDATION');
     }
     
-    // Format date properly with defensive parsing
+    // Validate and process date
+    let mealDate;
     if (body.date) {
       try {
-        const dateObj = new Date(body.date);
-        if (isNaN(dateObj.getTime())) {
+        mealDate = new Date(body.date);
+        if (isNaN(mealDate.getTime())) {
           return apiError('Invalid date format', 400, 'ERR_VALIDATION');
         }
-        body.date = dateObj;
       } catch (error) {
         return apiError('Invalid date format', 400, 'ERR_VALIDATION');
       }
     } else {
-      body.date = new Date();
+      mealDate = new Date(); // Default to current date
     }
     
-    // Validate time format if provided
-    if (body.time) {
-      if (typeof body.time !== 'string' || 
-          !/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(body.time)) {
-        return apiError('Time must be in HH:MM format', 400, 'ERR_VALIDATION');
-      }
+    // Validate time format (HH:MM)
+    const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+    if (body.time && (typeof body.time !== 'string' || !timeRegex.test(body.time))) {
+      return apiError('Invalid time format. Use HH:MM format.', 400, 'ERR_VALIDATION');
     }
     
-    // Validate foods array if provided with defensive array and property checks
+    // Validate foods array if provided
+    const foods = [];
     if (body.foods) {
       if (!Array.isArray(body.foods)) {
         return apiError('Foods must be an array', 400, 'ERR_VALIDATION');
       }
       
-      // Create validated foods array
-      const validatedFoods = [];
-      
-      // Validate each food item
+      // Process each food with validation
       for (const food of body.foods) {
-        // Check if food is an object
-        if (!food || typeof food !== 'object') {
-          return apiError('Each food item must be an object', 400, 'ERR_VALIDATION');
-        }
-        
-        // Validate required fields
-        if (!food.name || typeof food.name !== 'string' || food.name.trim() === '') {
-          return apiError('Each food item must have a name', 400, 'ERR_VALIDATION');
-        }
-        
-        // Validate amount is a positive number
-        let amount = 0;
         try {
-          amount = Number(food.amount);
-          if (isNaN(amount) || amount < 0) {
-            return apiError('Each food item must have a valid amount', 400, 'ERR_VALIDATION');
-          }
-        } catch (error) {
-          return apiError('Each food item must have a valid amount', 400, 'ERR_VALIDATION');
-        }
-        
-        // Create sanitized food object with defensive number parsing
-        const sanitizedFood = {
-          name: food.name.trim(),
-          amount: amount,
-          unit: typeof food.unit === 'string' ? food.unit.trim() : 'g',
-          protein: Math.max(0, Number(food.protein) || 0),
-          carbs: Math.max(0, Number(food.carbs) || 0),
-          fat: Math.max(0, Number(food.fat) || 0),
-          calories: Math.max(0, Number(food.calories) || 0)
-        };
-        
-        validatedFoods.push(sanitizedFood);
-      }
-      
-      // Replace with validated foods
-      body.foods = validatedFoods;
-    }
-    
-    // Create new meal with proper error handling
-    try {
-      const meal = await Meal.create(body);
-      return apiResponse(meal, true, 'Meal created successfully', 201);
-    } catch (dbError) {
-      // Handle specific validation errors
-      if (dbError instanceof mongoose.Error.ValidationError) {
-        const errorMessage = Object.values(dbError.errors)
-          .map(err => err.message)
-          .join(', ');
-        return apiError(`Validation error: ${errorMessage}`, 400, 'ERR_VALIDATION');
-      }
-      
-      return handleApiError(dbError, 'Error creating meal');
-    }
-  } catch (error) {
-    return handleApiError(error, 'Error processing meal creation');
-  }
-}, AuthLevel.DEV_OPTIONAL);
-
-// DELETE - Delete a meal
-export const DELETE = withAuth(async (req: NextRequest, userId) => {
-  try {
-    await dbConnect();
-    
-    // Get and validate meal ID parameter
-    const url = new URL(req.url);
-    const id = url.searchParams.get('id');
-    
-    if (!id || typeof id !== 'string' || id.trim() === '') {
-      return apiError('Meal ID is required', 400, 'ERR_MISSING_ID');
-    }
-    
-    // Validate ObjectId format
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return apiError('Invalid meal ID format', 400, 'ERR_INVALID_FORMAT');
-    }
-    
-    try {
-      // First check if the meal exists and belongs to the user
-      const meal = await Meal.findById(id);
-      
-      if (!meal) {
-        return apiError('Meal not found', 404, 'ERR_NOT_FOUND');
-      }
-      
-      // Verify ownership with defensive string comparison
-      const mealUserId = meal.userId ? meal.userId.toString() : '';
-      if (mealUserId !== userId.toString()) {
-        return apiError('You do not have permission to delete this meal', 403, 'ERR_FORBIDDEN');
-      }
-      
-      // Delete the meal
-      const result = await Meal.deleteOne({ _id: id });
-      
-      // Check if anything was actually deleted
-      if (!result || result.deletedCount === 0) {
-        return apiError('Meal could not be deleted', 500, 'ERR_DELETE_FAILED');
-      }
-      
-      return apiResponse(null, true, 'Meal deleted successfully');
-    } catch (dbError) {
-      if (dbError instanceof mongoose.Error.CastError) {
-        return apiError('Invalid meal ID format', 400, 'ERR_INVALID_FORMAT');
-      }
-      return handleApiError(dbError, 'Error deleting meal');
-    }
-  } catch (error) {
-    return handleApiError(error, 'Error processing delete request');
-  }
-}, AuthLevel.DEV_OPTIONAL);
-
-// PATCH - Update a meal
-export const PATCH = withAuth(async (req: NextRequest, userId) => {
-  try {
-    await dbConnect();
-    
-    // Parse and validate request body
-    let body;
-    try {
-      body = await req.json();
-    } catch (error) {
-      return apiError('Invalid request body', 400, 'ERR_INVALID_JSON');
-    }
-    
-    // Validate body is an object
-    if (!body || typeof body !== 'object') {
-      return apiError('Invalid request body', 400, 'ERR_INVALID_FORMAT');
-    }
-    
-    const { id, ...updateData } = body;
-    
-    // Validate meal ID
-    if (!id || typeof id !== 'string' || id.trim() === '') {
-      return apiError('Meal ID is required', 400, 'ERR_MISSING_ID');
-    }
-    
-    // Validate ObjectId format
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return apiError('Invalid meal ID format', 400, 'ERR_INVALID_FORMAT');
-    }
-    
-    try {
-      // First verify the meal exists and user has permission to update it
-      const existingMeal = await Meal.findById(id);
-      
-      if (!existingMeal) {
-        return apiError('Meal not found', 404, 'ERR_NOT_FOUND');
-      }
-      
-      // Verify ownership with defensive string comparison
-      const mealUserId = existingMeal.userId ? existingMeal.userId.toString() : '';
-      if (mealUserId !== userId.toString()) {
-        return apiError('You do not have permission to update this meal', 403, 'ERR_FORBIDDEN');
-      }
-      
-      // Validate update data fields
-      const sanitizedUpdate: any = {};
-      
-      // Validate name if provided
-      if ('name' in updateData) {
-        if (typeof updateData.name !== 'string' || updateData.name.trim() === '') {
-          return apiError('Meal name cannot be empty', 400, 'ERR_VALIDATION');
-        }
-        sanitizedUpdate.name = updateData.name.trim();
-      }
-      
-      // Validate date if provided
-      if ('date' in updateData) {
-        try {
-          const dateObj = new Date(updateData.date);
-          if (isNaN(dateObj.getTime())) {
-            return apiError('Invalid date format', 400, 'ERR_VALIDATION');
-          }
-          sanitizedUpdate.date = dateObj;
-        } catch (error) {
-          return apiError('Invalid date format', 400, 'ERR_VALIDATION');
-        }
-      }
-      
-      // Validate time format if provided
-      if ('time' in updateData) {
-        if (typeof updateData.time !== 'string' || 
-            !/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(updateData.time)) {
-          return apiError('Time must be in HH:MM format', 400, 'ERR_VALIDATION');
-        }
-        sanitizedUpdate.time = updateData.time;
-      }
-      
-      // Validate notes if provided
-      if ('notes' in updateData) {
-        sanitizedUpdate.notes = typeof updateData.notes === 'string' 
-          ? updateData.notes.trim() 
-          : '';
-      }
-      
-      // Validate foods array if provided
-      if ('foods' in updateData) {
-        if (!Array.isArray(updateData.foods)) {
-          return apiError('Foods must be an array', 400, 'ERR_VALIDATION');
-        }
-        
-        // Create validated foods array
-        const validatedFoods = [];
-        
-        // Validate each food item
-        for (const food of updateData.foods) {
-          // Check if food is an object
           if (!food || typeof food !== 'object') {
-            return apiError('Each food item must be an object', 400, 'ERR_VALIDATION');
+            console.warn('Skipping invalid food entry:', food);
+            continue;
           }
           
-          // Validate required fields
-          if (!food.name || typeof food.name !== 'string' || food.name.trim() === '') {
-            return apiError('Each food item must have a name', 400, 'ERR_VALIDATION');
-          }
-          
-          // Validate amount is a positive number
-          let amount = 0;
-          try {
-            amount = Number(food.amount);
-            if (isNaN(amount) || amount < 0) {
-              return apiError('Each food item must have a valid amount', 400, 'ERR_VALIDATION');
+          // Validate food ID if provided
+          let foodId = null;
+          if (food.foodId) {
+            if (!isValidObjectId(food.foodId)) {
+              console.warn('Skipping food with invalid foodId:', food.foodId);
+              continue;
             }
-          } catch (error) {
-            return apiError('Each food item must have a valid amount', 400, 'ERR_VALIDATION');
+            foodId = food.foodId;
+          } else if (food.id) {
+            if (!isValidObjectId(food.id)) {
+              console.warn('Skipping food with invalid id:', food.id);
+              continue;
+            }
+            foodId = food.id;
+          } else {
+            // All foods must have an ID
+            console.warn('Skipping food without ID');
+            continue;
           }
           
-          // Create sanitized food object
-          const sanitizedFood = {
-            name: food.name.trim(),
-            amount: amount,
-            unit: typeof food.unit === 'string' ? food.unit.trim() : 'g',
-            protein: Math.max(0, Number(food.protein) || 0),
-            carbs: Math.max(0, Number(food.carbs) || 0),
-            fat: Math.max(0, Number(food.fat) || 0),
-            calories: Math.max(0, Number(food.calories) || 0)
-          };
+          // Validate name
+          const name = food.name && typeof food.name === 'string' ? food.name : 'Unknown Food';
           
-          // Preserve foodId if it exists
-          if (food.foodId && mongoose.Types.ObjectId.isValid(food.foodId)) {
-            sanitizedFood.foodId = food.foodId;
+          // Validate amount with safe parsing
+          let amount = 100; // Default 100g/ml
+          if (food.amount !== undefined) {
+            if (typeof food.amount === 'string') {
+              amount = parseFloat(food.amount);
+            } else if (typeof food.amount === 'number') {
+              amount = food.amount;
+            }
+            
+            if (isNaN(amount) || amount <= 0) {
+              amount = 100; // Default if invalid
+            }
           }
           
-          validatedFoods.push(sanitizedFood);
+          // Validate nutritional values with safe parsing
+          let protein = 0;
+          let carbs = 0;
+          let fat = 0;
+          let calories = 0;
+          
+          // Parse protein
+          if (food.protein !== undefined) {
+            if (typeof food.protein === 'string') {
+              protein = parseFloat(food.protein);
+            } else if (typeof food.protein === 'number') {
+              protein = food.protein;
+            }
+            
+            if (isNaN(protein) || protein < 0) {
+              protein = 0;
+            }
+          }
+          
+          // Parse carbs
+          if (food.carbs !== undefined) {
+            if (typeof food.carbs === 'string') {
+              carbs = parseFloat(food.carbs);
+            } else if (typeof food.carbs === 'number') {
+              carbs = food.carbs;
+            }
+            
+            if (isNaN(carbs) || carbs < 0) {
+              carbs = 0;
+            }
+          }
+          
+          // Parse fat
+          if (food.fat !== undefined) {
+            if (typeof food.fat === 'string') {
+              fat = parseFloat(food.fat);
+            } else if (typeof food.fat === 'number') {
+              fat = food.fat;
+            }
+            
+            if (isNaN(fat) || fat < 0) {
+              fat = 0;
+            }
+          }
+          
+          // Parse calories
+          if (food.calories !== undefined) {
+            if (typeof food.calories === 'string') {
+              calories = parseFloat(food.calories);
+            } else if (typeof food.calories === 'number') {
+              calories = food.calories;
+            }
+            
+            if (isNaN(calories) || calories < 0) {
+              calories = 0;
+            }
+          }
+          
+          // Calculate calories if not provided
+          if (calories === 0 && (protein > 0 || carbs > 0 || fat > 0)) {
+            calories = (protein * 4) + (carbs * 4) + (fat * 9);
+          }
+          
+          // Add validated food to foods array
+          foods.push({
+            foodId: new mongoose.Types.ObjectId(foodId),
+            name,
+            amount,
+            protein,
+            carbs,
+            fat,
+            calories,
+            // Include serving info if provided
+            serving: food.serving && typeof food.serving === 'object' ? food.serving : undefined
+          });
+        } catch (foodError) {
+          console.error('Error processing food entry:', foodError);
+          // Skip this food but continue processing others
         }
-        
-        sanitizedUpdate.foods = validatedFoods;
       }
-      
-      // Ensure we don't accidentally allow userId changes
-      if ('userId' in updateData) {
-        delete updateData.userId;
-      }
-      
-      // Update the meal with validation
-      const updatedMeal = await Meal.findByIdAndUpdate(
-        id,
-        { $set: sanitizedUpdate },
-        { 
-          new: true,
-          runValidators: true,
-          context: 'query'
-        }
-      );
-      
-      // Verify the update succeeded
-      if (!updatedMeal) {
-        return apiError('Failed to update meal', 500, 'ERR_UPDATE_FAILED');
-      }
-      
-      return apiResponse(updatedMeal, true, 'Meal updated successfully');
-    } catch (dbError) {
-      if (dbError instanceof mongoose.Error.CastError) {
-        return apiError('Invalid data format', 400, 'ERR_INVALID_FORMAT');
-      }
-      if (dbError instanceof mongoose.Error.ValidationError) {
-        const errorMessage = Object.values(dbError.errors)
-          .map(err => err.message)
-          .join(', ');
-        return apiError(`Validation error: ${errorMessage}`, 400, 'ERR_VALIDATION');
-      }
-      return handleApiError(dbError, 'Error updating meal');
     }
+    
+    // Create meal data object
+    const mealData = {
+      name: body.name.trim(),
+      date: mealDate,
+      time: body.time || '',
+      userId, // Associate with current user
+      notes: body.notes && typeof body.notes === 'string' ? body.notes.trim() : '',
+      foods: foods
+    };
+    
+    // Create meal with defensive error handling
+    let newMeal;
+    try {
+      newMeal = await Meal.create(mealData);
+    } catch (error) {
+      return handleApiError(error, 'Error creating meal in database');
+    }
+    
+    // Calculate meal nutritional totals
+    const mealTotals = {
+      protein: 0,
+      carbs: 0,
+      fat: 0,
+      calories: 0
+    };
+    
+    for (const food of foods) {
+      mealTotals.protein += food.protein || 0;
+      mealTotals.carbs += food.carbs || 0;
+      mealTotals.fat += food.fat || 0;
+      mealTotals.calories += food.calories || 0;
+    }
+    
+    // Format response
+    let mealResponse;
+    try {
+      const mealObj = newMeal.toObject();
+      mealResponse = {
+        id: mealObj._id.toString(),
+        name: mealObj.name,
+        date: mealObj.date,
+        time: mealObj.time || '',
+        notes: mealObj.notes || '',
+        foods: mealObj.foods || [],
+        totals: mealTotals
+      };
+    } catch (error) {
+      console.error('Error formatting new meal response:', error);
+      // Fallback with minimal data
+      mealResponse = {
+        id: newMeal._id?.toString(),
+        name: newMeal.name,
+        date: newMeal.date,
+        foods: foods.length
+      };
+    }
+    
+    return apiResponse(mealResponse, true, 'Meal created successfully', 201);
   } catch (error) {
-    return handleApiError(error, 'Error processing update request');
+    return handleApiError(error, "Error creating meal");
   }
 }, AuthLevel.DEV_OPTIONAL);
