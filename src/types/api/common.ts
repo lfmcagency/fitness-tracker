@@ -1,55 +1,34 @@
+// src/types/api/common.ts
 /**
- * Standard API response format used across all endpoints
+ * Common API response types for consistent formatting across endpoints
+ */
+
+/**
+ * Standard API success response structure
+ * @template T The type of data returned in the response
+ */
+export interface ApiSuccessResponse<T = any> {
+  success: true;
+  data: T;
+  message?: string;
+  timestamp: string;
+}
+
+/**
+ * Standard API error response structure
+ */
+export interface ApiErrorResponse {
+  success: false;
+  error: {
+    code: string;
+    message: string;
+    details?: any;
+  };
+  timestamp: string;
+}
+
+/**
+ * Union type for all API responses
  * @template T The type of data returned in successful responses
  */
-export interface ApiResponse<T = any> {
-    /** Whether the request was successful */
-    success: boolean;
-    /** The data returned by the API (only present on success) */
-    data?: T;
-    /** A human-readable message describing the result */
-    message?: string;
-    /** Error information (only present on failure) */
-    error?: {
-      /** Error code for programmatic handling */
-      code: string;
-      /** Human-readable error message */
-      message: string;
-      /** Additional error details (only in development) */
-      details?: any;
-    };
-    /** ISO timestamp of when the response was generated */
-    timestamp: string;
-  }
-  
-  /**
-   * Standard error information structure
-   */
-  export interface ApiErrorInfo {
-    /** Error code for programmatic handling */
-    code: string;
-    /** Human-readable error message */
-    message: string;
-    /** Additional error details */
-    details?: any;
-  }
-  
-  /**
-   * Type for successful API responses
-   * @template T The type of data returned
-   */
-  export type ApiSuccessResponse<T> = {
-    success: true;
-    data: T;
-    message?: string;
-    timestamp: string;
-  };
-  
-  /**
-   * Type for failed API responses
-   */
-  export type ApiErrorResponse = {
-    success: false;
-    error: ApiErrorInfo;
-    timestamp: string;
-  };
+export type ApiResponse<T = any> = ApiSuccessResponse<T> | ApiErrorResponse;

@@ -1,0 +1,72 @@
+// src/types/models/progress.ts
+import mongoose from 'mongoose';
+
+export type ProgressCategory = 'core' | 'push' | 'pull' | 'legs';
+
+export interface XpTransaction {
+  amount: number;
+  source: string;
+  category?: ProgressCategory;
+  date: Date;
+  description?: string;
+  timestamp?: number;
+}
+
+export interface XpDailySummary {
+  date: Date;
+  totalXp: number;
+  sources: {
+    [key: string]: number;
+  };
+  categories: {
+    core: number;
+    push: number;
+    pull: number;
+    legs: number;
+  };
+}
+
+export interface CategoryProgress {
+  level: number;
+  xp: number;
+  unlockedExercises: mongoose.Types.ObjectId[];
+}
+
+export interface IUserProgress extends mongoose.Document {
+  _id: mongoose.Types.ObjectId;
+  userId: mongoose.Types.ObjectId;
+  totalXp: number;
+  level: number;
+  categoryXp: {
+    core: number;
+    push: number;
+    pull: number;
+    legs: number;
+  };
+  categoryProgress: {
+    core: CategoryProgress;
+    push: CategoryProgress;
+    pull: CategoryProgress;
+    legs: CategoryProgress;
+  };
+  achievements: mongoose.Types.ObjectId[];
+  xpHistory: XpTransaction[];
+  dailySummaries: XpDailySummary[];
+  lastUpdated: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  
+  // Methods
+  calculateLevel(xp: number): number;
+  addXp(amount: number, source: string, category?: ProgressCategory, description?: string): Promise<boolean>;
+  getNextLevelXp(): number;
+  getXpToNextLevel(): number;
+  hasLeveledUp(previousXp: number, newXp: number): boolean;
+  summarizeDailyXp(date?: Date): Promise<XpDailySummary>;
+  purgeOldHistory(olderThan: Date): Promise<number>;
+}
+
+export interface IUserProgressModel extends mongoose.Model<IUserProgress> {
+  createInitialProgress(userId: mongoose.Types.ObjectId): Promise<IUserProgress>;
+  calculateLevelFromXp(xp: number): number;
+}

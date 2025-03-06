@@ -1,22 +1,24 @@
-// src/lib/auth-utils.ts (with defensive programming and params support)
+// src/lib/auth-utils.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getAuth, getUserById } from "@/lib/auth";
 import { apiError, apiResponse } from "./api-utils";
 import { dbConnect } from "./db/mongodb";
 import UserProgress from "@/models/UserProgress";
 import mongoose, { isValidObjectId } from "mongoose";
-import { ApiResponse } from "@/types/api/common";
+import { ApiResponse, ApiErrorResponse, ApiSuccessResponse } from "@/types/api/common";
+import { SessionUser } from "@/types/api/authResponses";
+import { IUserProgress } from "@/models/UserProgress";
 
 /**
  * Authentication levels for API routes
  */
 export enum AuthLevel {
-  // User must be authenticated
-  REQUIRED,
-  // In development, auth is optional; in production, it's required
-  DEV_OPTIONAL,
-  // Any user can access (no auth required)
-  NONE
+  /** User must be authenticated */
+  REQUIRED = "required",
+  /** In development, auth is optional; in production, it's required */
+  DEV_OPTIONAL = "dev_optional",
+  /** Any user can access (no auth required) */
+  NONE = "none"
 }
 
 /**
@@ -25,17 +27,19 @@ export enum AuthLevel {
  * @param handler The API route handler
  * @param level Authentication level required
  * @returns Protected handler function
+ * @template T Type of response data
+ * @template Params Type of route parameters
  */
 export function withAuth<T = any, Params = any>(
   handler: (
     req: NextRequest, 
     userId: string, 
     context?: { params: Params }
-  ) => Promise<NextResponse<ApiResponse<T>>>,
+  ) => Promise<NextResponse<ApiSuccessResponse<T>>>,
   level: AuthLevel = AuthLevel.REQUIRED
-) {
-  return async (req: NextRequest, context?: { params: Params }): Promise<NextResponse<ApiResponse<T>>> => {
-    // For AuthLevel.NONE, proceed directly to handler with null userId
+): (req: NextRequest, context?: { params: Params }) => Promise<NextResponse<ApiSuccessResponse<T> | ApiErrorResponse>> {
+  return async (req: NextRequest, context?: { params: Params }): Promise<NextResponse<ApiSuccessResponse<T> | ApiErrorResponse>> => {
+    // For AuthLevel.NONE, proceed directly to handler with anonymous userId
     if (level === AuthLevel.NONE) {
       return handler(req, "anonymous", context);
     }
@@ -57,19 +61,19 @@ export function withAuth<T = any, Params = any>(
           return handler(req, "dev-user-id", context);
         }
         
-        return apiError('Authentication required', 401, 'ERR_401') as NextResponse<ApiResponse<T>>;
+        return apiError('Authentication required', 401, 'ERR_401');
       }
       
       // Get userId from session with validation
       const userId = session.user?.id;
       
       if (!userId) {
-        return apiError('Invalid authentication session', 401, 'ERR_401') as NextResponse<ApiResponse<T>>;
+        return apiError('Invalid authentication session', 401, 'ERR_401');
       }
       
       // Validate userId format (MongoDB ObjectId)
       if (!isValidObjectId(userId)) {
-        return apiError('Invalid user ID format', 400, 'ERR_VALIDATION') as NextResponse<ApiResponse<T>>;
+        return apiError('Invalid user ID format', 400, 'ERR_VALIDATION');
       }
       
       // Proceed with authenticated handler
@@ -81,7 +85,7 @@ export function withAuth<T = any, Params = any>(
         500,
         'ERR_AUTH',
         process.env.NODE_ENV === 'development' ? error : undefined
-      ) as NextResponse<ApiResponse<T>>;
+      );
     }
   };
 }
@@ -89,8 +93,9 @@ export function withAuth<T = any, Params = any>(
 /**
  * Get or create user progress for a given user
  * @param userId User ID
+ * @returns User progress document or null if error
  */
-export async function getUserProgressOrCreate(userId: string) {
+export async function getUserProgressOrCreate(userId: string): Promise<IUserProgress | null> {
   try {
     // Validate userId
     if (!userId || !isValidObjectId(userId)) {
@@ -104,7 +109,7 @@ export async function getUserProgressOrCreate(userId: string) {
     const userIdObj = new mongoose.Types.ObjectId(userId);
     
     // Try to find existing progress
-    let userProgress = await UserProgress.findOne({ userId: userIdObj });
+    let userProgress = await UserProgress.findOne({ userId: userIdObj }) as IUserProgress | null;
     
     // If no progress found, create initial progress
     if (!userProgress) {
@@ -128,6 +133,7 @@ export async function getUserProgressOrCreate(userId: string) {
  * Check if user has required role for access
  * @param userId User ID
  * @param requiredRoles Array of roles that have access
+ * @returns Boolean indicating if user has required role
  */
 export async function checkUserRole(userId: string, requiredRoles: string[]): Promise<boolean> {
   try {
@@ -164,29 +170,34 @@ export async function checkUserRole(userId: string, requiredRoles: string[]): Pr
 /**
  * Higher-order function to protect routes based on user roles
  * @param requiredRoles Array of roles that have access
+ * @returns Handler wrapper that checks for role access
+ * @template T Type of response data
  */
 export function withRoleProtection<T = any>(requiredRoles: string[] = ['admin']) {
-  return async (req: NextRequest, handler: () => Promise<NextResponse<ApiResponse<T>>>): Promise<NextResponse<ApiResponse<T>>> => {
+  return async (
+    req: NextRequest, 
+    handler: () => Promise<NextResponse<ApiSuccessResponse<T>>>
+  ): Promise<NextResponse<ApiSuccessResponse<T> | ApiErrorResponse>> => {
     try {
       const session = await getAuth();
       
       // No session or no user ID
       if (!session?.user?.id) {
-        return apiError("Authentication required", 401, 'ERR_401') as NextResponse<ApiResponse<T>>;
+        return apiError("Authentication required", 401, 'ERR_401');
       }
       
       const userId = session.user.id;
       
       // Validate userId
       if (!isValidObjectId(userId)) {
-        return apiError('Invalid user ID format', 400, 'ERR_VALIDATION') as NextResponse<ApiResponse<T>>;
+        return apiError('Invalid user ID format', 400, 'ERR_VALIDATION');
       }
       
       // Check if user has required role
       const hasRole = await checkUserRole(userId, requiredRoles);
       
       if (!hasRole) {
-        return apiError("Insufficient permissions", 403, 'ERR_403') as NextResponse<ApiResponse<T>>;
+        return apiError("Insufficient permissions", 403, 'ERR_403');
       }
       
       // User has required role, proceed to handler
@@ -198,7 +209,7 @@ export function withRoleProtection<T = any>(requiredRoles: string[] = ['admin'])
         500, 
         'ERR_AUTH',
         process.env.NODE_ENV === 'development' ? error : undefined
-      ) as NextResponse<ApiResponse<T>>;
+      );
     }
   };
 }

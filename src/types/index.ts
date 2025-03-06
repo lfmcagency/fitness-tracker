@@ -1,9 +1,19 @@
+// src/types/index.ts - Keep legacy types for backward compatibility 
+// while adding new standardized types
+
 // Re-export common types
 export * from './api/common';
 export * from './api/pagination';
 export * from './validation';
 
-// Daily Routine Types
+// Re-export Authentication & User types
+export * from './api/authResponses';
+export * from './api/userResponses';
+export * from './models/user';
+export * from './models/progress';
+export * from './converters/userConverters';
+
+// Legacy Daily Routine Types
 export type RecurrencePattern = 'daily' | 'weekdays' | 'weekends' | 'weekly' | 'custom';
 export type TaskPriority = 'low' | 'medium' | 'high';
 
@@ -50,7 +60,7 @@ export interface StreakInfo {
   completionHistory?: Array<Date | string>;
 }
 
-// Training Types
+// Legacy Training Types
 export interface ExerciseSet {
   reps: number;
   completed: boolean;
@@ -69,7 +79,7 @@ export interface Exercise {
   restTime: number;
 }
 
-// Nutrition Types
+// Legacy Nutrition Types
 export interface MacroGoals {
   protein: number;
   carbs: number;
@@ -126,21 +136,7 @@ export interface Meal {
   updatedAt?: string;
 }
 
-export interface ApiResponse<T> {
-  success: boolean;
-  data?: T;
-  message?: string;
-  error?: string;
-  timestamp?: string;
-  pagination?: {
-    total: number;
-    page: number;
-    limit: number;
-    pages: number;
-  };
-}
-
-// Progress Dashboard Types
+// Legacy Progress Dashboard Types
 export interface PerformanceData {
   date: string;
   pushups: number;
