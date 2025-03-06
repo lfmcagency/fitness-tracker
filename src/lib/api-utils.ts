@@ -6,7 +6,6 @@ import { ErrorCode } from '../types/validation';
 /**
  * Standard API success response
  * @param data Response data
- * @param success Success flag (default: true)
  * @param message Optional success message
  * @param status HTTP status code (default: 200)
  * @returns NextResponse with formatted API response
@@ -19,8 +18,13 @@ export function apiResponse<T>(
 ): NextResponse<ApiSuccessResponse<T>> {
   const timestamp = new Date().toISOString();
   
+  // Ensure success is always true for ApiSuccessResponse type
+  if (!success) {
+    throw new Error("apiResponse should only be used for successful responses; use apiError for errors");
+  }
+  
   return NextResponse.json({
-    success,
+    success: true, // Explicitly true to match ApiSuccessResponse type
     data,
     message,
     timestamp
