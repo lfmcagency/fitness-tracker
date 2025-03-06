@@ -8,12 +8,15 @@ import bcrypt from 'bcrypt';
 import { withAuth, AuthLevel } from '@/lib/auth-utils';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { isValidObjectId } from 'mongoose';
+import { UserProfileResponse, UpdateProfileRequest } from "@/types/api/userResponses";
+import { convertUserToProfile } from "@/types/converters/userConverters";
+import { IUser } from "@/types/models/user";
 
 /**
  * GET /api/user/profile
  * Get current user profile
  */
-export const GET = withAuth(async (req: NextRequest, userId) => {
+export const GET = withAuth<UserProfileResponse['data']>(async (req: NextRequest, userId) => {
   try {
     await dbConnect();
     
@@ -23,7 +26,7 @@ export const GET = withAuth(async (req: NextRequest, userId) => {
     }
     
     // Get user data from database
-    const user = await User.findById(userId).select('-password -__v');
+    const user = await User.findById(userId).select('-password -__v') as IUser | null;
     
     if (!user) {
       return apiError('User not found', 404, 'ERR_NOT_FOUND');
@@ -68,7 +71,7 @@ export const GET = withAuth(async (req: NextRequest, userId) => {
  * PUT /api/user/profile
  * Update user profile data
  */
-export const PUT = withAuth(async (req: NextRequest, userId) => {
+export const PUT = withAuth<UserProfileResponse['data']>(async (req: NextRequest, userId) => {
   try {
     await dbConnect();
     
@@ -78,7 +81,7 @@ export const PUT = withAuth(async (req: NextRequest, userId) => {
     }
     
     // Parse request body with defensive error handling
-    let body;
+    let body: UpdateProfileRequest;
     try {
       body = await req.json();
     } catch (error) {
@@ -91,7 +94,7 @@ export const PUT = withAuth(async (req: NextRequest, userId) => {
     }
     
     // Find the user with defensive error handling
-    const user = await User.findById(userId);
+    const user = await User.findById(userId) as IUser | null;
     if (!user) {
       return apiError('User not found', 404, 'ERR_NOT_FOUND');
     }
@@ -102,7 +105,7 @@ export const PUT = withAuth(async (req: NextRequest, userId) => {
     
     // Process allowed updates with validation
     for (const field of allowedUpdates) {
-      if (body[field] !== undefined) {
+      if (body[field as keyof UpdateProfileRequest] !== undefined) {
         // Validate specific fields
         if (field === 'name' && (typeof body.name !== 'string' || body.name.trim() === '')) {
           return apiError('Name must be a non-empty string', 400, 'ERR_VALIDATION');
@@ -125,7 +128,7 @@ export const PUT = withAuth(async (req: NextRequest, userId) => {
           }
         }
         
-        updates[field] = body[field];
+        updates[field] = body[field as keyof UpdateProfileRequest];
       }
     }
     
@@ -192,7 +195,7 @@ export const PUT = withAuth(async (req: NextRequest, userId) => {
         userId,
         { $set: updates },
         { new: true, runValidators: true }
-      ).select('-password -__v');
+      ).select('-password -__v') as IUser | null;
       
       if (!updatedUser) {
         return apiError('User not found after update', 404, 'ERR_NOT_FOUND');

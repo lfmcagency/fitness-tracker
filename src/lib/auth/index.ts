@@ -1,3 +1,5 @@
+import { IUser } from "@/types/models/user";
+import { SessionUser } from "@/types/api/authResponses";
 import { getServerSession } from "next-auth/next";
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
@@ -96,7 +98,7 @@ export async function registerUser(userData: UserRegistrationData) {
       password: hashedPassword, // Using pre-hashed password to bypass pre-save hook
       image: userData.image || null,
       role: role
-    });
+    }) as IUser;
     
     logAuthSuccess("REGISTER_COMPLETE", "User registered successfully");
     
@@ -120,7 +122,7 @@ export async function registerUser(userData: UserRegistrationData) {
 export async function checkUserRole(userId: string, requiredRoles: string[]): Promise<boolean> {
   try {
     await dbConnect();
-    const user = await User.findById(userId);
+    const user = await User.findById(userId) as IUser | null;
     
     if (!user) return false;
     
@@ -188,6 +190,7 @@ export const authOptions: NextAuthOptions = {
               name: "Test User",
               email: "test@example.com",
               role: "admin" // Set test user as admin for development
+            } as SessionUser;
             };
           } else {
             logAuthStep("AUTH_TEST_USER_FAIL", "Test user provided incorrect password", {
@@ -326,7 +329,7 @@ export const authOptions: NextAuthOptions = {
             name: user.name || "User",
             image: user.image || null,
             role: user.role || 'user'
-          };
+          } as SessionUser;
         } catch (error) {
           logAuthError("AUTH_GENERAL", error);
           return null;
@@ -390,7 +393,7 @@ export const getAuth = () => getServerSession(authOptions);
 export async function getUserById(id: string) {
   await dbConnect();
   
-  const user = await User.findById(id);
+  const user = await User.findById(id) as IUser | null;
   if (!user) {
     return null;
   }

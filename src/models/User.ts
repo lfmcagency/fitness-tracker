@@ -1,7 +1,8 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcrypt';
+import { IUser } from '@/types/models/user';
 
-const UserSchema = new mongoose.Schema({
+const UserSchema = new mongoose.Schema<IUser>({
   name: String,
   email: {
     type: String,
@@ -78,6 +79,7 @@ UserSchema.methods.comparePassword = async function(candidatePassword: string): 
 };
 
 // Use this pattern to avoid model recompilation errors
-const User = mongoose.models.User || mongoose.model('User', UserSchema);
+const User = mongoose.models.User as mongoose.Model<IUser> || 
+  mongoose.model<IUser>('User', UserSchema);
 
 export default User;

@@ -3,6 +3,7 @@ import { registerUser, UserRegistrationData } from "@/lib/auth";
 import { NextRequest } from "next/server";
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { dbConnect } from '@/lib/db/mongodb';
+import { AuthResponse, RegisterRequest } from "@/types/api/authResponses";
 
 /**
  * POST /api/auth/register
@@ -13,7 +14,7 @@ export async function POST(req: NextRequest) {
     await dbConnect();
     
     // Parse request body with defensive error handling
-    let body;
+    let body: RegisterRequest;
     try {
       body = await req.json();
     } catch (error) {
@@ -106,7 +107,7 @@ export async function POST(req: NextRequest) {
       }
       
       // Return the user without sensitive data
-      return apiResponse({
+      return apiResponse<AuthResponse['data']>({
         user: {
           id: user.id,
           name: user.name,
