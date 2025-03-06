@@ -1,3 +1,8 @@
+// Re-export common types
+export * from './api/common';
+export * from './api/pagination';
+export * from './validation';
+
 // Daily Routine Types
 export type RecurrencePattern = 'daily' | 'weekdays' | 'weekends' | 'weekly' | 'custom';
 export type TaskPriority = 'low' | 'medium' | 'high';

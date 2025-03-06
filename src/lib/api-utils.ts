@@ -1,5 +1,7 @@
 // src/lib/api-utils.ts
 import { NextResponse } from 'next/server';
+import { ApiResponse, ApiSuccessResponse, ApiErrorResponse } from '../types/api/common';
+import { ErrorCode } from '../types/validation';
 
 /**
  * Standard API success response
@@ -9,7 +11,12 @@ import { NextResponse } from 'next/server';
  * @param status HTTP status code (default: 200)
  * @returns NextResponse with formatted API response
  */
-export function apiResponse(data: any, success = true, message = '', status = 200) {
+export function apiResponse<T>(
+  data: T,
+  success = true,
+  message = '',
+  status = 200
+): NextResponse<ApiSuccessResponse<T>> {
   const timestamp = new Date().toISOString();
   
   return NextResponse.json({
@@ -28,7 +35,12 @@ export function apiResponse(data: any, success = true, message = '', status = 20
  * @param details Additional error details (optional)
  * @returns NextResponse with formatted error response
  */
-export function apiError(message: string, status = 500, code = 'ERR_INTERNAL', details?: any) {
+export function apiError(
+  message: string,
+  status = 500,
+  code: string = ErrorCode.INTERNAL,
+  details?: any
+): NextResponse<ApiErrorResponse> {
   const timestamp = new Date().toISOString();
   
   return NextResponse.json({
@@ -48,18 +60,21 @@ export function apiError(message: string, status = 500, code = 'ERR_INTERNAL', d
  * @param contextMessage Context message for logging
  * @returns NextResponse with formatted error response
  */
-export function handleApiError(error: unknown, contextMessage: string) {
+export function handleApiError(
+  error: unknown,
+  contextMessage: string
+): NextResponse<ApiErrorResponse> {
   console.error(`API Error: ${contextMessage}`, error);
   
   // Default error values
   let status = 500;
-  let errorCode = 'ERR_INTERNAL';
+  let errorCode = ErrorCode.INTERNAL;
   let errorMessage = contextMessage || 'An internal error occurred';
   let errorDetails;
   
   // If the error is already a NextResponse, return it
   if (error instanceof NextResponse) {
-    return error;
+    return error as NextResponse<ApiErrorResponse>;
   }
   
   // Handle specific error types
@@ -69,12 +84,12 @@ export function handleApiError(error: unknown, contextMessage: string) {
     // Handle MongoDB/Mongoose specific errors
     if ('name' in error && error.name === 'ValidationError') {
       status = 400;
-      errorCode = 'ERR_VALIDATION';
+      errorCode = ErrorCode.VALIDATION;
       errorMessage = 'Validation error';
       errorDetails = formatValidationErrors(error);
     } else if ('name' in error && error.name === 'CastError') {
       status = 400;
-      errorCode = 'ERR_INVALID_ID';
+      errorCode = ErrorCode.INVALID_ID;
       errorMessage = 'Invalid ID format';
     }
   }
@@ -95,7 +110,7 @@ export function handleApiError(error: unknown, contextMessage: string) {
  * @param error Mongoose validation error
  * @returns Formatted error object
  */
-export function formatValidationErrors(error: any) {
+export function formatValidationErrors(error: any): Record<string, string> | string {
   if (!error.errors) return error.message;
   
   const formattedErrors: Record<string, string> = {};

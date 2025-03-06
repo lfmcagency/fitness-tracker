@@ -1,3 +1,10 @@
+// Re-export common types
+export * from './api/common';
+export * from './api/pagination';
+export * from './validation';
+
+// This file will grow as we add more type definitions in future sprints
+
 // src/types/next-auth.d.ts
 import { DefaultSession } from 'next-auth';
 

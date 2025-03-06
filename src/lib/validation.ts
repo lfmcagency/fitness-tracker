@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { NextRequest } from 'next/server';
 import { apiError } from './api-utils';
+import { ValidationResult, Validator, ErrorCode } from '../types/validation';
+import { PaginationParams } from '../types/api/pagination';
 
 /**
  * Validate request body against a Zod schema
@@ -18,7 +20,7 @@ export async function validateRequest<T>(
     try {
       body = await req.json();
     } catch (error) {
-      throw apiError('Invalid JSON format in request body', 400, 'ERR_INVALID_JSON');
+      throw apiError('Invalid JSON format in request body', 400, ErrorCode.INVALID_JSON);
     }
     
     // Validate with zod schema
@@ -34,7 +36,7 @@ export async function validateRequest<T>(
         throw apiError(
           'Validation error',
           400,
-          'ERR_VALIDATION',
+          ErrorCode.VALIDATION,
           { errors: formattedErrors }
         );
       }
@@ -46,8 +48,61 @@ export async function validateRequest<T>(
       throw error;
     }
     
-    throw apiError('Invalid request data', 400, 'ERR_VALIDATION');
+    throw apiError('Invalid request data', 400, ErrorCode.VALIDATION);
   }
+}
+
+/**
+ * Basic validation function for checking if a value is a string
+ * @param value Value to validate
+ * @param required Whether the value is required
+ * @returns Validation result
+ */
+export function validateString(value: unknown, required: boolean = true): ValidationResult {
+  if (value === undefined || value === null) {
+    return {
+      valid: !required,
+      errors: required ? ['Value is required'] : undefined
+    };
+  }
+  
+  if (typeof value !== 'string') {
+    return {
+      valid: false,
+      errors: ['Value must be a string']
+    };
+  }
+  
+  if (required && value.trim() === '') {
+    return {
+      valid: false,
+      errors: ['Value cannot be empty']
+    };
+  }
+  
+  return { valid: true };
+}
+
+/**
+ * Email validation function
+ * @param value Value to validate
+ * @returns Validation result
+ */
+export function validateEmail(value: unknown): ValidationResult {
+  const stringResult = validateString(value, true);
+  if (!stringResult.valid) return stringResult;
+  
+  const email = value as string;
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  
+  if (!emailRegex.test(email)) {
+    return {
+      valid: false,
+      errors: ['Invalid email format']
+    };
+  }
+  
+  return { valid: true };
 }
 
 // Define schemas outside the function to avoid module structure issues
@@ -94,16 +149,24 @@ export const schemas = {
  * @param url Request URL
  * @returns Validated pagination parameters
  */
-export function extractPagination(url: URL): { page: number; limit: number } {
+export function extractPagination(url: URL): PaginationParams & { skip: number } {
   const pageParam = url.searchParams.get('page');
   const limitParam = url.searchParams.get('limit');
+  const sortParam = url.searchParams.get('sort');
+  const orderParam = url.searchParams.get('order') as 'asc' | 'desc' | null;
   
   const page = pageParam ? parseInt(pageParam) : 1;
   const limit = limitParam ? parseInt(limitParam) : 20;
   
+  const validatedPage = isNaN(page) || page < 1 ? 1 : page;
+  const validatedLimit = isNaN(limit) || limit < 1 || limit > 100 ? 20 : limit;
+  
   return {
-    page: isNaN(page) || page < 1 ? 1 : page,
-    limit: isNaN(limit) || limit < 1 || limit > 100 ? 20 : limit
+    page: validatedPage,
+    limit: validatedLimit,
+    sort: sortParam || undefined,
+    order: orderParam || undefined,
+    skip: calculateSkip(validatedPage, validatedLimit)
   };
 }
 
