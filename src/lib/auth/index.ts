@@ -1,3 +1,4 @@
+// src/lib/auth/index.ts
 import { IUser } from "@/types/models/user";
 import { SessionUser } from "@/types/api/authResponses";
 import { getServerSession } from "next-auth/next";
@@ -191,7 +192,6 @@ export const authOptions: NextAuthOptions = {
               email: "test@example.com",
               role: "admin" // Set test user as admin for development
             } as SessionUser;
-            };
           } else {
             logAuthStep("AUTH_TEST_USER_FAIL", "Test user provided incorrect password", {
               expectedPassword: "password",
@@ -202,27 +202,20 @@ export const authOptions: NextAuthOptions = {
         }
         
         try {
-          // Check database connection
-          logAuthStep("AUTH_DB_CONNECT", "Connecting to database");
+          await dbConnect();
           
-          try {
-            await dbConnect();
-            // Check MongoDB connection status
-            const mongoStatus = mongoose.connection.readyState;
-            const statusText = mongoStatus === 1 ? "Connected" :
-                              mongoStatus === 2 ? "Connecting" :
-                              mongoStatus === 3 ? "Disconnecting" : "Disconnected";
-            
-            logAuthStep("AUTH_DB_STATUS", `MongoDB connection status: ${statusText}`, { 
-              readyState: mongoStatus,
-              statusText: statusText,
-              host: mongoose.connection.host,
-              name: mongoose.connection.name
-            });
-          } catch (dbError) {
-            logAuthError("AUTH_DB_CONNECT", dbError);
-            return null;
-          }
+          // Check MongoDB connection status
+          const mongoStatus = mongoose.connection.readyState;
+          const statusText = mongoStatus === 1 ? "Connected" :
+                            mongoStatus === 2 ? "Connecting" :
+                            mongoStatus === 3 ? "Disconnecting" : "Disconnected";
+          
+          logAuthStep("AUTH_DB_STATUS", `MongoDB connection status: ${statusText}`, { 
+            readyState: mongoStatus,
+            statusText: statusText,
+            host: mongoose.connection.host,
+            name: mongoose.connection.name
+          });
           
           if (!credentials?.email || !credentials?.password) {
             logAuthStep("AUTH_CREDENTIALS_MISSING", "Missing credentials", {
@@ -235,19 +228,13 @@ export const authOptions: NextAuthOptions = {
           logAuthStep("AUTH_USER_LOOKUP", `Looking up user by email: ${credentials.email.substring(0, 3)}...`);
           
           // Find user by email
-          let user;
-          try {
-            user = await User.findOne({ email: credentials.email });
-            logAuthStep("AUTH_USER_FOUND", user ? "User found in database" : "User not found in database", {
-              userFound: Boolean(user),
-              email: credentials.email.substring(0, 3) + "..." + credentials.email.split('@')[1],
-              userId: user?._id?.toString(),
-              userHasPassword: Boolean(user?.password),
-            });
-          } catch (lookupError) {
-            logAuthError("AUTH_USER_LOOKUP", lookupError);
-            return null;
-          }
+          const user = await User.findOne({ email: credentials.email });
+          logAuthStep("AUTH_USER_FOUND", user ? "User found in database" : "User not found in database", {
+            userFound: Boolean(user),
+            email: credentials.email.substring(0, 3) + "..." + credentials.email.split('@')[1],
+            userId: user?._id?.toString(),
+            userHasPassword: Boolean(user?.password),
+          });
           
           if (!user) {
             logAuthStep("AUTH_USER_NOT_FOUND", "User not found for provided email");
@@ -265,7 +252,6 @@ export const authOptions: NextAuthOptions = {
             passwordLength: credentials.password.length,
             hashLength: user.password.length,
             hashFirstChars: user.password.substring(0, 10) + "..."
-            // Removed bcryptVersion property to fix TypeScript error on Vercel
           });
           
           let isPasswordValid = false;
