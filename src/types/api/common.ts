@@ -1,17 +1,14 @@
 // src/types/api/common.ts
-/**
- * Common API response types for consistent formatting across endpoints
- */
 
 /**
  * Standard API success response structure
- * @template T The type of data returned in the response
+ * @template T The type of data returned in successful responses
  */
 export interface ApiSuccessResponse<T = any> {
   success: true;
   data: T;
   message?: string;
-  timestamp: string;
+  timestamp?: string;
 }
 
 /**
@@ -24,7 +21,7 @@ export interface ApiErrorResponse {
     message: string;
     details?: any;
   };
-  timestamp: string;
+  timestamp?: string;
 }
 
 /**

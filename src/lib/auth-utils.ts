@@ -1,13 +1,12 @@
 // src/lib/auth-utils.ts
 import { NextRequest, NextResponse } from "next/server";
-import { getAuth, getUserById } from "@/lib/auth";
+import { getAuth } from "./auth";
+import { getUserById } from "./auth/index";
 import { apiError, apiResponse } from "./api-utils";
 import { dbConnect } from "./db/mongodb";
-import UserProgress from "@/models/UserProgress";
+import UserProgress from "../models/UserProgress";
 import mongoose, { isValidObjectId } from "mongoose";
-import { ApiResponse, ApiErrorResponse, ApiSuccessResponse } from "@/types/api/common";
-import { SessionUser } from "@/types/api/authResponses";
-import { IUserProgress } from "@/models/UserProgress";
+import { IUserProgress } from "../types/models/progress";
 
 /**
  * Authentication levels for API routes
@@ -35,10 +34,10 @@ export function withAuth<T = any, Params = any>(
     req: NextRequest, 
     userId: string, 
     context?: { params: Params }
-  ) => Promise<NextResponse<ApiSuccessResponse<T>>>,
+  ) => Promise<NextResponse>,
   level: AuthLevel = AuthLevel.REQUIRED
-): (req: NextRequest, context?: { params: Params }) => Promise<NextResponse<ApiSuccessResponse<T> | ApiErrorResponse>> {
-  return async (req: NextRequest, context?: { params: Params }): Promise<NextResponse<ApiSuccessResponse<T> | ApiErrorResponse>> => {
+) {
+  return async (req: NextRequest, context?: { params: Params }): Promise<NextResponse> => {
     // For AuthLevel.NONE, proceed directly to handler with anonymous userId
     if (level === AuthLevel.NONE) {
       return handler(req, "anonymous", context);
@@ -114,7 +113,8 @@ export async function getUserProgressOrCreate(userId: string): Promise<IUserProg
     // If no progress found, create initial progress
     if (!userProgress) {
       try {
-        userProgress = await UserProgress.createInitialProgress(userIdObj);
+        // Using any to avoid type complications with the static method
+        userProgress = await (UserProgress as any).createInitialProgress(userIdObj);
         console.log(`Created initial progress for user ${userId}`);
       } catch (createError) {
         console.error('Error creating initial user progress:', createError);
@@ -176,8 +176,8 @@ export async function checkUserRole(userId: string, requiredRoles: string[]): Pr
 export function withRoleProtection<T = any>(requiredRoles: string[] = ['admin']) {
   return async (
     req: NextRequest, 
-    handler: () => Promise<NextResponse<ApiSuccessResponse<T>>>
-  ): Promise<NextResponse<ApiSuccessResponse<T> | ApiErrorResponse>> => {
+    handler: () => Promise<NextResponse>
+  ): Promise<NextResponse> => {
     try {
       const session = await getAuth();
       

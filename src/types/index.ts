@@ -60,7 +60,7 @@ export interface StreakInfo {
   completionHistory?: Array<Date | string>;
 }
 
-// Legacy Training Types
+// Training Types
 export interface ExerciseSet {
   reps: number;
   completed: boolean;
@@ -79,7 +79,7 @@ export interface Exercise {
   restTime: number;
 }
 
-// Legacy Nutrition Types
+// Nutrition Types
 export interface MacroGoals {
   protein: number;
   carbs: number;
@@ -136,7 +136,7 @@ export interface Meal {
   updatedAt?: string;
 }
 
-// Legacy Progress Dashboard Types
+// Progress Dashboard Types
 export interface PerformanceData {
   date: string;
   pushups: number;
