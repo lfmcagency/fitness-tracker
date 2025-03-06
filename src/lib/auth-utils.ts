@@ -64,6 +64,7 @@ export function withAuth<T = any, Params = any>(
       }
       
       // Get userId from session with validation
+      // This now works with our extended next-auth types
       const userId = session.user?.id;
       
       if (!userId) {
@@ -182,6 +183,7 @@ export function withRoleProtection<T = any>(requiredRoles: string[] = ['admin'])
       const session = await getAuth();
       
       // No session or no user ID
+      // This now works with our extended next-auth types
       if (!session?.user?.id) {
         return apiError("Authentication required", 401, 'ERR_401');
       }

@@ -1,45 +1,34 @@
-import { MongoClient } from 'mongodb';
-import { dbConnect } from '@/lib/db/mongodb';
+// src/lib/db/mongodb-adapter.ts
+import { MongoClient } from "mongodb";
 
 if (!process.env.MONGODB_URI) {
-  throw new Error('Please define the MONGODB_URI environment variable');
+  throw new Error('Invalid/Missing environment variable: "MONGODB_URI"');
 }
 
 const uri = process.env.MONGODB_URI;
-const options = {
-  maxPoolSize: 10,
-  minPoolSize: 5,
-  socketTimeoutMS: 45000,
-  serverSelectionTimeoutMS: 10000
-};
+const options = {};
 
-// Add explicit type declaration for the global variable
-declare global {
-  var _mongoClientPromise: Promise<MongoClient> | undefined;
-}
-
-let client: MongoClient;
+let client;
 let clientPromise: Promise<MongoClient>;
 
-if (process.env.NODE_ENV === 'development') {
-  // In development, use a global variable to preserve the value across module reloads
-  if (!global._mongoClientPromise) {
+if (process.env.NODE_ENV === "development") {
+  // In development mode, use a global variable so that the value
+  // is preserved across module reloads caused by HMR (Hot Module Replacement).
+  let globalWithMongo = global as typeof globalThis & {
+    _mongoClientPromise?: Promise<MongoClient>;
+  };
+
+  if (!globalWithMongo._mongoClientPromise) {
     client = new MongoClient(uri, options);
-    console.log('Creating new MongoDB client in development mode');
-    global._mongoClientPromise = client.connect().catch(err => {
-      console.error('Error connecting to MongoDB:', err);
-      throw err;
-    });
+    globalWithMongo._mongoClientPromise = client.connect();
   }
-  clientPromise = global._mongoClientPromise;
+  clientPromise = globalWithMongo._mongoClientPromise;
 } else {
-  // In production, create a new client
+  // In production mode, it's best to not use a global variable.
   client = new MongoClient(uri, options);
-  console.log('Creating new MongoDB client in production mode');
   clientPromise = client.connect();
 }
 
-// Trigger the Mongoose connection as well to ensure it's initialized
-dbConnect().catch(console.error);
-
+// Export a module-scoped MongoClient promise. By doing this in a
+// separate module, the client can be shared across functions.
 export default clientPromise;

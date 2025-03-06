@@ -1,12 +1,6 @@
-// Re-export common types
-export * from './api/common';
-export * from './api/pagination';
-export * from './validation';
-
-// This file will grow as we add more type definitions in future sprints
-
 // src/types/next-auth.d.ts
-import { DefaultSession } from 'next-auth';
+import { DefaultSession, DefaultUser } from 'next-auth';
+import { JWT } from 'next-auth/jwt';
 
 declare module 'next-auth' {
   /**
@@ -22,8 +16,16 @@ declare module 'next-auth' {
   /**
    * Extend the built-in user types
    */
-  interface User {
+  interface User extends DefaultUser {
     id: string;
+    role?: string;
+  }
+}
+
+declare module 'next-auth/jwt' {
+  /** Extend the JWT interface */
+  interface JWT {
+    id?: string;
     role?: string;
   }
 }

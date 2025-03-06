@@ -1,13 +1,12 @@
-// src/lib/auth/index.ts
 import { IUser } from "@/types/models/user";
 import { SessionUser } from "@/types/api/authResponses";
 import { getServerSession } from "next-auth/next";
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { MongoDBAdapter } from "@next-auth/mongodb-adapter";
-import clientPromise from "@/lib/db/mongodb-adapter";
-import { dbConnect } from '@/lib/db/mongodb';
-import User from "@/models/User";
+import clientPromise from "../db/mongodb-adapter";  // Correct relative path
+import { dbConnect } from '../db/mongodb';          // Correct relative path
+import User from "../../models/User";               // Correct relative path
 import { compare, hash } from "bcrypt";
 import { NextRequest, NextResponse } from "next/server";
 import mongoose from "mongoose";
@@ -159,7 +158,6 @@ export function withRoleProtection(requiredRoles: string[] = ['admin']) {
 }
 
 export const authOptions: NextAuthOptions = {
-  // Use TypeScript type assertion to avoid the 'any' type issue
   adapter: MongoDBAdapter(clientPromise as any),
   providers: [
     CredentialsProvider({
@@ -335,17 +333,15 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.id = user.id;
         token.email = user.email;
-        token.role = user.role;
-        logAuthStep("JWT_CALLBACK", "Adding user data to JWT token", {
-          userId: user.id,
-          userEmail: user.email?.substring(0, 3) + "..." + user.email?.split('@')[1],
-          userRole: user.role
-        });
+        // Add type cast for role
+        token.role = (user as any).role || 'user';
+        // ...
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
+        // The following lines work now with our extended next-auth types
         session.user.id = token.id as string;
         session.user.role = token.role as string;
         logAuthStep("SESSION_CALLBACK", "Adding user data to session", {
