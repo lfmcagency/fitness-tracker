@@ -1,3 +1,4 @@
+// src/types/converters/userConverters.ts
 import { IUser } from '../models/user';
 import { UserProfile } from '../api/authResponses';
 import { WeightEntry } from '../api/userResponses';

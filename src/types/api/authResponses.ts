@@ -1,3 +1,4 @@
+// src/types/api/authResponses.ts
 import { ApiResponse } from './common';
 
 export interface UserProfile {

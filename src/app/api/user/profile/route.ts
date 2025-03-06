@@ -1,4 +1,4 @@
-// src/app/api/user/profile/route.ts (with defensive programming)
+// src/app/api/user/profile/route.ts
 export const dynamic = 'force-dynamic';
 
 import { NextRequest } from "next/server";

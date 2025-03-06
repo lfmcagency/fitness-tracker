@@ -1,3 +1,4 @@
+// src/types/api/userResponses.ts
 import { ApiResponse } from './common';
 
 export interface WeightEntry {
