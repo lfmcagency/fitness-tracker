@@ -1,10 +1,28 @@
-// src/app/api/test-db/route.ts (with defensive programming)
 export const dynamic = 'force-dynamic';
 
 import { NextRequest } from "next/server";
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
-import { dbConnect } from '@/lib/db';;
+import { dbConnect } from '@/lib/db';
 import mongoose from "mongoose";
+
+interface DbTestResponse {
+  success: boolean;
+  database: {
+    connected: boolean;
+    readyState: number;
+    host: string | null;
+    name: string | null;
+  };
+  timing: {
+    start: number;
+    end: number;
+    duration: number;
+  };
+  error?: {
+    message: string;
+    details: string;
+  };
+}
 
 /**
  * GET /api/test-db
@@ -16,7 +34,7 @@ export async function GET(req: NextRequest) {
   
   try {
     // Create response object
-    const response = {
+    const response: DbTestResponse = {
       success: false,
       database: {
         connected: false,
@@ -46,7 +64,7 @@ export async function GET(req: NextRequest) {
       }
       
       response.success = response.database.connected;
-    } catch (dbError) {
+    } catch (dbError: any) {
       console.error('Database connection test error:', dbError);
       
       // Add error details

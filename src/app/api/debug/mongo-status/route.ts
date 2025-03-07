@@ -1,11 +1,26 @@
-// src/app/api/debug/mongo-status/route.ts (with defensive programming)
 export const dynamic = 'force-dynamic';
 
 import { NextRequest } from "next/server";
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
-import { dbConnect } from '@/lib/db';;
+import { dbConnect } from '@/lib/db';
 import mongoose from "mongoose";
 import { withRoleProtection } from "@/lib/auth-utils";
+
+interface MongoStatus {
+  status: string;
+  message: string;
+  connection: {
+    host: string;
+    readyState: number;
+    name: string;
+    models: string[];
+  };
+  collections: Record<string, any>;
+  responseTime: number;
+  statsError?: string;
+  collectionsError?: string;
+  database?: Record<string, any>;
+}
 
 /**
  * GET /api/debug/mongo-status
@@ -24,7 +39,7 @@ export const GET = async (req: NextRequest) => {
       const mongoStatus = mongoose.connection.readyState;
       
       // Map status code to readable status
-      const statusMap = {
+      const statusMap: Record<number, string> = {
         0: 'disconnected',
         1: 'connected',
         2: 'connecting',
@@ -35,7 +50,7 @@ export const GET = async (req: NextRequest) => {
       const statusText = statusMap[mongoStatus] || 'unknown';
       
       // Base status object
-      const status = {
+      const status: MongoStatus = {
         status: mongoStatus === 1 ? 'ok' : 'error',
         message: `MongoDB is ${statusText}`,
         connection: {
@@ -52,21 +67,22 @@ export const GET = async (req: NextRequest) => {
       if (mongoStatus === 1) {
         try {
           // Get list of collections with defensive error handling
-          let collections;
+          let collections: mongoose.mongo.CollectionInfo[] = [];
           
           try {
             collections = await mongoose.connection.db.listCollections().toArray();
           } catch (listError) {
             console.error('Error listing MongoDB collections:', listError);
-            collections = [];
             status.collectionsError = 'Failed to list collections';
           }
           
           // Get stats for each collection with defensive error handling
-          const collectionStats = {};
+          const collectionStats: Record<string, any> = {};
           
           for (const collection of collections) {
             try {
+              if (!collection.name) continue;
+              
               const collName = collection.name;
               const stats = await mongoose.connection.db.collection(collName).stats();
               
@@ -81,7 +97,9 @@ export const GET = async (req: NextRequest) => {
               };
             } catch (statsError) {
               console.error(`Error getting stats for collection ${collection.name}:`, statsError);
-              collectionStats[collection.name] = { error: 'Failed to get stats' };
+              if (collection.name) {
+                collectionStats[collection.name] = { error: 'Failed to get stats' };
+              }
             }
           }
           

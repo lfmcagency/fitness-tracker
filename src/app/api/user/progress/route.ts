@@ -20,8 +20,9 @@ import { awardXp } from '@/lib/xp-manager-improved';
  * - category: string (optional) - One of: "core", "push", "pull", "legs"
  * - details: string (optional) - Additional context
  */
-export const POST = withAuth(async (req: NextRequest, userId) => {
-  try {
+export const GET = withAuth<ResponseType['data']>(
+  async (req: NextRequest, userId: string) => {
+    try {
     await dbConnect();
     
     // Get and validate request body

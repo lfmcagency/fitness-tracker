@@ -16,12 +16,14 @@ import { isValidObjectId } from "mongoose";
  * GET /api/exercises/[id]/sets/[setIndex]
  * Get a specific set for an exercise in the current user's workout
  */
-export const GET = withAuth(async (req: NextRequest, userId, { params }) => {
-  try {
-    await dbConnect();
-    
-    // Validate exercise ID from params
-    const exerciseId = params?.id;
+export const GET = withAuth<ResponseType['data'], { id: string, setIndex: string }>(
+  async (req: NextRequest, userId: string, context) => {
+    try {
+      if (!context?.params?.id || !context?.params?.setIndex) {
+        return apiError('Missing required parameters', 400, 'ERR_MISSING_PARAM');
+      }
+      
+      const { id, setIndex } = context.params;
     
     if (!exerciseId || typeof exerciseId !== 'string') {
       return apiError('Exercise ID is required', 400, 'ERR_VALIDATION');
@@ -80,12 +82,14 @@ export const GET = withAuth(async (req: NextRequest, userId, { params }) => {
  * PUT /api/exercises/[id]/sets/[setIndex]
  * Update a specific set for an exercise in the current user's workout
  */
-export const PUT = withAuth(async (req: NextRequest, userId, { params }) => {
-  try {
-    await dbConnect();
-    
-    // Validate exercise ID from params
-    const exerciseId = params?.id;
+export const GET = withAuth<ResponseType['data'], { id: string, setIndex: string }>(
+  async (req: NextRequest, userId: string, context) => {
+    try {
+      if (!context?.params?.id || !context?.params?.setIndex) {
+        return apiError('Missing required parameters', 400, 'ERR_MISSING_PARAM');
+      }
+      
+      const { id, setIndex } = context.params;
     
     if (!exerciseId || typeof exerciseId !== 'string') {
       return apiError('Exercise ID is required', 400, 'ERR_VALIDATION');

@@ -12,8 +12,9 @@ import { isValidObjectId } from 'mongoose';
  * GET /api/user/weight
  * Get user weight history
  */
-export const GET = withAuth(async (req: NextRequest, userId) => {
-  try {
+export const GET = withAuth<ResponseType['data']>(
+  async (req: NextRequest, userId: string) => {
+    try {
     await dbConnect();
     
     // Validate userId to prevent MongoDB injection

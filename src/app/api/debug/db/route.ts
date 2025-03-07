@@ -1,19 +1,32 @@
-// src/app/api/debug/db/route.ts (with defensive programming)
 export const dynamic = 'force-dynamic';
 
 import { NextRequest } from "next/server";
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
-import { dbConnect } from '@/lib/db';;
+import { dbConnect } from '@/lib/db';
 import mongoose from "mongoose";
 import { withRoleProtection, AuthLevel, withAuth } from "@/lib/auth-utils";
+
+interface DbStatus {
+  connected: boolean;
+  readyState: number;
+  readyStateText: string;
+  host: string | null;
+  name: string | null;
+  responseTime: number;
+  collections: string[] | Record<string, any> | null;
+  modelCount: number;
+  models: string[] | null;
+  collectionStats: Record<string, any> | null;
+  error?: string;
+}
 
 /**
  * GET /api/debug/db
  * Test database connection with optional collection listing
  */
-export const GET = withAuth(async (req: NextRequest, userId) => {
-  try {
-    // Track start time for performance metrics
+export const GET = withAuth<ResponseType['data']>(
+  async (req: NextRequest, userId: string) => {
+    try {
     const startTime = process.hrtime();
     
     // Parse query parameters with defensive handling
@@ -22,7 +35,7 @@ export const GET = withAuth(async (req: NextRequest, userId) => {
     const showStats = url.searchParams.get('stats') === 'true';
     
     // Initialize response data
-    const dbStatus = {
+    const dbStatus: DbStatus = {
       connected: false,
       readyState: 0,
       readyStateText: 'disconnected',
@@ -43,7 +56,7 @@ export const GET = withAuth(async (req: NextRequest, userId) => {
       const readyState = mongoose.connection.readyState;
       
       // Map readyState to text description
-      const readyStateMap = {
+      const readyStateMap: Record<number, string> = {
         0: 'disconnected',
         1: 'connected',
         2: 'connecting',
@@ -55,8 +68,8 @@ export const GET = withAuth(async (req: NextRequest, userId) => {
       dbStatus.connected = readyState === 1;
       dbStatus.readyState = readyState;
       dbStatus.readyStateText = readyStateMap[readyState] || 'unknown';
-      dbStatus.host = mongoose.connection.host || null;
-      dbStatus.name = mongoose.connection.name || null;
+      dbStatus.host = mongoose.connection.host;
+      dbStatus.name = mongoose.connection.name;
       dbStatus.modelCount = Object.keys(mongoose.models).length;
       
       // Add models if database is connected
@@ -67,7 +80,7 @@ export const GET = withAuth(async (req: NextRequest, userId) => {
         if (showCollections) {
           try {
             const collections = await mongoose.connection.db.listCollections().toArray();
-            dbStatus.collections = collections.map(c => c.name).sort();
+            dbStatus.collections = collections.map(c => c.name || '').filter(Boolean).sort();
           } catch (error) {
             console.error('Error listing collections:', error);
             dbStatus.collections = { error: 'Failed to list collections' };
@@ -79,10 +92,10 @@ export const GET = withAuth(async (req: NextRequest, userId) => {
           try {
             // Get collection list first
             const collections = await mongoose.connection.db.listCollections().toArray();
-            const collectionNames = collections.map(c => c.name);
+            const collectionNames = collections.map(c => c.name || '').filter(Boolean);
             
             // Get stats for each collection with defensive error handling
-            const stats = {};
+            const stats: Record<string, any> = {};
             
             // Limit to 20 collections to prevent abuse
             const collectionsToCheck = collectionNames.slice(0, 20);
@@ -110,7 +123,7 @@ export const GET = withAuth(async (req: NextRequest, userId) => {
           }
         }
       }
-    } catch (dbError) {
+    } catch (dbError: any) {
       console.error('Database connection error:', dbError);
       
       // Update status with error info
@@ -152,11 +165,11 @@ export const POST = async (req: NextRequest) => {
       await dbConnect();
       
       // Parse request body with defensive error handling
-      let body;
+      let body: Record<string, any> = {};
       try {
         body = await req.json();
       } catch (error) {
-        body = {}; // Default to empty object if parsing fails
+        // Default to empty object if parsing fails
       }
       
       // Ensure body is an object
@@ -179,7 +192,12 @@ export const POST = async (req: NextRequest) => {
       }
       
       // Initialize result
-      const result = {
+      const result: {
+        operation: string;
+        success: boolean;
+        timestamp: string;
+        details: Record<string, any> | null;
+      } = {
         operation,
         success: false,
         timestamp: new Date().toISOString(),
@@ -213,11 +231,13 @@ export const POST = async (req: NextRequest) => {
         try {
           // Get collections
           const collections = await mongoose.connection.db.listCollections().toArray();
-          const validationResults = {};
+          const validationResults: Record<string, any> = {};
           
           // Validate each collection
           for (const col of collections) {
             try {
+              if (!col.name) continue;
+              
               const validation = await mongoose.connection.db.command({
                 validate: col.name,
                 full: true
@@ -234,12 +254,13 @@ export const POST = async (req: NextRequest) => {
                   datasize: formatBytes(validation.datasize || 0)
                 }
               };
-            } catch (error) {
-              console.error(`Error validating collection ${col.name}:`, error);
-              validationResults[col.name] = { 
-                valid: false, 
-                error: error.message || 'Validation failed' 
-              };
+            } catch (error: any) {
+              if (col.name) {
+                validationResults[col.name] = { 
+                  valid: false, 
+                  error: error.message || 'Validation failed' 
+                };
+              }
             }
           }
           
@@ -261,7 +282,7 @@ export const POST = async (req: NextRequest) => {
       } else if (operation === 'cleanup') {
         try {
           // Find each model and get collection name
-          const cleanupResults = {};
+          const cleanupResults: Record<string, any> = {};
           const modelNames = Object.keys(mongoose.models);
           
           for (const modelName of modelNames) {
@@ -279,14 +300,14 @@ export const POST = async (req: NextRequest) => {
                   success: true,
                   details: compactResult
                 };
-              } catch (compactError) {
+              } catch (compactError: any) {
                 console.error(`Error compacting collection ${collectionName}:`, compactError);
                 cleanupResults[collectionName] = {
                   success: false,
                   error: compactError.message || 'Compact operation failed'
                 };
               }
-            } catch (modelError) {
+            } catch (modelError: any) {
               console.error(`Error processing model ${modelName}:`, modelError);
               cleanupResults[modelName] = {
                 success: false,
@@ -322,7 +343,7 @@ export const POST = async (req: NextRequest) => {
 /**
  * Format bytes to human-readable format
  */
-function formatBytes(bytes, decimals = 2) {
+function formatBytes(bytes: number, decimals = 2): string {
   if (!bytes || isNaN(bytes) || bytes === 0) return '0 Bytes';
   
   const k = 1024;

@@ -26,8 +26,9 @@ const parseDate = (dateStr: string | null): Date | null => {
  * 
  * Lists tasks with optional filtering and pagination
  */
-export const GET = withAuth(async (req: NextRequest, userId) => {
-  try {
+export const GET = withAuth<ResponseType['data']>(
+  async (req: NextRequest, userId: string) => {
+    try {
     await dbConnect();
     
     // Get query parameters for filtering with defensive checks

@@ -12,12 +12,14 @@ import { isValidObjectId } from "mongoose";
  * GET /api/foods/[id]
  * Get a specific food by ID
  */
-export const GET = withAuth(async (req: NextRequest, userId, { params }) => {
-  try {
-    await dbConnect();
-    
-    // Validate food ID from params
-    const foodId = params?.id;
+export const GET = withAuth<ResponseType['data'], { id: string }>(
+  async (req: NextRequest, userId: string, context) => {
+    try {
+      if (!context?.params?.id) {
+        return apiError('Missing ID parameter', 400, 'ERR_MISSING_PARAM');
+      }
+      
+      const id = context.params.id;
     
     if (!foodId || typeof foodId !== 'string') {
       return apiError('Food ID is required', 400, 'ERR_VALIDATION');

@@ -13,12 +13,14 @@ import mongoose, { isValidObjectId } from "mongoose";
  * GET /api/meals/[id]/foods
  * Get all foods in a meal
  */
-export const GET = withAuth(async (req: NextRequest, userId, { params }) => {
-  try {
-    await dbConnect();
-    
-    // Validate meal ID from params
-    const mealId = params?.id;
+export const GET = withAuth<ResponseType['data'], { id: string }>(
+  async (req: NextRequest, userId: string, context) => {
+    try {
+      if (!context?.params?.id) {
+        return apiError('Missing ID parameter', 400, 'ERR_MISSING_PARAM');
+      }
+      
+      const id = context.params.id;
     
     if (!mealId || typeof mealId !== 'string') {
       return apiError('Meal ID is required', 400, 'ERR_VALIDATION');

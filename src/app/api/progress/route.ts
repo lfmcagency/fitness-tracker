@@ -14,8 +14,9 @@ import { Types } from 'mongoose';
  * 
  * Get user's complete progress data
  */
-export const GET = withAuth(async (req: NextRequest, userId: Types.ObjectId) => {
-  try {
+export const GET = withAuth<ResponseType['data']>(
+  async (req: NextRequest, userId: string) => {
+    try {
     await dbConnect();
     
     // Get user's progress with defensive error handling

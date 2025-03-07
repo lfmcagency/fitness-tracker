@@ -21,8 +21,9 @@ type GroupBy = 'day' | 'week' | 'month';
  * - groupBy: 'day', 'week', 'month' (default: 'day')
  * - category: 'core', 'push', 'pull', 'legs' (optional, filter by category)
  */
-export const GET = withAuth(async (req: NextRequest, userId: Types.ObjectId) => {
-  try {
+export const GET = withAuth<ResponseType['data']>(
+  async (req: NextRequest, userId: string) => {
+    try {
     await dbConnect();
     
     // Defensive check for userId

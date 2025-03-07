@@ -20,8 +20,9 @@ import { getCategoriesComparison, VALID_CATEGORIES, CATEGORY_METADATA, ProgressC
  * - Balance score and recommendations
  * - Category-specific metadata for UI rendering
  */
-export const GET = withAuth(async (req: NextRequest, userId) => {
-  try {
+export const GET = withAuth<ResponseType['data']>(
+  async (req: NextRequest, userId: string) => {
+    try {
     await dbConnect();
     
     // Defensive check for userId validity

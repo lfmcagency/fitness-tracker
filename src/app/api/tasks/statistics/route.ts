@@ -65,8 +65,9 @@ function convertToTaskWithHistory(task: ITask): TaskWithHistory {
  * 
  * Returns statistics about user's tasks
  */
-export const GET = withAuth(async (req: NextRequest, userId) => {
-  try {
+export const GET = withAuth<ResponseType['data']>(
+  async (req: NextRequest, userId: string) => {
+    try {
     await dbConnect();
     
     // Parse query parameters with defensive checks

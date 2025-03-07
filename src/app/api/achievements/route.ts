@@ -28,8 +28,9 @@ interface Achievement {
  * 
  * Returns all available achievements with unlock status for the authenticated user.
  */
-export const GET = withAuth(async (req: NextRequest, userId) => {
-  try {
+export const GET = withAuth<ResponseType['data']>(
+  async (req: NextRequest, userId: string) => {
+    try {
     await dbConnect();
     
     // Get query parameters with defensive checks

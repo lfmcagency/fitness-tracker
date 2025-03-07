@@ -13,12 +13,14 @@ import { convertTaskToEnhancedTask } from '@/lib/task-utils';
  * 
  * Retrieves a specific task by ID
  */
-export const GET = withAuth(async (req: NextRequest, userId, { params }) => {
-  try {
-    await dbConnect();
-    
-    // Defensive taskId validation
-    const taskId = params?.id;
+export const GET = withAuth<ResponseType['data'], { id: string }>(
+  async (req: NextRequest, userId: string, context) => {
+    try {
+      if (!context?.params?.id) {
+        return apiError('Missing ID parameter', 400, 'ERR_MISSING_PARAM');
+      }
+      
+      const id = context.params.id;
     if (!taskId || typeof taskId !== 'string' || taskId.trim() === '') {
       return apiError('Invalid task ID', 400, 'ERR_INVALID_ID');
     }

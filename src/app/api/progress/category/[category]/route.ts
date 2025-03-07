@@ -25,14 +25,14 @@ import { Exercise } from '@/models/Exercise';
  * Query parameters:
  * - includeExercises: boolean - Whether to include unlocked exercises details
  */
-export const GET = withAuth(async (
-  req: NextRequest,
-  userId,
-  { params }: { params: { category: string } }
-) => {
-  try {
-    // Validate category parameter with defensive check
-    const category = params?.category;
+export const GET = withAuth<ResponseType['data'], { category: string }>(
+  async (req: NextRequest, userId: string, context) => {
+    try {
+      if (!context?.params?.category) {
+        return apiError('Missing category parameter', 400, 'ERR_MISSING_PARAM');
+      }
+      
+      const category = context.params.category;
     
     if (!category || typeof category !== 'string' || !VALID_CATEGORIES.includes(category as ProgressCategory)) {
       return apiError(

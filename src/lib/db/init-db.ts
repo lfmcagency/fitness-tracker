@@ -1,206 +1,225 @@
-import { dbConnect } from '@/lib/db';;
-import mongoose from 'mongoose';
-import User from '@/models/User';
-import Exercise from '@/models/Exercise';
-import Workout from '@/models/Workout';
-import Task from '@/models/Task';
-import Meal from '@/models/Meal';
+export const dynamic = 'force-dynamic';
 
-// Safely drop indexes (ignoring errors if they don't exist)
-async function safelyDropIndexes(model: mongoose.Model<any>, indexNames: string[]) {
-  try {
-    for (const indexName of indexNames) {
+import { NextRequest } from "next/server";
+import { withRoleProtection } from "@/lib/auth-utils";
+import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
+import { dbConnect } from '@/lib/db';
+import { initDatabase } from '@/lib/db/init-db';
+import mongoose from "mongoose";
+
+interface InitOperations {
+  collections: {
+    checked: number;
+    initialized: number;
+    skipped: number;
+    errors: string[];
+  };
+  seedData: {
+    totalRecords: number;
+    inserted: number;
+    skipped: number;
+    errors: string[];
+  };
+  newCollections?: string[];
+}
+
+/**
+ * POST /api/admin/init-db/database
+ * Initialize database with seed data (admin only)
+ */
+export const POST = async (req: NextRequest) => {
+  return withRoleProtection(['admin'])(req, async () => {
+    try {
+      await dbConnect();
+      
+      // Parse request body with defensive error handling
+      let body: Record<string, any> = {};
       try {
-        await model.collection.dropIndex(indexName);
-        console.log(`Dropped index ${indexName} on ${model.collection.name}`);
+        body = await req.json();
       } catch (error) {
-        // Ignore error if index doesn't exist
-        if (error instanceof Error && 'code' in error && (error as any).code !== 27) {  // Index not found error code
-          console.warn(`Warning dropping index ${indexName}:`, error instanceof Error ? error.message : String(error));
-        }
+        // Default to empty object if parsing fails
       }
-    }
-    return true;
-  } catch (error) {
-    console.error('Error dropping indexes:', error instanceof Error ? error.message : String(error));
-    return false;
-  }
-}
-
-export async function initDatabase() {
-  try {
-    await dbConnect();
-    console.log('Connected to MongoDB, initializing database...');
-    
-    // First drop any conflicting indexes
-    await safelyDropIndexes(Exercise, ['text_search_index', 'name_text_description_text']);
-    
-    // Create indexes for better query performance
-    try {
-      await User.collection.createIndex({ email: 1 }, { unique: true });
-      console.log('Created User email index');
-    } catch (e) {
-      console.log('User email index already exists');
-    }
-    
-    try {
-      await Exercise.collection.createIndex({ category: 1 });
-      console.log('Created Exercise category index');
-    } catch (e) {
-      console.log('Exercise category index already exists');
-    }
-    
-    try {
-      await Exercise.collection.createIndex({ progressionLevel: 1 });
-      console.log('Created Exercise progressionLevel index');
-    } catch (e) {
-      console.log('Exercise progressionLevel index already exists');
-    }
-    
-    try {
-      // Create text index with specific weights
-      await Exercise.collection.createIndex(
-        { name: 'text', description: 'text', instructions: 'text' },
-        { 
-          weights: { name: 10, description: 5, instructions: 3 },
-          name: 'text_search_index'
-        }
-      );
-      console.log('Created Exercise text search index');
-    } catch (e) {
-      console.log('Exercise text search index error:', e instanceof Error ? e.message : String(e));
-    }
-    
-    try {
-      await Workout.collection.createIndex({ user: 1, date: -1 });
-      console.log('Created Workout user/date index');
-    } catch (e) {
-      console.log('Workout user/date index already exists');
-    }
-    
-    try {
-      await Task.collection.createIndex({ user: 1, date: -1 });
-      console.log('Created Task user/date index');
-    } catch (e) {
-      console.log('Task user/date index already exists');
-    }
-    
-    try {
-      await Meal.collection.createIndex({ user: 1, date: -1 });
-      console.log('Created Meal user/date index');
-    } catch (e) {
-      console.log('Meal user/date index already exists');
-    }
-    
-    // Get database information
-    const collections = mongoose.connection.collections;
-    const collectionNames = Object.keys(collections);
-    
-    console.log(`Database has ${collectionNames.length} collections: ${collectionNames.join(', ')}`);
-    
-    return {
-      success: true,
-      message: 'Database initialized successfully',
-      collections: collectionNames
-    };
-  } catch (error) {
-    console.error('Error initializing database:', error instanceof Error ? error.message : String(error));
-    return {
-      success: false,
-      message: 'Failed to initialize database',
-      error: error instanceof Error ? error.message : String(error)
-    };
-  }
-}
-
-export async function clearDatabase() {
-  try {
-    await dbConnect();
-    console.log('Connected to MongoDB, clearing database...');
-    
-    // Drop only data, keep collections
-    await User.deleteMany({});
-    await Exercise.deleteMany({});
-    await Workout.deleteMany({});
-    await Task.deleteMany({});
-    await Meal.deleteMany({});
-    
-    return {
-      success: true,
-      message: 'Database cleared successfully'
-    };
-  } catch (error) {
-    console.error('Error clearing database:', error instanceof Error ? error.message : String(error));
-    return {
-      success: false,
-      message: 'Failed to clear database',
-      error: error instanceof Error ? error.message : String(error)
-    };
-  }
-}
-
-export async function seedDatabase() {
-  try {
-    await dbConnect();
-    
-    // Check if exercises exist
-    const exerciseCount = await Exercise.countDocuments();
-    if (exerciseCount > 0) {
-      console.log(`Database already has ${exerciseCount} exercises`);
-      return {
-        success: true,
-        message: `Database already seeded with ${exerciseCount} exercises`
+      
+      // Ensure body is an object
+      if (!body || typeof body !== 'object') {
+        body = {};
+      }
+      
+      // Extract options with defaults
+      const options = {
+        force: false,
+        seedData: true,
+        collections: [] as string[],
+        skipConfirmation: false,
+        ...(body || {})
       };
-    }
-    
-    // If no exercises, seed basic exercise data
-    const basicExercises = [
-      {
-        name: 'Push-ups',
-        category: 'push',
-        subcategory: 'horizontal push',
-        description: 'Basic push-up exercise',
-        progressionLevel: 1,
-        difficulty: 'beginner'
-      },
-      {
-        name: 'Pull-ups',
-        category: 'pull',
-        subcategory: 'vertical pull',
-        description: 'Basic pull-up exercise',
-        progressionLevel: 1,
-        difficulty: 'beginner'
-      },
-      {
-        name: 'Squats',
-        category: 'legs',
-        subcategory: 'squat',
-        description: 'Basic squat exercise',
-        progressionLevel: 1,
-        difficulty: 'beginner'
-      },
-      {
-        name: 'Plank',
-        category: 'core',
-        subcategory: 'plank',
-        description: 'Basic plank exercise',
-        progressionLevel: 1,
-        difficulty: 'beginner'
+      
+      // Validate options
+      if (typeof options.force !== 'boolean') {
+        options.force = false;
       }
-    ];
-    
-    await Exercise.insertMany(basicExercises);
-    
-    return {
-      success: true,
-      message: `Seeded database with ${basicExercises.length} basic exercises`
-    };
-  } catch (error) {
-    console.error('Error seeding database:', error instanceof Error ? error.message : String(error));
-    return {
-      success: false,
-      message: 'Failed to seed database',
-      error: error instanceof Error ? error.message : String(error)
-    };
-  }
-}
+      
+      if (typeof options.seedData !== 'boolean') {
+        options.seedData = true;
+      }
+      
+      if (!Array.isArray(options.collections)) {
+        options.collections = [];
+      }
+      
+      // Force must be true for destructive operations
+      if (options.force !== true) {
+        return apiError(
+          'For safety, database initialization requires force=true option', 
+          400, 
+          'ERR_FORCE_REQUIRED'
+        );
+      }
+      
+      // Initialize tracking
+      const operations: InitOperations = {
+        collections: {
+          checked: 0,
+          initialized: 0,
+          skipped: 0,
+          errors: []
+        },
+        seedData: {
+          totalRecords: 0,
+          inserted: 0,
+          skipped: 0,
+          errors: []
+        }
+      };
+      
+      // Get existing collections to check what needs to be initialized
+      const existingCollections: string[] = [];
+      try {
+        const collections = await mongoose.connection.db.listCollections().toArray();
+        collections.forEach(c => c.name && existingCollections.push(c.name));
+        operations.collections.checked = existingCollections.length;
+      } catch (listError) {
+        console.error('Error listing collections:', listError);
+        operations.collections.errors.push(`Failed to list collections: ${listError instanceof Error ? listError.message : String(listError)}`);
+      }
+      
+      // Track initialization metrics
+      const initStartTime = Date.now();
+      let initResults = null;
+      
+      // Call initialization function with defensive error handling
+      try {
+        // Initialize database with options
+        initResults = await initDatabase();
+        
+        // Update operation metrics if initialization returned results
+        if (initResults && typeof initResults === 'object') {
+          if (initResults.success) {
+            operations.collections.initialized += 1;
+            
+            // Get list of collections after initialization
+            try {
+              const updatedCollections = await mongoose.connection.db.listCollections().toArray();
+              const newCollections = updatedCollections
+                .map(c => c.name || "")
+                .filter(name => name && !existingCollections.includes(name));
+              
+              operations.newCollections = newCollections;
+            } catch (error) {
+              console.error('Error getting updated collections:', error);
+              operations.collections.errors.push('Failed to get updated collection list');
+            }
+          } else {
+            operations.collections.errors.push(initResults.message || 'Initialization failed');
+          }
+        }
+      } catch (initError) {
+        console.error('Database initialization error:', initError);
+        return handleApiError(initError, 'Error initializing database');
+      }
+      
+      // Calculate duration
+      const duration = Date.now() - initStartTime;
+      
+      return apiResponse({
+        success: true,
+        duration: `${(duration / 1000).toFixed(2)}s`,
+        operations,
+        collections: Array.isArray(initResults?.collections) ? initResults.collections : []
+      }, true, 'Database initialization completed');
+    } catch (error) {
+      return handleApiError(error, "Error initializing database");
+    }
+  });
+};
+
+/**
+ * GET /api/admin/init-db/database
+ * Get database status and initialization info (admin only)
+ */
+export const GET = async (req: NextRequest) => {
+  return withRoleProtection(['admin'])(req, async () => {
+    try {
+      await dbConnect();
+      
+      // Get initialization status
+      const status: {
+        connected: boolean;
+        database: string;
+        collections: Record<string, any>;
+        modelStats: {
+          registered: number;
+          models: string[];
+        };
+        collectionCount: number;
+        collectionsError?: string;
+      } = {
+        connected: mongoose.connection.readyState === 1,
+        database: mongoose.connection.name || 'unknown',
+        collections: {},
+        modelStats: {
+          registered: Object.keys(mongoose.models).length,
+          models: Object.keys(mongoose.models)
+        },
+        collectionCount: 0
+      };
+      
+      // Get collections
+      try {
+        const collections = await mongoose.connection.db.listCollections().toArray();
+        status.collectionCount = collections.length;
+        
+        // Get stats for important collections
+        const collectionStats: Record<string, any> = {};
+        
+        for (const collection of collections) {
+          try {
+            const name = collection.name || '';
+            if (!name) continue;
+            
+            const stats = await mongoose.connection.db.collection(name).stats();
+            
+            collectionStats[name] = {
+              count: stats.count || 0,
+              size: stats.size || 0,
+              avgObjectSize: stats.avgObjSize || 0
+            };
+          } catch (statsError) {
+            if (collection.name) {
+              collectionStats[collection.name] = { error: 'Failed to get stats' };
+            }
+          }
+        }
+        
+        status.collections = collectionStats;
+      } catch (error) {
+        console.error('Error getting collection info:', error);
+        status.collectionsError = 'Failed to get collection information';
+      }
+      
+      return apiResponse(status, true, 'Database status retrieved');
+    } catch (error) {
+      return handleApiError(error, "Error getting database status");
+    }
+  });
+};

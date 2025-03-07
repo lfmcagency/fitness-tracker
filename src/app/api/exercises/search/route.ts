@@ -16,8 +16,9 @@ const MAX_LIMIT = 50;
  * GET /api/exercises/search
  * Search exercises with advanced filtering and pagination
  */
-export const GET = withAuth(async (req: NextRequest, userId) => {
-  try {
+export const GET = withAuth<ResponseType['data']>(
+  async (req: NextRequest, userId: string) => {
+    try {
     await dbConnect();
     
     // Get query parameters with defensive handling

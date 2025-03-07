@@ -1,15 +1,14 @@
-// src/app/api/auth/register/route.ts (with defensive programming)
 import { registerUser, UserRegistrationData } from "@/lib/auth";
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
-import { dbConnect } from '@/lib/db';;
+import { dbConnect } from '@/lib/db';
 import { AuthResponse, RegisterRequest } from "@/types/api/authResponses";
 
 /**
  * POST /api/auth/register
  * Register a new user
  */
-export async function POST(req: NextRequest) {
+export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     await dbConnect();
     
@@ -54,7 +53,7 @@ export async function POST(req: NextRequest) {
       return apiError('Email local part is too long', 400, 'ERR_VALIDATION');
     }
     
-    if (domain.length > 255) {
+    if (domain && domain.length > 255) {
       return apiError('Email domain is too long', 400, 'ERR_VALIDATION');
     }
     

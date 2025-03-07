@@ -27,8 +27,9 @@ import {
  * 
  * This endpoint requires authentication and admin role for managing other users.
  */
-export const POST = withAuth(async (req: NextRequest, userId) => {
-  try {
+export const GET = withAuth<ResponseType['data']>(
+  async (req: NextRequest, userId: string) => {
+    try {
     await dbConnect();
     
     // Defensive check for userId

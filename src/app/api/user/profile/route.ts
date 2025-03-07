@@ -16,8 +16,9 @@ import { IUser } from "@/types/models/user";
  * GET /api/user/profile
  * Get current user profile
  */
-export const GET = withAuth<UserProfileResponse['data']>(async (req: NextRequest, userId) => {
-  try {
+export const GET = withAuth<ResponseType['data']>(
+  async (req: NextRequest, userId: string) => {
+    try {
     await dbConnect();
     
     // Validate userId to prevent MongoDB injection

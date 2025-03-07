@@ -18,6 +18,7 @@ export enum AuthLevel {
   DEV_OPTIONAL = "dev_optional",
   /** Any user can access (no auth required) */
   NONE = "none"
+  OPTIONAL = "optional"
 }
 
 /**
@@ -29,14 +30,14 @@ export enum AuthLevel {
  * @template T Type of response data
  * @template Params Type of route parameters
  */
-export function withAuth<T = any, Params extends Record<string, string> = Record<string, string>>(
+export function withAuth<T = any, P = {}>(
   handler: (
     req: NextRequest, 
     userId: string, 
-    context?: { params: Params }
-  ) => Promise<NextResponse>,
+    context?: { params: P }
+  ) => Promise<NextResponse<ApiResponse<T>>>,
   level: AuthLevel = AuthLevel.REQUIRED
-) {
+): (req: NextRequest) => Promise<NextResponse<ApiResponse<T>>> {
   return async (req: NextRequest, context?: { params: Params }): Promise<NextResponse> => {
     // For AuthLevel.NONE, proceed directly to handler with anonymous userId
     if (level === AuthLevel.NONE) {
