@@ -13,20 +13,29 @@ export interface ApiResponse<T = any> {
 /**
  * API success response with data
  */
-export interface ApiSuccessResponse<T> extends ApiResponse {
+export interface ApiSuccessResponse<T> {
   success: true;
   data: T;
   message?: string;
+  timestamp?: string;
 }
 
 /**
  * API error response
  */
-export interface ApiErrorResponse extends ApiResponse {
+export interface ApiErrorResponse {
   success: false;
-  error: string;
-  code?: string;
+  error: {
+    code: string;
+    message: string;
+    details?: any;
+  };
+  timestamp?: string;
 }
+/**
+ * Standard API response format (union of success and error)
+ */
+export type ApiResponse<T = any> = ApiSuccessResponse<T> | ApiErrorResponse;
 
 /**
  * Paginated response wrapper
@@ -37,8 +46,3 @@ export interface PaginatedResponse {
   limit: number;
   pages: number;
 }
-
-/**
- * Type alias for a response type
- */
-export type ResponseType<T = any> = ApiSuccessResponse<T> | ApiErrorResponse;
