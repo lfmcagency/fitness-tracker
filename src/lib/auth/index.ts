@@ -158,7 +158,7 @@ export function withRoleProtection(requiredRoles: string[] = ['admin']) {
 }
 
 export const authOptions: NextAuthOptions = {
-  adapter: MongoDBAdapter(getMongoClient()),
+  adapter: MongoDBAdapter(clientPromise),
   providers: [
     CredentialsProvider({
       name: "Credentials",

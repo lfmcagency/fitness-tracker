@@ -33,19 +33,16 @@ export const GET = withAuth<ResponseType['data'], { id: string, setIndex: string
     if (!isValidObjectId(exerciseId)) {
       return apiError('Invalid exercise ID format', 400, 'ERR_VALIDATION');
     }
-    
-    // Validate set index from params
-    const setIndex = params?.setIndex;
+
     let parsedIndex: number;
-    
-    try {
-      parsedIndex = parseInt(setIndex);
-      if (isNaN(parsedIndex) || parsedIndex < 0) {
-        return apiError('Set index must be a non-negative integer', 400, 'ERR_VALIDATION');
+      try {
+        parsedIndex = parseInt(setIndex);
+        if (isNaN(parsedIndex) || parsedIndex < 0) {
+          return apiError('Set index must be a non-negative integer', 400, 'ERR_VALIDATION');
+        }
+      } catch (error) {
+        return apiError('Invalid set index', 400, 'ERR_VALIDATION');
       }
-    } catch (error) {
-      return apiError('Invalid set index', 400, 'ERR_VALIDATION');
-    }
     
     // Get query parameters with defensive handling
     const url = new URL(req.url);

@@ -17,8 +17,8 @@ export enum AuthLevel {
   /** In development, auth is optional; in production, it's required */
   DEV_OPTIONAL = "dev_optional",
   /** Any user can access (no auth required) */
-  NONE = "none"
-  OPTIONAL = "optional"
+  NONE = "none",
+  OPTIONAL = "optional",
 }
 
 /**
