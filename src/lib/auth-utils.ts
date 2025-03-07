@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuth } from "./auth";
 import { getUserById } from "./auth/index";
 import { apiError, apiResponse } from "./api-utils";
-import { dbConnect } from "./db/mongodb";
+import { dbConnect } from '@/lib/db';
 import UserProgress from "../models/UserProgress";
 import mongoose, { isValidObjectId } from "mongoose";
 import { IUserProgress } from "../types/models/progress";
