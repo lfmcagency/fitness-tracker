@@ -1,31 +1,44 @@
-// src/types/api/common.ts
+/**
+ * Standard API response format
+ */
+export interface ApiResponse<T = any> {
+  success: boolean;
+  data?: T;
+  message?: string;
+  error?: string;
+  code?: string;
+  timestamp?: string;
+}
 
 /**
- * Standard API success response structure
- * @template T The type of data returned in successful responses
+ * API success response with data
  */
-export interface ApiSuccessResponse<T = any> {
+export interface ApiSuccessResponse<T> extends ApiResponse {
   success: true;
   data: T;
   message?: string;
-  timestamp?: string;
 }
 
 /**
- * Standard API error response structure
+ * API error response
  */
-export interface ApiErrorResponse {
+export interface ApiErrorResponse extends ApiResponse {
   success: false;
-  error: {
-    code: string;
-    message: string;
-    details?: any;
-  };
-  timestamp?: string;
+  error: string;
+  code?: string;
 }
 
 /**
- * Union type for all API responses
- * @template T The type of data returned in successful responses
+ * Paginated response wrapper
  */
-export type ApiResponse<T = any> = ApiSuccessResponse<T> | ApiErrorResponse;
+export interface PaginatedResponse {
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+}
+
+/**
+ * Type alias for a response type
+ */
+export type ResponseType<T = any> = ApiSuccessResponse<T> | ApiErrorResponse;
