@@ -4,8 +4,8 @@ import { getServerSession } from "next-auth/next";
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { MongoDBAdapter } from "@next-auth/mongodb-adapter";
-import clientPromise from "../db/mongodb-adapter";  // Correct relative path
-import { dbConnect } from '../db/mongodb';          // Correct relative path
+import { getMongoClient } from '@/lib/db';
+import { dbConnect } from '@/lib/db';
 import User from "../../models/User";               // Correct relative path
 import { compare, hash } from "bcrypt";
 import { NextRequest, NextResponse } from "next/server";
@@ -158,7 +158,7 @@ export function withRoleProtection(requiredRoles: string[] = ['admin']) {
 }
 
 export const authOptions: NextAuthOptions = {
-  adapter: MongoDBAdapter(clientPromise as any),
+  adapter: MongoDBAdapter(getMongoClient()),
   providers: [
     CredentialsProvider({
       name: "Credentials",

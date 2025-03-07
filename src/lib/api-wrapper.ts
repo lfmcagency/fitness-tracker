@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { dbConnect } from '@/lib/db/mongodb';
+import { dbConnect } from '@/lib/db';;
 import { apiResponse, handleApiError } from '@/lib/api-utils';
 
 export type ApiHandler = (

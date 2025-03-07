@@ -3,7 +3,7 @@
 export const dynamic = 'force-dynamic';
 
 import { NextRequest } from 'next/server';
-import { dbConnect } from '@/lib/db/mongodb';
+import { dbConnect } from '@/lib/db';;
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { withAuth, AuthLevel, getUserProgressOrCreate } from '@/lib/auth-utils';
 import { ProgressCategory, isValidCategory } from '@/lib/category-progress';

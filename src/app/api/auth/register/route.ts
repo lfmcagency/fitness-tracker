@@ -2,7 +2,7 @@
 import { registerUser, UserRegistrationData } from "@/lib/auth";
 import { NextRequest } from "next/server";
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
-import { dbConnect } from '@/lib/db/mongodb';
+import { dbConnect } from '@/lib/db';;
 import { AuthResponse, RegisterRequest } from "@/types/api/authResponses";
 
 /**

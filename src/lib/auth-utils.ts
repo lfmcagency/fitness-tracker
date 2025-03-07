@@ -29,7 +29,7 @@ export enum AuthLevel {
  * @template T Type of response data
  * @template Params Type of route parameters
  */
-export function withAuth<T = any, Params = any>(
+export function withAuth<T = any, Params extends Record<string, string> = Record<string, string>>(
   handler: (
     req: NextRequest, 
     userId: string, 

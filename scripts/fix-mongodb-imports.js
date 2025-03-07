@@ -38,7 +38,7 @@ function fixFiles(dir, dryRun = false) {
         if (defaultImportRegex.test(content)) {
           newContent = content.replace(
             defaultImportRegex,
-            "import { dbConnect } from '@/lib/db/mongodb'"
+            "import { dbConnect } from '@/lib/db';"
           );
           fixed = true;
           
