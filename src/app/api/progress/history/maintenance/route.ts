@@ -27,9 +27,8 @@ import {
  * 
  * This endpoint requires authentication and admin role for managing other users.
  */
-export const GET = withAuth<ResponseType['data']>(
-  async (req: NextRequest, userId: string) => {
-    try {
+export const POST = withAuth(async (req: NextRequest, userId) => {
+  try {
     await dbConnect();
     
     // Defensive check for userId
@@ -160,9 +159,9 @@ export const GET = withAuth<ResponseType['data']>(
  * - Summary record count
  * - Earliest and latest recorded activity
  */
-export const GET = withAuth(async (req: NextRequest, userId) => {
-  try {
-    await dbConnect();
+export const GET = withAuth<ResponseType['data']>(
+  async (req: NextRequest, userId: string) => {
+    try {
     
     // Defensive check for userId
     if (!userId || !Types.ObjectId.isValid(userId)) {

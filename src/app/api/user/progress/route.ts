@@ -20,9 +20,8 @@ import { awardXp } from '@/lib/xp-manager-improved';
  * - category: string (optional) - One of: "core", "push", "pull", "legs"
  * - details: string (optional) - Additional context
  */
-export const GET = withAuth<ResponseType['data']>(
-  async (req: NextRequest, userId: string) => {
-    try {
+export const POST = withAuth(async (req: NextRequest, userId) => {
+  try {
     await dbConnect();
     
     // Get and validate request body
@@ -79,9 +78,9 @@ export const GET = withAuth<ResponseType['data']>(
  * 
  * Get user's progress summary
  */
-export const GET = withAuth(async (req: NextRequest, userId) => {
-  try {
-    await dbConnect();
+export const GET = withAuth<ResponseType['data']>(
+  async (req: NextRequest, userId: string) => {
+    try {
     
     // Get or create user progress
     const userProgress = await getUserProgressOrCreate(userId);
