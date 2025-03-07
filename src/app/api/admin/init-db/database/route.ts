@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest } from "next/server";
 import { withRoleProtection } from "@/lib/auth-utils";
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
-import { dbConnect } from '@/lib/db';;
+import { dbConnect } from '@/lib/db';
 import { initDatabase } from '@/lib/db';
 import mongoose from "mongoose";
 

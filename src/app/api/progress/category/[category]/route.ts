@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic';
 
 import { NextRequest } from 'next/server';
-import { dbConnect } from '@/lib/db';;
+import { dbConnect } from '@/lib/db';
 import UserProgress from '@/models/UserProgress';
 import { Types } from 'mongoose';
 import { withAuth, AuthLevel } from '@/lib/auth-utils';

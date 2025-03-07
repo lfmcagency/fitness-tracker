@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest } from "next/server";
 import { withAuth, AuthLevel } from "@/lib/auth-utils";
-import { dbConnect } from '@/lib/db';;
+import { dbConnect } from '@/lib/db';
 import Meal from "@/models/Meal";
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import mongoose, { isValidObjectId } from "mongoose";

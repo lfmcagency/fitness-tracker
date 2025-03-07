@@ -2,7 +2,7 @@
 export const dynamic = 'force-dynamic';
 
 import { NextRequest } from "next/server";
-import { dbConnect } from '@/lib/db';;
+import { dbConnect } from '@/lib/db';
 import User from "@/models/User";
 import bcrypt from 'bcrypt';
 import { withAuth, AuthLevel } from '@/lib/auth-utils';

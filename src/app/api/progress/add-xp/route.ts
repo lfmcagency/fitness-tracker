@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic';
 
 import { NextRequest } from 'next/server';
-import { dbConnect } from '@/lib/db';;
+import { dbConnect } from '@/lib/db';
 import { withAuth, AuthLevel } from '@/lib/auth-utils';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { validateRequest, schemas } from '@/lib/validation';
