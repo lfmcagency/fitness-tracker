@@ -5,7 +5,7 @@ import { NextRequest } from "next/server";
 import { withRoleProtection } from "@/lib/auth-utils";
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { dbConnect } from '@/lib/db';;
-import { initDatabase } from '@/lib/db/init-db';
+import { initDatabase } from '@/lib/db';
 import mongoose from "mongoose";
 
 /**
@@ -95,13 +95,10 @@ export const POST = async (req: NextRequest) => {
       // Call initialization function with defensive error handling
       try {
         // Initialize database with options
-        initResults = await initializeDatabase({
+        initResults = await initDatabase({
           force: options.force,
           seedData: options.seedData,
-          collections: options.collections.length > 0 ? options.collections : undefined,
-          onProgress: (progress) => {
-            console.log(`Database initialization progress: ${JSON.stringify(progress)}`);
-          }
+          collections: options.collections
         });
         
         // Update operation metrics if initialization returned results

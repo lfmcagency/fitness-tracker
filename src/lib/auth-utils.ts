@@ -8,6 +8,9 @@ import UserProgress from "../models/UserProgress";
 import mongoose, { isValidObjectId } from "mongoose";
 import { IUserProgress } from "../types/models/progress";
 
+// Import or define the ApiResponse type
+import { ApiResponse } from "@/types/api/common";
+
 /**
  * Authentication levels for API routes
  */
@@ -18,6 +21,7 @@ export enum AuthLevel {
   DEV_OPTIONAL = "dev_optional",
   /** Any user can access (no auth required) */
   NONE = "none",
+  /** Authentication is optional, handler will receive userId if available */
   OPTIONAL = "optional",
 }
 
@@ -28,7 +32,7 @@ export enum AuthLevel {
  * @param level Authentication level required
  * @returns Protected handler function
  * @template T Type of response data
- * @template Params Type of route parameters
+ * @template P Type of route parameters
  */
 export function withAuth<T = any, P = {}>(
   handler: (
@@ -37,8 +41,8 @@ export function withAuth<T = any, P = {}>(
     context?: { params: P }
   ) => Promise<NextResponse<ApiResponse<T>>>,
   level: AuthLevel = AuthLevel.REQUIRED
-): (req: NextRequest) => Promise<NextResponse<ApiResponse<T>>> {
-  return async (req: NextRequest, context?: { params: Params }): Promise<NextResponse> => {
+): (req: NextRequest, context?: { params: P }) => Promise<NextResponse<ApiResponse<T>>> {
+  return async (req: NextRequest, context?: { params: P }): Promise<NextResponse<ApiResponse<T>>> => {
     // For AuthLevel.NONE, proceed directly to handler with anonymous userId
     if (level === AuthLevel.NONE) {
       return handler(req, "anonymous", context);
@@ -61,11 +65,15 @@ export function withAuth<T = any, P = {}>(
           return handler(req, "dev-user-id", context);
         }
         
+        // For OPTIONAL level, proceed with null userId
+        if (level === AuthLevel.OPTIONAL) {
+          return handler(req, "", context);
+        }
+        
         return apiError('Authentication required', 401, 'ERR_401');
       }
       
       // Get userId from session with validation
-      // This now works with our extended next-auth types
       const userId = session.user?.id;
       
       if (!userId) {
@@ -110,7 +118,7 @@ export async function getUserProgressOrCreate(userId: string): Promise<IUserProg
     const userIdObj = new mongoose.Types.ObjectId(userId);
     
     // Try to find existing progress
-    let userProgress = await UserProgress.findOne({ userId: userIdObj }) as IUserProgress | null;
+    let userProgress = await UserProgress.findOne({ user: userIdObj }) as IUserProgress | null;
     
     // If no progress found, create initial progress
     if (!userProgress) {
@@ -178,13 +186,12 @@ export async function checkUserRole(userId: string, requiredRoles: string[]): Pr
 export function withRoleProtection<T = any>(requiredRoles: string[] = ['admin']) {
   return async (
     req: NextRequest, 
-    handler: () => Promise<NextResponse>
-  ): Promise<NextResponse> => {
+    handler: () => Promise<NextResponse<ApiResponse<T>>>
+  ): Promise<NextResponse<ApiResponse<T>>> => {
     try {
       const session = await getAuth();
       
       // No session or no user ID
-      // This now works with our extended next-auth types
       if (!session?.user?.id) {
         return apiError("Authentication required", 401, 'ERR_401');
       }

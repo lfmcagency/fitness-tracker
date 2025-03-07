@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { initDatabase, seedDatabase, clearDatabase } from '@/lib/db/init-db';
+import { initDatabase, seedDatabase, clearDatabase } from '@/lib/db';
 import { getAuth } from '@/lib/auth';
 
 export async function POST(req: NextRequest) {
