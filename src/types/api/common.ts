@@ -1,16 +1,4 @@
 /**
- * Standard API response format
- */
-export interface ApiResponse<T = any> {
-  success: boolean;
-  data?: T;
-  message?: string;
-  error?: string;
-  code?: string;
-  timestamp?: string;
-}
-
-/**
  * API success response with data
  */
 export interface ApiSuccessResponse<T> {
