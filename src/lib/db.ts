@@ -1,6 +1,37 @@
 import mongoose from 'mongoose';
 import { MongoClient, MongoClientOptions, ServerApiVersion } from 'mongodb';
+/**
+ * Safely convert various ID formats to ObjectId
+ * @param id String ID or ObjectId
+ * @returns MongoDB ObjectId
+ */
+export function toObjectId(id: string | mongoose.Types.ObjectId): mongoose.Types.ObjectId {
+  if (typeof id === 'string') {
+    return new mongoose.Types.ObjectId(id);
+  }
+  return id;
+}
 
+/**
+ * Safely convert ObjectId to string
+ * @param id ObjectId or string
+ * @returns String representation of ID
+ */
+export function toStringId(id: mongoose.Types.ObjectId | string): string {
+  if (typeof id === 'string') {
+    return id;
+  }
+  return id.toString();
+}
+
+/**
+ * Check if a value is a valid ObjectId
+ * @param id Value to check
+ * @returns Boolean indicating if value is a valid ObjectId
+ */
+export function isValidObjectId(id: any): boolean {
+  return mongoose.isValidObjectId(id);
+}
 // Connection configuration
 const MONGODB_URI = process.env.MONGODB_URI || '';
 const DB_NAME = process.env.DB_NAME || 'fitness-tracker';
@@ -278,8 +309,19 @@ export interface InitDatabaseOptions {
 export interface InitDatabaseResult {
   success: boolean;
   message: string;
-  collections?: any[];
   error?: string;
+  collections?: {
+    initialized: number;
+    skipped: number;
+    errors: string[];
+  };
+  seedData?: {
+    total: number;
+    inserted: number;
+    skipped: number;
+    errors: string[];
+  };
+  collectionSummary?: any[]; // Or more specific collection data
 }
 
 /**
@@ -296,6 +338,20 @@ export async function initDatabase(options: InitDatabaseOptions = {}): Promise<I
     // Track collections
     const collectionSummary = [];
     
+    // Initialize tracking metrics for return value
+    const collections = {
+      initialized: 0,
+      skipped: 0,
+      errors: [] as string[]
+    };
+    
+    const seedData = {
+      total: 0,
+      inserted: 0,
+      skipped: 0,
+      errors: [] as string[]
+    };
+
     // List existing collections
     try {
       const collections = await mongoose.connection.db.listCollections().toArray();
@@ -339,7 +395,9 @@ export async function initDatabase(options: InitDatabaseOptions = {}): Promise<I
     return {
       success: true,
       message: 'Database initialized successfully',
-      collections: collectionSummary
+      collections,
+      seedData,
+      collectionSummary
     };
   } catch (error) {
     console.error('[MongoDB] Database initialization error:', error);
