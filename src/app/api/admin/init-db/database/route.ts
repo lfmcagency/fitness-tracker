@@ -4,27 +4,8 @@ export const dynamic = 'force-dynamic';
 import { NextRequest } from "next/server";
 import { withRoleProtection } from "@/lib/auth-utils";
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
-import { dbConnect } from '@/lib/db';
-import { initDatabase } from '@/lib/db';
+import { dbConnect, initDatabase, InitDatabaseResult } from '@/lib/db';
 import mongoose from "mongoose";
-
-// Define the structure returned by initDatabase
-interface InitDatabaseResult {
-  success: boolean;
-  message: string;
-  collections: {
-    initialized: number;
-    skipped: number;
-    errors: string[];
-  };
-  seedData?: {
-    total: number;
-    inserted: number;
-    skipped: number;
-    errors: string[];
-  };
-  collectionSummary?: string[];
-}
 
 /**
  * POST /api/admin/init-db/database
