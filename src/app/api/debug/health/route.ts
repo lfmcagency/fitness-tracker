@@ -2,11 +2,11 @@
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from "next/server";
-import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
-import { dbConnect } from '@/lib/db';
+import { apiResponse, apiError, handleApiError } from "@/lib/api-utils";
+import { dbConnect } from "@/lib/db"
 import mongoose from "mongoose";
 import * as os from 'os';
-import { ApiResponse } from '@/types/api/common';
+import { ApiResponse } from "@/types/api/common"
 
 // Component Health Status
 type HealthStatus = 'ok' | 'warning' | 'error' | 'unknown';
