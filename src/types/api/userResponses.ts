@@ -1,4 +1,3 @@
-// src/types/api/userResponses.ts
 import { ApiResponse } from './common';
 
 export interface WeightEntry {
@@ -7,7 +6,8 @@ export interface WeightEntry {
   notes?: string;
 }
 
-export interface UserProfileResponse extends ApiResponse<{
+// Changed from interface to type alias
+export type UserProfileResponse = ApiResponse<{
   id: string;
   name: string;
   email: string;
@@ -23,7 +23,7 @@ export interface UserProfileResponse extends ApiResponse<{
     level: number;
     xp: number;
   };
-}> {}
+}>;
 
 export interface UpdateProfileRequest {
   name?: string;

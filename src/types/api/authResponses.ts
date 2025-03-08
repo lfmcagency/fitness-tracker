@@ -26,10 +26,11 @@ export interface RegisterRequest {
   image?: string;
 }
 
-export interface AuthResponse extends ApiResponse<{
+// Changed from interface to type alias
+export type AuthResponse = ApiResponse<{
   user: UserProfile;
   token?: string;
-}> {}
+}>;
 
 export interface SessionUser {
   id: string;
