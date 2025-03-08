@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from "next/server";
 import { apiResponse, apiError, handleApiError } from "@/lib/api-utils";
-import { dbConnect } from "@/lib/db"
+import { dbConnect } from '@/lib/db';
 import mongoose from "mongoose";
 import * as os from 'os';
 import { ApiResponse } from "@/types/api/common"

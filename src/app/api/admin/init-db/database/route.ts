@@ -1,27 +1,82 @@
 // src/app/api/admin/init-db/database/route.ts
 export const dynamic = 'force-dynamic';
 
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { withRoleProtection } from "@/lib/auth-utils";
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { dbConnect, initDatabase, InitDatabaseResult } from '@/lib/db';
 import mongoose from "mongoose";
+import { ApiResponse } from "@/types/api/common";
+
+// Define option types
+interface InitDatabaseOptions {
+  force: boolean;
+  seedData: boolean;
+  collections: string[];
+  skipConfirmation?: boolean;
+}
+
+// Define operation tracking interface
+interface DatabaseOperations {
+  collections: {
+    checked: number;
+    initialized: number;
+    skipped: number;
+    errors: string[];
+  };
+  seedData: {
+    totalRecords: number;
+    inserted: number;
+    skipped: number;
+    errors: string[];
+  };
+  newCollections: string[];
+}
+
+// Define API response data structure
+interface InitDatabaseResponseData {
+  success: boolean;
+  duration: string;
+  operations: DatabaseOperations;
+  collections: any[]; // Using any here as the collection summary might have varied structure
+}
+
+// Database status response
+interface DatabaseStatusResponseData {
+  connected: boolean;
+  database: string | undefined;
+  collections: Record<string, CollectionStats>;
+  modelStats: {
+    registered: number;
+    models: string[];
+  };
+  collectionCount: number;
+  collectionsError?: string;
+}
+
+// Collection statistics
+interface CollectionStats {
+  count?: number;
+  size?: number;
+  avgObjectSize?: number;
+  error?: string;
+}
 
 /**
  * POST /api/admin/init-db/database
  * Initialize database with seed data (admin only)
  */
-export const POST = async (req: NextRequest) => {
+export const POST = async (req: NextRequest): Promise<NextResponse<ApiResponse<InitDatabaseResponseData>>> => {
   return withRoleProtection(['admin'])(req, async () => {
     try {
       await dbConnect();
 
       // Parse request body with defensive error handling
-      let body: any;
+      let body: Record<string, any> = {};
       try {
         body = await req.json();
       } catch (error) {
-        body = {}; // Default to empty object if parsing fails
+        // Default to empty object if parsing fails
       }
 
       // Ensure body is an object
@@ -30,11 +85,10 @@ export const POST = async (req: NextRequest) => {
       }
 
       // Extract options with defaults
-      const options = {
+      const options: InitDatabaseOptions = {
         force: false,
         seedData: true,
-        collections: [] as string[],
-        skipConfirmation: false,
+        collections: [],
         ...(body || {}),
       };
 
@@ -53,27 +107,30 @@ export const POST = async (req: NextRequest) => {
       }
 
       // Initialize tracking object
-      const operations = {
+      const operations: DatabaseOperations = {
         collections: {
           checked: 0,
           initialized: 0,
           skipped: 0,
-          errors: [] as string[],
+          errors: [],
         },
         seedData: {
           totalRecords: 0,
           inserted: 0,
           skipped: 0,
-          errors: [] as string[],
+          errors: [],
         },
-        newCollections: [] as string[], // Added to track new collections
+        newCollections: [],
       };
 
       // Get existing collections
       let existingCollections: string[] = [];
       try {
         const collections = await mongoose.connection.db.listCollections().toArray();
-        existingCollections = collections.map(c => c.name);
+        // Filter out null/undefined collection names with a defensive approach
+        existingCollections = collections
+          .map(c => c.name)
+          .filter((name): name is string => name !== null && name !== undefined);
         operations.collections.checked = existingCollections.length;
       } catch (listError) {
         console.error('Error listing collections:', listError);
@@ -128,7 +185,9 @@ export const POST = async (req: NextRequest) => {
         const updatedCollections = await mongoose.connection.db.listCollections().toArray();
         const newCollections = updatedCollections
           .map(c => c.name)
-          .filter(name => !existingCollections.includes(name));
+          .filter((name): name is string => 
+            name !== null && name !== undefined && !existingCollections.includes(name)
+          );
         operations.newCollections = newCollections;
       } catch (error) {
         console.error('Error getting updated collections:', error);
@@ -158,30 +217,21 @@ export const POST = async (req: NextRequest) => {
  * GET /api/admin/init-db/database
  * Get database status and initialization info (admin only)
  */
-export const GET = async (req: NextRequest) => {
+export const GET = async (req: NextRequest): Promise<NextResponse<ApiResponse<DatabaseStatusResponseData>>> => {
   return withRoleProtection(['admin'])(req, async () => {
     try {
       await dbConnect();
 
-      // Define collection stats type
-      interface CollectionStats {
-        count?: number;
-        size?: number;
-        avgObjectSize?: number;
-        error?: string;
-      }
-
       // Get initialization status
-      const status = {
+      const status: DatabaseStatusResponseData = {
         connected: mongoose.connection.readyState === 1,
         database: mongoose.connection.name,
-        collections: {} as Record<string, CollectionStats>,
+        collections: {},
         modelStats: {
           registered: Object.keys(mongoose.models).length,
           models: Object.keys(mongoose.models),
         },
         collectionCount: 0,
-        collectionsError: undefined as string | undefined, // Added for error tracking
       };
 
       // Get collections
@@ -192,6 +242,9 @@ export const GET = async (req: NextRequest) => {
         for (const collection of collections) {
           try {
             const name = collection.name;
+            // Skip collections with no name
+            if (!name) continue;
+            
             const stats = await mongoose.connection.db.collection(name).stats();
             status.collections[name] = {
               count: stats.count || 0,
@@ -199,12 +252,19 @@ export const GET = async (req: NextRequest) => {
               avgObjectSize: stats.avgObjSize || 0,
             };
           } catch (statsError) {
-            status.collections[collection.name] = { error: 'Failed to get stats' };
+            // Only add to collections if name exists
+            if (collection.name) {
+              status.collections[collection.name] = { 
+                error: statsError instanceof Error ? statsError.message : 'Failed to get stats' 
+              };
+            }
           }
         }
       } catch (error) {
         console.error('Error getting collection info:', error);
-        status.collectionsError = 'Failed to get collection information';
+        status.collectionsError = error instanceof Error 
+          ? error.message 
+          : 'Failed to get collection information';
       }
 
       return apiResponse(status, true, 'Database status retrieved');
