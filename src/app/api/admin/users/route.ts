@@ -1,18 +1,53 @@
 // src/app/api/admin/users/route.ts (with defensive programming)
 export const dynamic = 'force-dynamic';
 
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { withRoleProtection } from "@/lib/auth-utils";
 import { dbConnect } from '@/lib/db';
 import User from "@/models/User";
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { isValidObjectId } from "mongoose";
+import { ApiResponse } from "@/types/api/common";
+import { IUser } from "@/types/models/user";
+
+// Define response types for better TypeScript support
+interface UserListResponse {
+  users: Array<{
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    createdAt: Date | string;
+    [key: string]: any; // Allow additional properties
+  }>;
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    pages: number;
+  };
+}
+
+interface UserUpdateResponse {
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    role: string;
+    [key: string]: any; // Allow additional properties
+  };
+}
+
+interface UpdateUserRequest {
+  userId: string;
+  role: 'user' | 'admin' | 'trainer';
+}
 
 /**
  * GET /api/admin/users
  * List all users (admin only)
  */
-export const GET = async (req: NextRequest) => {
+export const GET = async (req: NextRequest): Promise<NextResponse<ApiResponse<UserListResponse>>> => {
   return withRoleProtection(['admin'])(req, async () => {
     try {
       await dbConnect();
@@ -51,7 +86,7 @@ export const GET = async (req: NextRequest) => {
       const search = url.searchParams.get('search') || '';
       
       // Build query
-      let query = {};
+      let query: Record<string, any> = {};
       if (search && typeof search === 'string' && search.trim() !== '') {
         query = {
           $or: [
@@ -62,7 +97,7 @@ export const GET = async (req: NextRequest) => {
       }
       
       // Get users with defensive error handling
-      let users = [];
+      let users: Array<IUser> = [];
       let total = 0;
       
       try {
@@ -74,7 +109,7 @@ export const GET = async (req: NextRequest) => {
           .select('-password -__v')
           .sort({ createdAt: -1 })
           .skip(skip)
-          .limit(limit);
+          .limit(limit) as IUser[];
       } catch (error) {
         return handleApiError(error, 'Error querying users database');
       }
@@ -128,13 +163,13 @@ export const GET = async (req: NextRequest) => {
  * POST /api/admin/users
  * Update user role (admin only)
  */
-export const POST = async (req: NextRequest) => {
+export const POST = async (req: NextRequest): Promise<NextResponse<ApiResponse<UserUpdateResponse>>> => {
   return withRoleProtection(['admin'])(req, async () => {
     try {
       await dbConnect();
       
       // Parse request body with defensive error handling
-      let body;
+      let body: UpdateUserRequest;
       try {
         body = await req.json();
       } catch (error) {
@@ -174,13 +209,13 @@ export const POST = async (req: NextRequest) => {
       }
       
       // Update user role with defensive error handling
-      let updatedUser;
+      let updatedUser: IUser | null;
       try {
         updatedUser = await User.findByIdAndUpdate(
           userId,
           { role },
           { new: true, runValidators: true }
-        ).select('-password -__v');
+        ).select('-password -__v') as IUser | null;
         
         if (!updatedUser) {
           return apiError('User not found', 404, 'ERR_NOT_FOUND');
