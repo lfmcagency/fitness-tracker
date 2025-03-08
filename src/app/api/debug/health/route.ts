@@ -1,11 +1,11 @@
 // src/app/api/debug/health/route.ts (with defensive programming)
 export const dynamic = 'force-dynamic';
 
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { dbConnect } from '@/lib/db';
 import mongoose from "mongoose";
-import os from 'os';
+import * as os from 'os';
 import { ApiResponse } from '@/types/api/common';
 
 // Component Health Status
@@ -81,6 +81,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<ApiResponse<Sy
         },
         memory: {
           status: 'ok',
+          message: 'Memory check completed',
           total: Math.round(os.totalmem() / (1024 * 1024)),
           free: Math.round(os.freemem() / (1024 * 1024)),
           usage: Math.round((1 - os.freemem() / os.totalmem()) * 100)
@@ -156,6 +157,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<ApiResponse<Sy
     if (includeDetails) {
       health.components.environment = {
         status: 'ok',
+        message: 'Environment information',
         nodeVersion: process.version,
         platform: process.platform,
         arch: process.arch,
