@@ -1,15 +1,16 @@
-// src/types/index.ts - Keep legacy types for backward compatibility 
-// while adding new standardized types
-
 // Re-export common types
 export * from './api/common';
-export * from './api/pagination';
+// Export from pagination with explicit naming
+export { PaginationParams, PaginationInfo } from './api/pagination';
+export { PaginatedResponse } from './api/pagination';
 export * from './validation';
 
-// Re-export Authentication & User types
+// Re-export Authentication & User types with explicit naming to avoid conflicts
 export * from './api/authResponses';
+export { UserProfile as AuthUserProfile } from './api/authResponses';
 export * from './api/userResponses';
 export * from './models/user';
+export { UserProfile as UserProfileModel } from './models/user';
 export * from './models/progress';
 export * from './converters/userConverters';
 

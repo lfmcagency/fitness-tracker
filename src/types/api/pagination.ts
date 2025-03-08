@@ -32,7 +32,7 @@ export interface PaginationInfo {
  * Standard response format for paginated lists
  * @template T The type of items in the list
  */
-export interface PaginatedResponse<T> extends ApiResponse<{
+export type PaginatedResponse<T> = ApiResponse<{
   items: T[];
   pagination: PaginationInfo;
-}> {}
+}>;
