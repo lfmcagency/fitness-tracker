@@ -1,18 +1,29 @@
 // Re-export common types
 export * from './api/common';
 // Export from pagination with explicit naming
-export { PaginationParams, PaginationInfo } from './api/pagination';
-export { PaginatedResponse } from './api/pagination';
+export type { PaginationParams, PaginationInfo } from './api/pagination';
+export type { PaginatedResponse } from './api/pagination';
 export * from './validation';
 
 // Re-export Authentication & User types with explicit naming to avoid conflicts
-export * from './api/authResponses';
-export { UserProfile as AuthUserProfile } from './api/authResponses';
-export * from './api/userResponses';
-export * from './models/user';
-export { UserProfile as UserProfileModel } from './models/user';
-export * from './models/progress';
-export * from './converters/userConverters';
+export type * from './api/userResponses';
+export type * from './models/progress';
+export  * from './converters/userConverters';
+
+export type {
+  UserProfile as AuthUserProfile,
+  LoginRequest,
+  RegisterRequest,
+  AuthResponse,
+  SessionUser
+} from './api/authResponses';
+
+export type {
+  BodyweightEntry,
+  UserSettings,
+  UserProfile as UserModelProfile,
+  IUser
+} from './models/user';
 
 // Legacy Daily Routine Types
 export type RecurrencePattern = 'daily' | 'weekdays' | 'weekends' | 'weekly' | 'custom';

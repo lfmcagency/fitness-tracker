@@ -5,6 +5,7 @@ import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { dbConnect } from '@/lib/db';
 import mongoose from "mongoose";
 import { withRoleProtection, AuthLevel, withAuth } from "@/lib/auth-utils";
+import { ApiResponse } from '@/types/api/common';
 
 interface DbStatus {
   connected: boolean;
@@ -24,7 +25,7 @@ interface DbStatus {
  * GET /api/debug/db
  * Test database connection with optional collection listing
  */
-export const GET = withAuth<ResponseType['data']>(
+export const GET = withAuth<DbStatus>(
   async (req: NextRequest, userId: string) => {
     try {
     const startTime = process.hrtime();
@@ -183,12 +184,8 @@ export const POST = async (req: NextRequest) => {
       // Valid operations
       const validOperations = ['validate', 'repair', 'cleanup', 'vacuum', 'stats'];
       
-      if (!validOperations.includes(operation)) {
-        return apiError(
-          `Invalid operation. Valid operations: ${validOperations.join(', ')}`, 
-          400, 
-          'ERR_INVALID_OPERATION'
-        );
+      if (dbConnectionFailed) {
+        return apiError('Database connection failed', 500, 'ERR_DB_CONNECTION');
       }
       
       // Initialize result
@@ -333,12 +330,17 @@ export const POST = async (req: NextRequest) => {
         );
       }
       
-      return apiResponse(result, result.success, `Database ${operation} operation completed`);
-    } catch (error) {
-      return handleApiError(error, "Error performing database operation");
-    }
-  });
-};
+      return apiResponse(
+        dbStatus, 
+        true, 
+        dbStatus.connected ? 'Database connected' : 'Database not connected'
+      );
+      } catch (error) {
+        return handleApiError(error, "Error checking database connection");
+      }
+    }, 
+    AuthLevel.DEV_OPTIONAL
+  );
 
 /**
  * Format bytes to human-readable format

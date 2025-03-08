@@ -6,18 +6,67 @@ import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { dbConnect } from '@/lib/db';
 import mongoose from "mongoose";
 import os from 'os';
+import { ApiResponse } from '@/types/api/common';
+
+// Component Health Status
+type HealthStatus = 'ok' | 'warning' | 'error' | 'unknown';
+
+// Base Component Health
+interface ComponentHealth {
+  status: HealthStatus;
+  message: string;
+}
+
+// Database Component Health
+interface DatabaseHealth extends ComponentHealth {
+  details?: {
+    host?: string;
+    readyState?: number;
+    name?: string;
+    error?: string;
+  };
+}
+
+// Memory Component Health
+interface MemoryHealth extends ComponentHealth {
+  total: number; // MB
+  free: number;  // MB
+  usage: number; // Percentage
+}
+
+// Environment Component Health
+interface EnvironmentHealth extends ComponentHealth {
+  nodeVersion: string;
+  platform: string;
+  arch: string;
+  env: string | undefined;
+}
+
+// System Health Response Structure
+interface SystemHealth {
+  status: HealthStatus;
+  uptime: number;
+  timestamp: string;
+  responseTime?: number;
+  components: {
+    server: ComponentHealth;
+    database: DatabaseHealth;
+    memory: MemoryHealth;
+    environment?: EnvironmentHealth;
+  };
+}
 
 /**
  * GET /api/debug/health
  * System health check endpoint
  */
-export async function GET(req: NextRequest) {
+export async function GET(req: NextRequest): Promise<NextResponse<ApiResponse<SystemHealth>>> {
   // Track start time for response time calculation
   const startTime = process.hrtime();
   
   try {
     // Component health states
-    const health = {
+    const health: SystemHealth = {
       status: 'ok',
       uptime: Math.floor(process.uptime()),
       timestamp: new Date().toISOString(),
@@ -51,7 +100,7 @@ export async function GET(req: NextRequest) {
       const mongoStatus = mongoose.connection.readyState;
       
       // Map status code to readable status
-      const statusMap = {
+      const statusMap: Record<number, string> = {
         0: 'disconnected',
         1: 'connected',
         2: 'connecting',
@@ -64,13 +113,17 @@ export async function GET(req: NextRequest) {
       // Set database health status
       health.components.database = {
         status: mongoStatus === 1 ? 'ok' : 'error',
-        message: `MongoDB is ${statusText}`,
-        details: includeDetails ? {
+        message: `MongoDB is ${statusText}`
+      };
+      
+      // Add details if requested
+      if (includeDetails) {
+        health.components.database.details = {
           host: mongoose.connection.host || 'unknown',
           readyState: mongoStatus,
           name: mongoose.connection.name || 'unknown'
-        } : undefined
-      };
+        };
+      }
       
       // If database is not connected, set overall status to error
       if (mongoStatus !== 1) {
@@ -81,11 +134,14 @@ export async function GET(req: NextRequest) {
       
       health.components.database = {
         status: 'error',
-        message: 'Error connecting to database',
-        details: includeDetails ? {
-          error: dbError instanceof Error ? dbError.message : 'Unknown error'
-        } : undefined
+        message: 'Error connecting to database'
       };
+      
+      if (includeDetails) {
+        health.components.database.details = {
+          error: dbError instanceof Error ? dbError.message : 'Unknown error'
+        };
+      }
       
       health.status = 'error';
     }
@@ -123,10 +179,6 @@ export async function GET(req: NextRequest) {
     const responseTimeMs = Math.round((hrtime[0] * 1000) + (hrtime[1] / 1000000));
     
     // Handle unexpected errors
-    return handleApiError(
-      error, 
-      "Error performing health check", 
-      { responseTime: responseTimeMs }
-    );
+    return handleApiError(error, "Error performing health check");
   }
 }
