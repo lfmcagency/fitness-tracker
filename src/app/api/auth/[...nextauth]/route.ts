@@ -1,26 +1,23 @@
-// src/app/api/auth/[...nextauth]/route.ts (with defensive programming)
+// src/app/api/auth/[...nextauth]/route.ts
 export const dynamic = 'force-dynamic';
 
 import NextAuth from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
+import { apiError } from '@/lib/api-utils';
 
 /**
- * NextAuth API route handler with error logging
+ * NextAuth API route handler with error handling
  * 
  * This is the main authentication endpoint that NextAuth uses for
  * managing sessions, handling callbacks, and processing auth requests.
  */
-
 async function handler(req: NextRequest, ...params: any[]) {
   try {
     // Ensure auth options are properly loaded
     if (!authOptions || typeof authOptions !== 'object') {
       console.error('Auth options not properly configured');
-      return NextResponse.json(
-        { error: 'Authentication system misconfigured' },
-        { status: 500 }
-      );
+      return apiError('Authentication system misconfigured', 500, 'ERR_AUTH_CONFIG');
     }
     
     // Initialize NextAuth
@@ -33,18 +30,12 @@ async function handler(req: NextRequest, ...params: any[]) {
       return nextAuthHandler.POST(req, ...params);
     } else {
       // Handle unexpected methods
-      return NextResponse.json(
-        { error: 'Method not allowed' },
-        { status: 405 }
-      );
+      return apiError('Method not allowed', 405, 'ERR_METHOD_NOT_ALLOWED');
     }
   } catch (error) {
     // Log and handle any unexpected errors
     console.error('NextAuth route error:', error);
-    return NextResponse.json(
-      { error: 'Authentication service error' },
-      { status: 500 }
-    );
+    return apiError('Authentication service error', 500, 'ERR_AUTH_SERVICE');
   }
 }
 

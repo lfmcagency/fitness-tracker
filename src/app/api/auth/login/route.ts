@@ -1,4 +1,4 @@
-// src/app/api/auth/login/route.ts (with defensive programming)
+// src/app/api/auth/login/route.ts
 export const dynamic = 'force-dynamic';
 
 import { NextRequest } from 'next/server';
@@ -6,6 +6,8 @@ import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { dbConnect } from '@/lib/db';
 import User from '@/models/User';
 import bcrypt from 'bcrypt';
+import { AuthResponse, LoginRequest } from '@/types/api/authResponses';
+import { IUser } from '@/types/models/user';
 
 /**
  * POST /api/auth/login
@@ -16,7 +18,7 @@ export async function POST(req: NextRequest) {
     await dbConnect();
     
     // Parse request body with defensive error handling
-    let body;
+    let body: LoginRequest;
     try {
       body = await req.json();
     } catch (error) {
@@ -39,9 +41,11 @@ export async function POST(req: NextRequest) {
       return apiError('Password is required', 400, 'ERR_VALIDATION');
     }
     
-    // Development shortcut for test user
-    if (email === 'test@example.com' && password === 'password') {
-      return apiResponse({
+    // Development shortcut for test user - conditionally enabled
+    if (process.env.NODE_ENV === 'development' && 
+        email === 'test@example.com' && 
+        password === 'password') {
+      return apiResponse<AuthResponse['data']>({
         user: {
           id: '1',
           name: 'Test User',
@@ -52,7 +56,7 @@ export async function POST(req: NextRequest) {
     }
     
     // Find user by email
-    const user = await User.findOne({ email: email.trim().toLowerCase() });
+    const user = await User.findOne({ email: email.trim().toLowerCase() }) as IUser | null;
     
     if (!user) {
       // Use a generic error message to prevent email enumeration
@@ -82,7 +86,7 @@ export async function POST(req: NextRequest) {
     const userData = user.toObject();
     const { password: _, __v, ...cleanUserData } = userData;
     
-    return apiResponse({
+    return apiResponse<AuthResponse['data']>({
       user: {
         ...cleanUserData,
         id: userData._id.toString(),

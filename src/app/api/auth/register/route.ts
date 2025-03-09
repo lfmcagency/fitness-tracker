@@ -1,5 +1,8 @@
+// src/app/api/auth/register/route.ts
+export const dynamic = 'force-dynamic';
+
 import { registerUser, UserRegistrationData } from "@/lib/auth";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { dbConnect } from '@/lib/db';
 import { AuthResponse, RegisterRequest } from "@/types/api/authResponses";
@@ -8,7 +11,7 @@ import { AuthResponse, RegisterRequest } from "@/types/api/authResponses";
  * POST /api/auth/register
  * Register a new user
  */
-export async function POST(req: NextRequest): Promise<NextResponse> {
+export async function POST(req: NextRequest) {
   try {
     await dbConnect();
     
@@ -94,7 +97,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       name: name.trim(),
       email: email.trim().toLowerCase(), // Normalize email
       password,
-      image: image || null,
+      image: image || undefined,
     };
     
     // Register user with defensive error handling

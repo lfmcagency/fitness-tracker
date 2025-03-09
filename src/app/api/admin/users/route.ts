@@ -1,4 +1,4 @@
-// src/app/api/admin/users/route.ts (with defensive programming)
+// src/app/api/admin/users/route.ts
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from "next/server";
@@ -9,6 +9,7 @@ import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { isValidObjectId } from "mongoose";
 import { ApiResponse } from "@/types/api/common";
 import { IUser } from "@/types/models/user";
+import { PaginatedResponse } from "@/types/api/pagination";
 
 // Define response types for better TypeScript support
 interface UserListResponse {
@@ -17,15 +18,10 @@ interface UserListResponse {
     name: string;
     email: string;
     role: string;
-    createdAt: Date | string;
+    createdAt: string;
     [key: string]: any; // Allow additional properties
   }>;
-  pagination: {
-    total: number;
-    page: number;
-    limit: number;
-    pages: number;
-  };
+  pagination: PaginatedResponse;
 }
 
 interface UserUpdateResponse {
@@ -41,6 +37,36 @@ interface UserUpdateResponse {
 interface UpdateUserRequest {
   userId: string;
   role: 'user' | 'admin' | 'trainer';
+}
+
+/**
+ * Format user object for API response, removing sensitive fields
+ */
+function formatUserForResponse(user: IUser): UserListResponse['users'][0] {
+  try {
+    const userObj = user.toObject();
+    return {
+      ...userObj,
+      id: userObj._id.toString(),
+      _id: undefined,
+      password: undefined,
+      // Ensure critical fields have defaults
+      name: userObj.name || 'Unknown',
+      email: userObj.email || '',
+      role: userObj.role || 'user',
+      createdAt: userObj.createdAt?.toISOString() || new Date().toISOString(),
+    };
+  } catch (error) {
+    console.error('Error formatting user object:', error);
+    // Add minimal user data if transformation fails
+    return {
+      id: user._id?.toString() || 'unknown',
+      name: user.name || 'Unknown',
+      email: user.email || '',
+      role: user.role || 'user',
+      createdAt: new Date().toISOString()
+    };
+  }
 }
 
 /**
@@ -114,37 +140,13 @@ export const GET = async (req: NextRequest): Promise<NextResponse<ApiResponse<Us
         return handleApiError(error, 'Error querying users database');
       }
       
-      // Safely map the users to add id field and transform _id
-      const formattedUsers = [];
-      for (const user of users) {
-        try {
-          const userObj = user.toObject();
-          formattedUsers.push({
-            ...userObj,
-            id: userObj._id.toString(),
-            _id: undefined,
-            // Ensure critical fields have defaults
-            name: userObj.name || 'Unknown',
-            email: userObj.email || '',
-            role: userObj.role || 'user',
-            createdAt: userObj.createdAt || new Date(),
-          });
-        } catch (error) {
-          console.error('Error formatting user object:', error);
-          // Add minimal user data if transformation fails
-          formattedUsers.push({
-            id: user._id?.toString() || 'unknown',
-            name: user.name || 'Unknown',
-            email: user.email || '',
-            role: user.role || 'user'
-          });
-        }
-      }
+      // Format users for response
+      const formattedUsers = users.map(user => formatUserForResponse(user));
       
       // Calculate pagination info
       const totalPages = Math.max(1, Math.ceil(total / Math.max(1, limit)));
       
-      return apiResponse({
+      return apiResponse<UserListResponse>({
         users: formattedUsers,
         pagination: {
           total,
@@ -224,27 +226,10 @@ export const POST = async (req: NextRequest): Promise<NextResponse<ApiResponse<U
         return handleApiError(error, 'Error updating user role');
       }
       
-      // Format user response safely
-      let userData;
-      try {
-        const userObj = updatedUser.toObject();
-        userData = {
-          ...userObj,
-          id: userObj._id.toString(),
-          _id: undefined
-        };
-      } catch (error) {
-        console.error('Error formatting updated user data:', error);
-        // Provide minimal fallback user data
-        userData = {
-          id: userId,
-          email: updatedUser.email || '',
-          name: updatedUser.name || 'User',
-          role: updatedUser.role || 'user'
-        };
-      }
+      // Format user for response
+      const userData = formatUserForResponse(updatedUser);
       
-      return apiResponse(
+      return apiResponse<UserUpdateResponse>(
         { user: userData },
         true,
         `User role updated to ${role}`
