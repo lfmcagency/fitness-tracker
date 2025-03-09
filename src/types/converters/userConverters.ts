@@ -33,3 +33,5 @@ export function convertWeightEntries(
     notes: entry.notes
   }));
 }
+
+export type { UserProfile };

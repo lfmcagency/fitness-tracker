@@ -183,43 +183,19 @@ export async function checkUserRole(userId: string, requiredRoles: string[]): Pr
  * @returns Handler wrapper that checks for role access
  * @template T Type of response data
  */
-export function withRoleProtection<T = any>(requiredRoles: string[] = ['admin']) {
-  return async (
-    req: NextRequest, 
-    handler: () => Promise<NextResponse<ApiResponse<T>>>
-  ): Promise<NextResponse<ApiResponse<T>>> => {
-    try {
+export function withRoleProtection<T>(requiredRoles: string[] = ['admin']) {
+  return (handler: (req: NextRequest) => Promise<NextResponse<ApiResponse<T>>>) => {
+    return async (req: NextRequest): Promise<NextResponse<ApiResponse<T>>> => {
       const session = await getAuth();
-      
-      // No session or no user ID
       if (!session?.user?.id) {
         return apiError("Authentication required", 401, 'ERR_401');
       }
-      
       const userId = session.user.id;
-      
-      // Validate userId
-      if (!isValidObjectId(userId)) {
-        return apiError('Invalid user ID format', 400, 'ERR_VALIDATION');
-      }
-      
-      // Check if user has required role
       const hasRole = await checkUserRole(userId, requiredRoles);
-      
       if (!hasRole) {
         return apiError("Insufficient permissions", 403, 'ERR_403');
       }
-      
-      // User has required role, proceed to handler
-      return handler();
-    } catch (error) {
-      console.error('Role protection error:', error);
-      return apiError(
-        "Authorization error", 
-        500, 
-        'ERR_AUTH',
-        process.env.NODE_ENV === 'development' ? error : undefined
-      );
-    }
+      return handler(req);
+    };
   };
 }
