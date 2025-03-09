@@ -1,12 +1,11 @@
-// src/app/api/debug/health/route.ts (with defensive programming)
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from "next/server";
-import { apiResponse, apiError, handleApiError } from "@/lib/api-utils";
+import { apiResponse, handleApiError } from "@/lib/api-utils";
 import { dbConnect } from '@/lib/db';
 import mongoose from "mongoose";
 import * as os from 'os';
-import { ApiResponse } from "@/types/api/common"
+import { ApiResponse } from "@/types/api/common";
 
 // Component Health Status
 type HealthStatus = 'ok' | 'warning' | 'error' | 'unknown';
@@ -23,6 +22,7 @@ interface DatabaseHealth extends ComponentHealth {
     host?: string;
     readyState?: number;
     name?: string;
+    collections?: number;  // Added to support listing collections
     error?: string;
   };
 }
@@ -61,24 +61,16 @@ interface SystemHealth {
  * System health check endpoint
  */
 export async function GET(req: NextRequest): Promise<NextResponse<ApiResponse<SystemHealth>>> {
-  // Track start time for response time calculation
   const startTime = process.hrtime();
   
   try {
-    // Component health states
     const health: SystemHealth = {
       status: 'ok',
       uptime: Math.floor(process.uptime()),
       timestamp: new Date().toISOString(),
       components: {
-        server: {
-          status: 'ok',
-          message: 'Next.js server is running'
-        },
-        database: {
-          status: 'unknown',
-          message: 'Database check not attempted yet'
-        },
+        server: { status: 'ok', message: 'Next.js server is running' },
+        database: { status: 'unknown', message: 'Database check not attempted yet' },
         memory: {
           status: 'ok',
           message: 'Memory check completed',
@@ -89,18 +81,13 @@ export async function GET(req: NextRequest): Promise<NextResponse<ApiResponse<Sy
       }
     };
     
-    // Check authentication level for detailed info
     const url = new URL(req.url);
     const includeDetails = url.searchParams.get('details') === 'true';
     
     // Check database connection with defensive error handling
     try {
       await dbConnect();
-      
-      // Get MongoDB connection status
       const mongoStatus = mongoose.connection.readyState;
-      
-      // Map status code to readable status
       const statusMap: Record<number, string> = {
         0: 'disconnected',
         1: 'connected',
@@ -108,49 +95,64 @@ export async function GET(req: NextRequest): Promise<NextResponse<ApiResponse<Sy
         3: 'disconnecting',
         99: 'uninitialized'
       };
-      
       const statusText = statusMap[mongoStatus] || 'unknown';
       
-      // Set database health status
-      health.components.database = {
-        status: mongoStatus === 1 ? 'ok' : 'error',
-        message: `MongoDB is ${statusText}`
-      };
-      
-      // Add details if requested
-      if (includeDetails) {
-        health.components.database.details = {
-          host: mongoose.connection.host || 'unknown',
-          readyState: mongoStatus,
-          name: mongoose.connection.name || 'unknown'
-        };
-      }
-      
-      // If database is not connected, set overall status to error
-      if (mongoStatus !== 1) {
+      if (mongoStatus === 1) {
+        try {
+          // Added list collections query to verify database operability
+          const collectionList = await mongoose.connection.db.listCollections().toArray();
+          health.components.database.status = 'ok';
+          health.components.database.message = 'MongoDB is connected and collections are accessible';
+          if (includeDetails) {
+            health.components.database.details = {
+              host: mongoose.connection.host || 'unknown',
+              readyState: mongoStatus,
+              name: mongoose.connection.name || 'unknown',
+              collections: collectionList.length,  // Include number of collections
+            };
+          }
+        } catch (queryError) {
+          console.error('Error listing collections:', queryError);
+          health.components.database.status = 'error';
+          health.components.database.message = 'MongoDB is connected but collections are not accessible';
+          if (includeDetails) {
+            health.components.database.details = {
+              host: mongoose.connection.host || 'unknown',
+              readyState: mongoStatus,
+              name: mongoose.connection.name || 'unknown',
+              error: queryError instanceof Error ? queryError.message : 'Unknown error',
+            };
+          }
+          health.status = 'error';
+        }
+      } else {
+        health.components.database.status = 'error';
+        health.components.database.message = `MongoDB is ${statusText}`;
+        if (includeDetails) {
+          health.components.database.details = {
+            readyState: mongoStatus,
+          };
+        }
         health.status = 'error';
       }
     } catch (dbError) {
       console.error('Health check database error:', dbError);
-      
       health.components.database = {
         status: 'error',
         message: 'Error connecting to database'
       };
-      
       if (includeDetails) {
         health.components.database.details = {
           error: dbError instanceof Error ? dbError.message : 'Unknown error'
         };
       }
-      
       health.status = 'error';
     }
     
     // Check memory usage - warn if over 90%
     if (health.components.memory.usage > 90) {
-      health.components.memory.status = 'warning';
       health.status = health.status === 'ok' ? 'warning' : health.status;
+      health.components.memory.status = 'warning';
     }
     
     // Add environment information if detailed check requested
