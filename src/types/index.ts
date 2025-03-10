@@ -5,6 +5,10 @@ export type { PaginationParams, PaginationInfo } from './api/pagination';
 export type { PaginatedResponse } from './api/pagination';
 export * from './validation';
 
+// Export tasks
+export type * from './api/taskResponses';
+export type * from './api/taskRequests';
+
 // Re-export Authentication & User types with explicit naming to avoid conflicts
 export type * from './api/userResponses';
 export type * from './models/progress';
