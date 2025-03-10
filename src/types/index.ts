@@ -9,6 +9,10 @@ export * from './validation';
 export type * from './api/taskResponses';
 export type * from './api/taskRequests';
 
+// Export exercise types
+export * from './api/exerciseResponses';
+export * from './api/exerciseRequests';
+
 // Re-export Authentication & User types with explicit naming to avoid conflicts
 export type * from './api/userResponses';
 export type * from './models/progress';

@@ -7,28 +7,31 @@ import { dbConnect } from '@/lib/db';
 import Exercise from "@/models/Exercise";
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { isValidObjectId } from "mongoose";
+import { ExerciseData } from "@/types/api/exerciseResponses";
 
 /**
  * GET /api/exercises/[id]
  * Get a specific exercise by ID
  */
-export const GET = withAuth<ResponseType['data'], { id: string }>(
+export const GET = withAuth<ExerciseData, { id: string }>(
   async (req: NextRequest, userId: string, context) => {
     try {
+      await dbConnect();
+      
       if (!context?.params?.id) {
         return apiError('Missing ID parameter', 400, 'ERR_MISSING_PARAM');
       }
       
       const id = context.params.id;
-    
-    if (!exerciseId || typeof exerciseId !== 'string') {
-      return apiError('Exercise ID is required', 400, 'ERR_VALIDATION');
-    }
-    
-    // Check if ID is valid MongoDB ObjectId
-    if (!isValidObjectId(exerciseId)) {
-      return apiError('Invalid exercise ID format', 400, 'ERR_VALIDATION');
-    }
+      
+      if (!id || typeof id !== 'string') {
+        return apiError('Exercise ID is required', 400, 'ERR_VALIDATION');
+      }
+      
+      // Check if ID is valid MongoDB ObjectId
+      if (!isValidObjectId(id)) {
+        return apiError('Invalid exercise ID format', 400, 'ERR_VALIDATION');
+      }
     
     // Get exercise with defensive error handling
     let exercise;
@@ -122,18 +125,21 @@ export const GET = withAuth<ResponseType['data'], { id: string }>(
     }
     
     return apiResponse(exerciseResponse, true, 'Exercise retrieved successfully');
-  } catch (error) {
-    return handleApiError(error, "Error retrieving exercise");
-  }
-}, AuthLevel.DEV_OPTIONAL);
+    } catch (error) {
+      return handleApiError(error, "Error retrieving exercise");
+    }
+  }, 
+  AuthLevel.DEV_OPTIONAL
+);
 
 /**
  * PUT /api/exercises/[id] (Admin only)
  * Update a specific exercise by ID
  */
-export const PUT = withAuth(async (req: NextRequest, userId, { params }) => {
-  try {
-    await dbConnect();
+export const PUT = withAuth<ExerciseData, { id: string }>(
+  async (req: NextRequest, userId, { params }) => {
+    try {
+      await dbConnect();
     
     // Validate exercise ID from params
     const exerciseId = params?.id;
@@ -472,15 +478,18 @@ export const PUT = withAuth(async (req: NextRequest, userId, { params }) => {
   } catch (error) {
     return handleApiError(error, "Error updating exercise");
   }
-}, AuthLevel.DEV_OPTIONAL);
+}, 
+AuthLevel.DEV_OPTIONAL
+);
 
 /**
  * DELETE /api/exercises/[id] (Admin only)
  * Delete a specific exercise by ID
  */
-export const DELETE = withAuth(async (req: NextRequest, userId, { params }) => {
-  try {
-    await dbConnect();
+export const DELETE = withAuth<{ id: string }, { id: string }>(
+  async (req: NextRequest, userId, { params }) => {
+    try {
+      await dbConnect();
     
     // Validate exercise ID from params
     const exerciseId = params?.id;
@@ -545,8 +554,10 @@ export const DELETE = withAuth(async (req: NextRequest, userId, { params }) => {
       return handleApiError(error, 'Error deleting exercise from database');
     }
     
-    return apiResponse({ id: exerciseId }, true, 'Exercise deleted successfully');
-  } catch (error) {
-    return handleApiError(error, "Error deleting exercise");
-  }
-}, AuthLevel.DEV_OPTIONAL);
+    return apiResponse({ id: params.id }, true, 'Exercise deleted successfully');
+    } catch (error) {
+      return handleApiError(error, "Error deleting exercise");
+    }
+  }, 
+  AuthLevel.DEV_OPTIONAL
+);

@@ -5,6 +5,7 @@ import { withAuth, AuthLevel } from "@/lib/auth-utils";
 import { dbConnect } from '@/lib/db';
 import Exercise from "@/models/Exercise";
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
+import { ExerciseListResponse, ExerciseResponse, ExerciseListData, ExerciseData } from '@/types/api/exerciseResponses';
 
 // Default pagination values
 const DEFAULT_PAGE = 1;
@@ -15,7 +16,7 @@ const MAX_LIMIT = 100;
  * GET /api/exercises
  * Get exercises with filtering, searching and pagination
  */
-export const GET = withAuth<ResponseType['data']>(
+export const GET = withAuth<ExerciseListData>(
   async (req: NextRequest, userId: string) => {
     try {
     await dbConnect();
@@ -266,13 +267,16 @@ export const GET = withAuth<ResponseType['data']>(
   } catch (error) {
     return handleApiError(error, "Error retrieving exercises");
   }
-}, AuthLevel.DEV_OPTIONAL);
+}, 
+AuthLevel.DEV_OPTIONAL
+);
 
 /**
  * POST /api/exercises (Admin only)
  * Create a new exercise (For admin use - requires separate admin validation)
  */
-export const POST = withAuth(async (req: NextRequest, userId) => {
+export const POST = withAuth<ExerciseData>(
+  async (req: NextRequest, userId) => {
   try {
     await dbConnect();
     
@@ -455,4 +459,6 @@ export const POST = withAuth(async (req: NextRequest, userId) => {
   } catch (error) {
     return handleApiError(error, "Error creating exercise");
   }
-}, AuthLevel.DEV_OPTIONAL);
+}, 
+AuthLevel.DEV_OPTIONAL
+);

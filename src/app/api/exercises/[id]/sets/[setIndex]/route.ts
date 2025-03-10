@@ -1,4 +1,3 @@
-// src/app/api/exercises/[id]/sets/[setIndex]/route.ts (with defensive programming)
 export const dynamic = 'force-dynamic';
 
 import { NextRequest } from "next/server";
@@ -6,6 +5,7 @@ import { withAuth, AuthLevel } from "@/lib/auth-utils";
 import { dbConnect } from '@/lib/db';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { isValidObjectId } from "mongoose";
+import { ExerciseSetData } from "@/types/api/exerciseResponses";
 
 // Note: This endpoint would typically interact with a Workout model that contains
 // sets for exercises. Since we don't have the complete model structure in the
@@ -16,18 +16,20 @@ import { isValidObjectId } from "mongoose";
  * GET /api/exercises/[id]/sets/[setIndex]
  * Get a specific set for an exercise in the current user's workout
  */
-export const GET = withAuth<ResponseType['data'], { id: string, setIndex: string }>(
+export const GET = withAuth<ExerciseSetData, { id: string, setIndex: string }>(
   async (req: NextRequest, userId: string, context) => {
     try {
+      await dbConnect();
+      
       if (!context?.params?.id || !context?.params?.setIndex) {
         return apiError('Missing required parameters', 400, 'ERR_MISSING_PARAM');
       }
       
       const { id, setIndex } = context.params;
-    
-    if (!exerciseId || typeof exerciseId !== 'string') {
-      return apiError('Exercise ID is required', 400, 'ERR_VALIDATION');
-    }
+      
+      if (!id || typeof id !== 'string') {
+        return apiError('Exercise ID is required', 400, 'ERR_VALIDATION');
+      }
     
     // Check if ID is valid MongoDB ObjectId
     if (!isValidObjectId(exerciseId)) {
@@ -63,25 +65,24 @@ export const GET = withAuth<ResponseType['data'], { id: string, setIndex: string
     
     // For now, return a mock response or error
     return apiResponse({
-      message: "This endpoint needs to be implemented based on the workout model structure",
-      params: {
-        exerciseId,
-        setIndex: parsedIndex,
-        workoutId
-      }
+      exerciseId: id,
+      setIndex: parsedIndex,
+      completed: false,
+      // Other fields would be added when implementing the actual functionality
     }, true, 'Set retrieval not implemented');
   } catch (error) {
     return handleApiError(error, "Error retrieving exercise set");
   }
-}, AuthLevel.DEV_OPTIONAL);
-
+}, 
+AuthLevel.DEV_OPTIONAL
 /**
  * PUT /api/exercises/[id]/sets/[setIndex]
  * Update a specific set for an exercise in the current user's workout
  */
-export const PUT = withAuth(async (req: NextRequest, userId, { params }) => {
-  try {
-    await dbConnect();
+export const PUT = withAuth<ExerciseSetData, { id: string, setIndex: string }>(
+  async (req: NextRequest, userId, { params }) => {
+    try {
+      await dbConnect();
     
     // Validate exercise ID from params
     const exerciseId = params?.id;
@@ -252,26 +253,29 @@ export const PUT = withAuth(async (req: NextRequest, userId, { params }) => {
     
     // For now, return a mock response or error
     return apiResponse({
-      message: "This endpoint needs to be implemented based on the workout model structure",
-      params: {
-        exerciseId,
-        setIndex: parsedIndex,
-        workoutId
-      },
-      setData
+      exerciseId: params.id,
+      setIndex: parsedIndex,
+      reps,
+      weight,
+      holdTime,
+      completed: completed || false,
+      rpe,
+      notes
     }, true, 'Set update not implemented');
   } catch (error) {
     return handleApiError(error, "Error updating exercise set");
   }
-}, AuthLevel.DEV_OPTIONAL);
+}, 
+AuthLevel.DEV_OPTIONAL
 
 /**
  * DELETE /api/exercises/[id]/sets/[setIndex]
  * Delete a specific set for an exercise in the current user's workout
  */
-export const DELETE = withAuth(async (req: NextRequest, userId, { params }) => {
-  try {
-    await dbConnect();
+export const DELETE = withAuth<{ success: boolean }, { id: string, setIndex: string }>(
+  async (req: NextRequest, userId, { params }) => {
+    try {
+      await dbConnect();
     
     // Validate exercise ID from params
     const exerciseId = params?.id;
@@ -317,14 +321,11 @@ export const DELETE = withAuth(async (req: NextRequest, userId, { params }) => {
     
     // For now, return a mock response or error
     return apiResponse({
-      message: "This endpoint needs to be implemented based on the workout model structure",
-      params: {
-        exerciseId,
-        setIndex: parsedIndex,
-        workoutId
-      }
+      success: true
     }, true, 'Set deletion not implemented');
   } catch (error) {
     return handleApiError(error, "Error deleting exercise set");
   }
-}, AuthLevel.DEV_OPTIONAL);
+}, 
+AuthLevel.DEV_OPTIONAL
+);

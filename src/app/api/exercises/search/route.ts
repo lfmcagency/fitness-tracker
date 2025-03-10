@@ -1,4 +1,3 @@
-// src/app/api/exercises/search/route.ts (with defensive programming)
 export const dynamic = 'force-dynamic';
 
 import { NextRequest } from "next/server";
@@ -6,6 +5,7 @@ import { withAuth, AuthLevel } from "@/lib/auth-utils";
 import { dbConnect } from '@/lib/db';
 import Exercise from "@/models/Exercise";
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
+import { SearchResultData } from "@/types/api/exerciseResponses";
 
 // Default pagination values
 const DEFAULT_PAGE = 1;
@@ -16,10 +16,10 @@ const MAX_LIMIT = 50;
  * GET /api/exercises/search
  * Search exercises with advanced filtering and pagination
  */
-export const GET = withAuth<ResponseType['data']>(
+export const GET = withAuth<SearchResultData>(
   async (req: NextRequest, userId: string) => {
     try {
-    await dbConnect();
+      await dbConnect();
     
     // Get query parameters with defensive handling
     const url = new URL(req.url);
@@ -238,7 +238,9 @@ export const GET = withAuth<ResponseType['data']>(
   } catch (error) {
     return handleApiError(error, "Error searching exercises");
   }
-}, AuthLevel.DEV_OPTIONAL);
+}, 
+AuthLevel.DEV_OPTIONAL
+);
 
 /**
  * Helper function to count matches of search terms in text
