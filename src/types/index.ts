@@ -13,7 +13,12 @@ export * from './api/exerciseRequests';
 export type * from './api/userResponses';
 export type * from './models/progress';
 export  * from './converters/userConverters';
-
+export * from './api/foodResponses';
+export * from './api/foodRequests';
+export * from './api/mealResponses';
+export * from './api/mealRequests';
+export * from './converters/foodConverters';
+export * from './converters/mealConverters';
 /**
  * Format bytes to human-readable format
  * @param bytes Number of bytes
