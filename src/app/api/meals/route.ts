@@ -7,7 +7,7 @@ import { dbConnect } from '@/lib/db';
 import Meal from "@/models/Meal";
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import mongoose, { isValidObjectId } from "mongoose";
-import { MealListResponse, MealResponse } from "@/types/api/mealResponses";
+import { MealData, MealListResponse, MealResponse } from "@/types/api/mealResponses";
 import { CreateMealRequest } from "@/types/api/mealRequests";
 import { convertMealToResponse } from "@/types/converters/mealConverters";
 import { IMeal } from "@/types/models/meal";
@@ -21,7 +21,7 @@ const MAX_LIMIT = 50;
  * GET /api/meals
  * Get meals with filtering and pagination
  */
-export const GET = withAuth<MealListResponse['data']>(
+export const GET = withAuth<MealData['data']>(
   async (req: NextRequest, userId: string) => {
     try {
       await dbConnect();

@@ -7,7 +7,7 @@ import { dbConnect } from '@/lib/db';
 import Meal from "@/models/Meal";
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { isValidObjectId } from "mongoose";
-import { MealResponse } from "@/types/api/mealResponses";
+import { MealData, MealResponse } from "@/types/api/mealResponses";
 import { UpdateMealRequest } from "@/types/api/mealRequests";
 import { convertMealToResponse } from "@/types/converters/mealConverters";
 import { IMeal } from "@/types/models/meal";
@@ -16,16 +16,16 @@ import { IMeal } from "@/types/models/meal";
  * GET /api/meals/[id]
  * Get a specific meal by ID
  */
-export const GET = withAuth<MealResponse['data'], { id: string }>(
+export const GET = withAuth<MealData, { mealId: string }>(
   async (req: NextRequest, userId: string, context) => {
     try {
       await dbConnect();
       
-      if (!context?.params?.id) {
+      if (!context?.params?.mealId) {
         return apiError('Missing ID parameter', 400, 'ERR_MISSING_PARAM');
       }
       
-      const mealId = context.params.id;
+      const mealId = context.params.mealId;
       
       if (!mealId || typeof mealId !== 'string') {
         return apiError('Meal ID is required', 400, 'ERR_VALIDATION');

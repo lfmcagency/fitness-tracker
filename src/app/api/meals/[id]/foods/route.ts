@@ -7,18 +7,23 @@ import Meal from "@/models/Meal";
 import Food from "@/models/Food";
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import mongoose, { isValidObjectId } from "mongoose";
-import { MealFoodsResponse } from "@/types/api/mealResponses";
+import { MealFoodData, MealFoodsResponse } from "@/types/api/mealResponses";
 import { AddFoodToMealRequest } from "@/types/api/mealRequests";
 import { convertMealFoodToResponse } from "@/types/converters/mealConverters";
+import { IMeal } from "@/types/models/meal";
+import { IFood } from "@/types/models/food";
 
 /**
  * GET /api/meals/[id]/foods
  * Get all foods in a meal
  */
-export const GET = withAuth<MealFoodsResponse['data'], { id: string }>(
-  async (req: NextRequest, userId: string, context) => {
+
+export const GET = withAuth<MealFoodData, { id: string }>(
+  async (req: NextRequest, id: string, context) => {
     try {
       await dbConnect();
+      
+      const { params } = context || {};
       
       if (!context?.params?.id) {
         return apiError('Missing ID parameter', 400, 'ERR_MISSING_PARAM');
@@ -26,17 +31,12 @@ export const GET = withAuth<MealFoodsResponse['data'], { id: string }>(
       
       const mealId = context.params.id;
       
-      if (!mealId || typeof mealId !== 'string') {
-        return apiError('Meal ID is required', 400, 'ERR_VALIDATION');
-      }
-      
-      // Check if ID is valid MongoDB ObjectId
       if (!isValidObjectId(mealId)) {
         return apiError('Invalid meal ID format', 400, 'ERR_VALIDATION');
       }
       
       // Get meal with defensive error handling
-      let meal;
+      let meal: IMeal | null;
       try {
         meal = await Meal.findById(mealId);
         
@@ -67,10 +67,10 @@ export const GET = withAuth<MealFoodsResponse['data'], { id: string }>(
           const food = meal.foods[i];
           try {
             // Safely add food nutritional values
-            mealTotals.protein += food.protein || 0;
-            mealTotals.carbs += food.carbs || 0;
-            mealTotals.fat += food.fat || 0;
-            mealTotals.calories += food.calories || 0;
+            mealTotals.protein += Number(food.protein) || 0;
+            mealTotals.carbs += Number(food.carbs) || 0;
+            mealTotals.fat += Number(food.fat) || 0;
+            mealTotals.calories += Number(food.calories) || 0;
             
             // Add processed food using converter
             processedFoods.push(convertMealFoodToResponse(food, i));
@@ -81,16 +81,22 @@ export const GET = withAuth<MealFoodsResponse['data'], { id: string }>(
               index: i,
               foodId: food.foodId ? food.foodId.toString() : undefined,
               name: food.name || 'Unknown Food',
-              protein: food.protein || 0,
-              carbs: food.carbs || 0,
-              fat: food.fat || 0,
-              calories: food.calories || 0,
-              amount: food.amount || 0,
+              protein: Number(food.protein) || 0,
+              carbs: Number(food.carbs) || 0,
+              fat: Number(food.fat) || 0,
+              calories: Number(food.calories) || 0,
+              amount: Number(food.amount) || 0,
               unit: food.unit || 'g'
             });
           }
         }
       }
+      
+      // Round totals for consistency
+      mealTotals.protein = Math.round(mealTotals.protein * 10) / 10;
+      mealTotals.carbs = Math.round(mealTotals.carbs * 10) / 10;
+      mealTotals.fat = Math.round(mealTotals.fat * 10) / 10;
+      mealTotals.calories = Math.round(mealTotals.calories);
       
       return apiResponse({
         foods: processedFoods,
@@ -110,19 +116,20 @@ export const GET = withAuth<MealFoodsResponse['data'], { id: string }>(
  * POST /api/meals/[id]/foods
  * Add a new food to a meal
  */
-export const POST = withAuth<{ food: any, mealId: string, index: number }, { id: string }>(
-  async (req: NextRequest, userId, { params }) => {
+
+export const POST = withAuth<{ food: MealFoodData, mealId: string, index: number }, { id: string }>(
+  async (req: NextRequest, userId: string, context) => {
     try {
       await dbConnect();
       
-      // Validate meal ID from params
-      const mealId = params?.id;
+      const { params } = context || {};
       
-      if (!mealId || typeof mealId !== 'string') {
-        return apiError('Meal ID is required', 400, 'ERR_VALIDATION');
+      if (!params?.id) {
+        return apiError('Missing ID parameter', 400, 'ERR_MISSING_PARAM');
       }
+
+      const mealId = params.id;
       
-      // Check if ID is valid MongoDB ObjectId
       if (!isValidObjectId(mealId)) {
         return apiError('Invalid meal ID format', 400, 'ERR_VALIDATION');
       }
@@ -141,7 +148,7 @@ export const POST = withAuth<{ food: any, mealId: string, index: number }, { id:
       }
       
       // Get existing meal with defensive error handling
-      let meal;
+      let meal: IMeal | null;
       try {
         meal = await Meal.findById(mealId);
         
@@ -159,7 +166,7 @@ export const POST = withAuth<{ food: any, mealId: string, index: number }, { id:
       
       // Validate food data
       // Option 1: Food from database (need foodId)
-      let foodFromDb = null;
+      let foodFromDb: IFood | null = null;
       
       // Validate foodId if provided
       if (body.foodId) {
@@ -234,59 +241,27 @@ export const POST = withAuth<{ food: any, mealId: string, index: number }, { id:
         
         // Parse protein
         if (body.protein !== undefined) {
-          if (typeof body.protein === 'string') {
-            protein = parseFloat(body.protein);
-          } else if (typeof body.protein === 'number') {
-            protein = body.protein;
-          }
-          
-          if (isNaN(protein) || protein < 0) {
-            protein = 0;
-          }
+          protein = parseNutrientValue(body.protein);
         }
         
         // Parse carbs
         if (body.carbs !== undefined) {
-          if (typeof body.carbs === 'string') {
-            carbs = parseFloat(body.carbs);
-          } else if (typeof body.carbs === 'number') {
-            carbs = body.carbs;
-          }
-          
-          if (isNaN(carbs) || carbs < 0) {
-            carbs = 0;
-          }
+          carbs = parseNutrientValue(body.carbs);
         }
         
         // Parse fat
         if (body.fat !== undefined) {
-          if (typeof body.fat === 'string') {
-            fat = parseFloat(body.fat);
-          } else if (typeof body.fat === 'number') {
-            fat = body.fat;
-          }
-          
-          if (isNaN(fat) || fat < 0) {
-            fat = 0;
-          }
+          fat = parseNutrientValue(body.fat);
         }
         
         // Parse calories
         if (body.calories !== undefined) {
-          if (typeof body.calories === 'string') {
-            calories = parseFloat(body.calories);
-          } else if (typeof body.calories === 'number') {
-            calories = body.calories;
-          }
-          
-          if (isNaN(calories) || calories < 0) {
-            calories = 0;
-          }
+          calories = parseNutrientValue(body.calories);
         }
         
         // Calculate calories if not provided
         if (calories === 0 && (protein > 0 || carbs > 0 || fat > 0)) {
-          calories = (protein * 4) + (carbs * 4) + (fat * 9);
+          calories = Math.round((protein * 4) + (carbs * 4) + (fat * 9));
         }
         
         // Prepare serving information
@@ -297,7 +272,7 @@ export const POST = withAuth<{ food: any, mealId: string, index: number }, { id:
         
         if (body.serving && typeof body.serving === 'object') {
           if (body.serving.size !== undefined) {
-            const size = parseFloat(body.serving.size);
+            const size = parseFloat(String(body.serving.size));
             if (!isNaN(size) && size > 0) {
               serving.size = size;
             }
@@ -363,19 +338,19 @@ export const POST = withAuth<{ food: any, mealId: string, index: number }, { id:
  * PUT /api/meals/[id]/foods
  * Replace all foods in a meal
  */
-export const PUT = withAuth<{ foods: any[], count: number, totals: any, mealId: string }, { id: string }>(
-  async (req: NextRequest, userId, { params }) => {
+export const PUT = withAuth<{ foods: MealFoodData[], count: number, totals: IMealTotals, mealId: string }, { id: string }>(
+  async (req: NextRequest, userId: string, context) => {
     try {
       await dbConnect();
       
-      // Validate meal ID from params
-      const mealId = params?.id;
+      const { params } = context || {};
       
-      if (!mealId || typeof mealId !== 'string') {
-        return apiError('Meal ID is required', 400, 'ERR_VALIDATION');
+      if (!params?.id) {
+        return apiError('Missing ID parameter', 400, 'ERR_MISSING_PARAM');
       }
       
-      // Check if ID is valid MongoDB ObjectId
+      const mealId = params.id;
+      
       if (!isValidObjectId(mealId)) {
         return apiError('Invalid meal ID format', 400, 'ERR_VALIDATION');
       }
@@ -394,7 +369,7 @@ export const PUT = withAuth<{ foods: any[], count: number, totals: any, mealId: 
       }
       
       // Get existing meal with defensive error handling
-      let meal;
+      let meal: IMeal | null;
       try {
         meal = await Meal.findById(mealId);
         
@@ -430,78 +405,18 @@ export const PUT = withAuth<{ foods: any[], count: number, totals: any, mealId: 
           // Validate amount with safe parsing
           let amount = 100; // Default 100g/ml
           if (food.amount !== undefined) {
-            if (typeof food.amount === 'string') {
-              amount = parseFloat(food.amount);
-            } else if (typeof food.amount === 'number') {
-              amount = food.amount;
-            }
-            
-            if (isNaN(amount) || amount <= 0) {
-              amount = 100; // Default if invalid
-            }
+            amount = parseNutrientValue(food.amount, 100);
           }
           
           // Validate nutritional values with safe parsing
-          let protein = 0;
-          let carbs = 0;
-          let fat = 0;
-          let calories = 0;
-          
-          // Parse protein
-          if (food.protein !== undefined) {
-            if (typeof food.protein === 'string') {
-              protein = parseFloat(food.protein);
-            } else if (typeof food.protein === 'number') {
-              protein = food.protein;
-            }
-            
-            if (isNaN(protein) || protein < 0) {
-              protein = 0;
-            }
-          }
-          
-          // Parse carbs
-          if (food.carbs !== undefined) {
-            if (typeof food.carbs === 'string') {
-              carbs = parseFloat(food.carbs);
-            } else if (typeof food.carbs === 'number') {
-              carbs = food.carbs;
-            }
-            
-            if (isNaN(carbs) || carbs < 0) {
-              carbs = 0;
-            }
-          }
-          
-          // Parse fat
-          if (food.fat !== undefined) {
-            if (typeof food.fat === 'string') {
-              fat = parseFloat(food.fat);
-            } else if (typeof food.fat === 'number') {
-              fat = food.fat;
-            }
-            
-            if (isNaN(fat) || fat < 0) {
-              fat = 0;
-            }
-          }
-          
-          // Parse calories
-          if (food.calories !== undefined) {
-            if (typeof food.calories === 'string') {
-              calories = parseFloat(food.calories);
-            } else if (typeof food.calories === 'number') {
-              calories = food.calories;
-            }
-            
-            if (isNaN(calories) || calories < 0) {
-              calories = 0;
-            }
-          }
+          const protein = parseNutrientValue(food.protein);
+          const carbs = parseNutrientValue(food.carbs);
+          const fat = parseNutrientValue(food.fat);
+          let calories = parseNutrientValue(food.calories);
           
           // Calculate calories if not provided
           if (calories === 0 && (protein > 0 || carbs > 0 || fat > 0)) {
-            calories = (protein * 4) + (carbs * 4) + (fat * 9);
+            calories = Math.round((protein * 4) + (carbs * 4) + (fat * 9));
           }
           
           // Prepare serving information
@@ -512,7 +427,7 @@ export const PUT = withAuth<{ foods: any[], count: number, totals: any, mealId: 
           
           if (food.serving && typeof food.serving === 'object') {
             if (food.serving.size !== undefined) {
-              const size = parseFloat(food.serving.size);
+              const size = parseFloat(String(food.serving.size));
               if (!isNaN(size) && size > 0) {
                 serving.size = size;
               }
@@ -548,7 +463,7 @@ export const PUT = withAuth<{ foods: any[], count: number, totals: any, mealId: 
           processedFoods.push(foodEntry);
         } catch (error) {
           console.error('Error processing food entry:', error);
-          errors.push('Error processing food: ' + (error.message || 'Unknown error'));
+          errors.push('Error processing food: ' + ((error as Error)?.message || 'Unknown error'));
         }
       }
       
@@ -575,6 +490,12 @@ export const PUT = withAuth<{ foods: any[], count: number, totals: any, mealId: 
         mealTotals.calories += food.calories || 0;
       }
       
+      // Round totals for consistency
+      mealTotals.protein = Math.round(mealTotals.protein * 10) / 10;
+      mealTotals.carbs = Math.round(mealTotals.carbs * 10) / 10;
+      mealTotals.fat = Math.round(mealTotals.fat * 10) / 10;
+      mealTotals.calories = Math.round(mealTotals.calories);
+      
       // Format response using converter
       const responseData = {
         mealId,
@@ -599,4 +520,22 @@ function roundToDecimal(value: number, places: number): number {
   if (isNaN(value)) return 0;
   const multiplier = Math.pow(10, places);
   return Math.round(value * multiplier) / multiplier;
+}
+
+/**
+ * Helper function to safely parse nutrient values
+ */
+function parseNutrientValue(value: any, defaultValue = 0): number {
+  if (value === undefined || value === null) return defaultValue;
+  
+  let parsedValue: number;
+  if (typeof value === 'string') {
+    parsedValue = parseFloat(value);
+  } else if (typeof value === 'number') {
+    parsedValue = value;
+  } else {
+    return defaultValue;
+  }
+  
+  return !isNaN(parsedValue) && parsedValue >= 0 ? parsedValue : defaultValue;
 }
