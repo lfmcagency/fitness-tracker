@@ -1,4 +1,3 @@
-// src/app/api/meals/[id]/foods/[index]/route.ts (with defensive programming)
 export const dynamic = 'force-dynamic';
 
 import { NextRequest } from "next/server";
@@ -8,41 +7,47 @@ import Meal from "@/models/Meal";
 import Food from "@/models/Food";
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import mongoose, { isValidObjectId } from "mongoose";
+import { MealFoodData } from "@/types/api/mealResponses";
+import { IMeal } from "@/types/models/meal";
+import { IFood } from "@/types/models/food";
 
 /**
  * GET /api/meals/[id]/foods/[index]
  * Get a specific food from a meal by index
  */
-export const GET = withAuth<ResponseType['data'], { id: string, index: string }>(
+export const GET = withAuth<MealFoodData, { id: string, index: string }>(
   async (req: NextRequest, userId: string, context) => {
     try {
+      await dbConnect();
       if (!context?.params?.id || !context?.params?.index) {
         return apiError('Missing required parameters', 400, 'ERR_MISSING_PARAM');
       }
       
       const { id, index } = context.params;
+      
+      const mealId = id; // Fix variable naming
     
-    if (!mealId || typeof mealId !== 'string') {
-      return apiError('Meal ID is required', 400, 'ERR_VALIDATION');
-    }
-    
-    // Check if ID is valid MongoDB ObjectId
-    if (!isValidObjectId(mealId)) {
-      return apiError('Invalid meal ID format', 400, 'ERR_VALIDATION');
-    }
-    
-    // Validate food index from params
-    const foodIndex = params?.index;
-    let parsedIndex: number;
-    
-    try {
-      parsedIndex = parseInt(foodIndex);
-      if (isNaN(parsedIndex) || parsedIndex < 0) {
-        return apiError('Food index must be a non-negative integer', 400, 'ERR_VALIDATION');
+      if (!mealId || typeof mealId !== 'string') {
+        return apiError('Meal ID is required', 400, 'ERR_VALIDATION');
       }
-    } catch (error) {
-      return apiError('Invalid food index', 400, 'ERR_VALIDATION');
-    }
+      
+      // Check if ID is valid MongoDB ObjectId
+      if (!isValidObjectId(mealId)) {
+        return apiError('Invalid meal ID format', 400, 'ERR_VALIDATION');
+      }
+      
+      // Validate food index from params
+      const foodIndex = index; // Fix variable reference
+      let parsedIndex: number;
+      
+      try {
+        parsedIndex = parseInt(foodIndex);
+        if (isNaN(parsedIndex) || parsedIndex < 0) {
+          return apiError('Food index must be a non-negative integer', 400, 'ERR_VALIDATION');
+        }
+      } catch (error) {
+        return apiError('Invalid food index', 400, 'ERR_VALIDATION');
+      }
     
     // Get meal with defensive error handling
     let meal;
@@ -101,33 +106,40 @@ export const GET = withAuth<ResponseType['data'], { id: string, index: string }>
     }
     
     return apiResponse(foodResponse, true, 'Food retrieved successfully');
-  } catch (error) {
-    return handleApiError(error, "Error retrieving food from meal");
-  }
-}, AuthLevel.DEV_OPTIONAL);
+    } catch (error) {
+      return handleApiError(error, "Error retrieving food from meal");
+    }
+  }, 
+  AuthLevel.DEV_OPTIONAL
+);
 
 /**
  * PUT /api/meals/[id]/foods/[index]
  * Update a specific food in a meal by index
  */
-export const PUT = withAuth(async (req: NextRequest, userId, { params }) => {
-  try {
-    await dbConnect();
-    
-    // Validate meal ID from params
-    const mealId = params?.id;
-    
-    if (!mealId || typeof mealId !== 'string') {
-      return apiError('Meal ID is required', 400, 'ERR_VALIDATION');
-    }
-    
-    // Check if ID is valid MongoDB ObjectId
-    if (!isValidObjectId(mealId)) {
-      return apiError('Invalid meal ID format', 400, 'ERR_VALIDATION');
-    }
-    
-    // Validate food index from params
-    const foodIndex = params?.index;
+export const PUT = withAuth<MealFoodData, { id: string, index: string }>(
+  async (req: NextRequest, userId, context) => {
+    try {
+      await dbConnect();
+      
+      if (!context?.params?.id || !context?.params?.index) {
+        return apiError('Missing required parameters', 400, 'ERR_MISSING_PARAM');
+      }
+      
+      // Validate meal ID from params
+      const mealId = context.params.id;
+      
+      if (!mealId || typeof mealId !== 'string') {
+        return apiError('Meal ID is required', 400, 'ERR_VALIDATION');
+      }
+      
+      // Check if ID is valid MongoDB ObjectId
+      if (!isValidObjectId(mealId)) {
+        return apiError('Invalid meal ID format', 400, 'ERR_VALIDATION');
+      }
+      
+      // Validate food index from params
+      const foodIndex = context.params.index;
     let parsedIndex: number;
     
     try {
@@ -415,33 +427,45 @@ export const PUT = withAuth(async (req: NextRequest, userId, { params }) => {
     }
     
     return apiResponse(foodResponse, true, 'Food updated successfully');
-  } catch (error) {
-    return handleApiError(error, "Error updating food in meal");
-  }
-}, AuthLevel.DEV_OPTIONAL);
+    } catch (error) {
+      return handleApiError(error, "Error updating food in meal");
+    }
+  }, 
+  AuthLevel.DEV_OPTIONAL
+);
 
 /**
  * DELETE /api/meals/[id]/foods/[index]
  * Remove a specific food from a meal by index
  */
-export const DELETE = withAuth(async (req: NextRequest, userId, { params }) => {
-  try {
-    await dbConnect();
+export const DELETE = withAuth<{
+  removed: MealFoodData;
+  mealId: string;
+  index: number;
+  remainingFoods: number;
+}, { id: string, index: string }>(
+  async (req: NextRequest, userId, context) => {
+    try {
+      await dbConnect();
     
-    // Validate meal ID from params
-    const mealId = params?.id;
-    
-    if (!mealId || typeof mealId !== 'string') {
-      return apiError('Meal ID is required', 400, 'ERR_VALIDATION');
-    }
-    
-    // Check if ID is valid MongoDB ObjectId
-    if (!isValidObjectId(mealId)) {
-      return apiError('Invalid meal ID format', 400, 'ERR_VALIDATION');
-    }
-    
-    // Validate food index from params
-    const foodIndex = params?.index;
+      if (!context?.params?.id || !context?.params?.index) {
+        return apiError('Missing required parameters', 400, 'ERR_MISSING_PARAM');
+      }
+      
+      // Validate meal ID from params
+      const mealId = context.params.id;
+      
+      if (!mealId || typeof mealId !== 'string') {
+        return apiError('Meal ID is required', 400, 'ERR_VALIDATION');
+      }
+      
+      // Check if ID is valid MongoDB ObjectId
+      if (!isValidObjectId(mealId)) {
+        return apiError('Invalid meal ID format', 400, 'ERR_VALIDATION');
+      }
+      
+      // Validate food index from params
+      const foodIndex = context.params.index;
     let parsedIndex: number;
     
     try {
@@ -514,7 +538,9 @@ export const DELETE = withAuth(async (req: NextRequest, userId, { params }) => {
   } catch (error) {
     return handleApiError(error, "Error removing food from meal");
   }
-}, AuthLevel.DEV_OPTIONAL);
+}, 
+AuthLevel.DEV_OPTIONAL
+);
 
 /**
  * Helper function to round to decimal places

@@ -6,7 +6,7 @@ import { dbConnect } from '@/lib/db';
 import Food from "@/models/Food";
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { isValidObjectId } from "mongoose";
-import { FoodResponse } from "@/types/api/foodResponses";
+import { FoodData } from "@/types/api/foodResponses"; // Import FoodData, not FoodResponse
 import { UpdateFoodRequest } from "@/types/api/foodRequests";
 import { convertFoodToResponse } from "@/types/converters/foodConverters";
 import { IFood } from "@/types/models/food";
@@ -15,7 +15,7 @@ import { IFood } from "@/types/models/food";
  * GET /api/foods/[id]
  * Get a specific food by ID
  */
-export const GET = withAuth<FoodResponse['data'], { id: string }>(
+export const GET = withAuth<FoodData, { id: string }>(
   async (req: NextRequest, userId: string, context) => {
     try {
       await dbConnect();
@@ -68,17 +68,17 @@ export const GET = withAuth<FoodResponse['data'], { id: string }>(
  * PUT /api/foods/[id]
  * Update a specific food by ID
  */
-export const PUT = withAuth<FoodResponse['data'], { id: string }>(
-  async (req: NextRequest, userId, { params }) => {
+export const PUT = withAuth<FoodData, { id: string }>(
+  async (req: NextRequest, userId, context) => {
     try {
       await dbConnect();
       
       // Validate food ID from params
-      const foodId = params?.id;
-      
-      if (!foodId || typeof foodId !== 'string') {
-        return apiError('Food ID is required', 400, 'ERR_VALIDATION');
+      if (!context?.params?.id) {
+        return apiError('Missing ID parameter', 400, 'ERR_MISSING_PARAM');
       }
+
+      const foodId = context.params.id;
       
       // Check if ID is valid MongoDB ObjectId
       if (!isValidObjectId(foodId)) {
@@ -301,16 +301,16 @@ export const PUT = withAuth<FoodResponse['data'], { id: string }>(
  * Delete a specific food by ID
  */
 export const DELETE = withAuth<{ id: string }, { id: string }>(
-  async (req: NextRequest, userId, { params }) => {
+  async (req: NextRequest, userId, context) => {
     try {
       await dbConnect();
       
       // Validate food ID from params
-      const foodId = params?.id;
-      
-      if (!foodId || typeof foodId !== 'string') {
-        return apiError('Food ID is required', 400, 'ERR_VALIDATION');
+      if (!context?.params?.id) {
+        return apiError('Missing ID parameter', 400, 'ERR_MISSING_PARAM');
       }
+      
+      const foodId = context.params.id;
       
       // Check if ID is valid MongoDB ObjectId
       if (!isValidObjectId(foodId)) {

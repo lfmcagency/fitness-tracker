@@ -12,6 +12,8 @@ export * from './api/exerciseResponses';
 export * from './api/exerciseRequests';
 export type * from './api/userResponses';
 export type * from './models/progress';
+export type * from './models/food';
+export type * from './models/meal';
 export  * from './converters/userConverters';
 export * from './api/foodResponses';
 export * from './api/foodRequests';

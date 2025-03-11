@@ -1,30 +1,10 @@
-// src/models/Food.ts
-
 import mongoose, { Schema, Document, Model } from 'mongoose';
-
+import { IFood, IFoodModel } from '@/types/models/food';
 // Non-negative number validator
 const nonNegativeValidator = {
   validator: (value: number) => value >= 0,
   message: (props: any) => `${props.path} must be a non-negative number`
 };
-
-export interface IFood extends Document {
-  name: string;
-  description?: string;
-  servingSize: number;
-  servingUnit: string;
-  protein: number;
-  carbs: number;
-  fat: number;
-  calories: number;
-  category?: string;
-  isSystemFood: boolean;
-  userId?: mongoose.Types.ObjectId;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface IFoodModel extends Model<IFood> {}
 
 const FoodSchema = new Schema<IFood, IFoodModel>({
   name: { 

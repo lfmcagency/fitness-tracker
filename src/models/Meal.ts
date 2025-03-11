@@ -1,49 +1,11 @@
-// src/models/Meal.ts
-
 import mongoose, { Schema, Document, Model } from 'mongoose';
+import { IMeal, IMealModel, IMealFood, IMealTotals, IMealMethods } from '@/types/models/meal';
 
 // Non-negative number validator
 const nonNegativeValidator = {
   validator: (value: number) => value >= 0,
   message: (props: any) => `${props.path} must be a non-negative number`
 };
-
-interface Food {
-  foodId?: mongoose.Types.ObjectId;
-  name: string;
-  amount: number;
-  unit: string;
-  protein: number;
-  carbs: number;
-  fat: number;
-  calories: number;
-}
-
-interface Totals {
-  protein: number;
-  carbs: number;
-  fat: number;
-  calories: number;
-}
-
-export interface IMealMethods {
-  recalculateTotals(): void;
-}
-
-export interface IMealModel extends Model<IMeal, {}, IMealMethods> {}
-
-export interface IMeal extends Document {
-  userId: mongoose.Types.ObjectId;
-  date: Date;
-  name: string;
-  time: string;
-  foods: Food[];
-  totals: Totals;
-  notes?: string;
-  createdAt: Date;
-  updatedAt: Date;
-  recalculateTotals: () => void;
-}
 
 const FoodSchema = new Schema({
   foodId: { type: Schema.Types.ObjectId, ref: 'Food' },
@@ -182,7 +144,7 @@ MealSchema.methods.recalculateTotals = function() {
 
   // Sum up all food items
   if (this.foods && this.foods.length > 0) {
-    this.foods.forEach(food => {
+    this.foods.forEach((food: { protein: any; carbs: any; fat: any; calories: any; }) => {
       totals.protein += Number(food.protein) || 0;
       totals.carbs += Number(food.carbs) || 0;
       totals.fat += Number(food.fat) || 0;
