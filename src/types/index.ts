@@ -1,22 +1,36 @@
-// Re-export common types
 export * from './api/common';
-// Export from pagination with explicit naming
+export * from './api/databaseResponses';
+export * from './dbUtils';
+export * from './api/healthResponses';
+export * from './middleware';
 export type { PaginationParams, PaginationInfo } from './api/pagination';
 export type { PaginatedResponse } from './api/pagination';
 export * from './validation';
-
-// Export tasks
 export type * from './api/taskResponses';
 export type * from './api/taskRequests';
-
-// Export exercise types
 export * from './api/exerciseResponses';
 export * from './api/exerciseRequests';
-
-// Re-export Authentication & User types with explicit naming to avoid conflicts
 export type * from './api/userResponses';
 export type * from './models/progress';
 export  * from './converters/userConverters';
+
+/**
+ * Format bytes to human-readable format
+ * @param bytes Number of bytes
+ * @param decimals Decimal places for formatting
+ * @returns Human-readable string
+ */
+export function formatBytes(bytes: number, decimals = 2): string {
+  if (!bytes || isNaN(bytes) || bytes === 0) return '0 Bytes';
+  
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+  
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+}
 
 export type {
   UserProfile as AuthUserProfile,

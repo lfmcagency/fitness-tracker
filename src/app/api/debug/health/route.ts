@@ -1,66 +1,26 @@
+// src/app/api/debug/health/route.ts
 export const dynamic = 'force-dynamic';
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { apiResponse, handleApiError } from "@/lib/api-utils";
 import { dbConnect } from '@/lib/db';
 import mongoose from "mongoose";
 import * as os from 'os';
-import { ApiResponse } from "@/types/api/common";
-
-// Component Health Status
-type HealthStatus = 'ok' | 'warning' | 'error' | 'unknown';
-
-// Base Component Health
-interface ComponentHealth {
-  status: HealthStatus;
-  message: string;
-}
-
-// Database Component Health
-interface DatabaseHealth extends ComponentHealth {
-  details?: {
-    host?: string;
-    readyState?: number;
-    name?: string;
-    collections?: number;  // Added to support listing collections
-    error?: string;
-  };
-}
-
-// Memory Component Health
-interface MemoryHealth extends ComponentHealth {
-  total: number; // MB
-  free: number;  // MB
-  usage: number; // Percentage
-}
-
-// Environment Component Health
-interface EnvironmentHealth extends ComponentHealth {
-  nodeVersion: string;
-  platform: string;
-  arch: string;
-  env: string | undefined;
-}
-
-// System Health Response Structure
-interface SystemHealth {
-  status: HealthStatus;
-  uptime: number;
-  timestamp: string;
-  responseTime?: number;
-  components: {
-    server: ComponentHealth;
-    database: DatabaseHealth;
-    memory: MemoryHealth;
-    environment?: EnvironmentHealth;
-  };
-}
+import { 
+  SystemHealth, 
+  HealthStatus, 
+  ComponentHealth, 
+  DatabaseHealth,
+  MemoryHealth,
+  EnvironmentHealth,
+  HealthCheckResponse
+} from "@/types/api/healthResponses";
 
 /**
  * GET /api/debug/health
  * System health check endpoint
  */
-export async function GET(req: NextRequest): Promise<NextResponse<ApiResponse<SystemHealth>>> {
+export async function GET(req: NextRequest) {
   const startTime = process.hrtime();
   
   try {
@@ -104,11 +64,11 @@ export async function GET(req: NextRequest): Promise<NextResponse<ApiResponse<Sy
           health.components.database.status = 'ok';
           health.components.database.message = 'MongoDB is connected and collections are accessible';
           if (includeDetails) {
-            health.components.database.details = {
+            (health.components.database as DatabaseHealth).details = {
               host: mongoose.connection.host || 'unknown',
               readyState: mongoStatus,
               name: mongoose.connection.name || 'unknown',
-              collections: collectionList.length,  // Include number of collections
+              collections: collectionList.length,
             };
           }
         } catch (queryError) {
@@ -116,7 +76,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<ApiResponse<Sy
           health.components.database.status = 'error';
           health.components.database.message = 'MongoDB is connected but collections are not accessible';
           if (includeDetails) {
-            health.components.database.details = {
+            (health.components.database as DatabaseHealth).details = {
               host: mongoose.connection.host || 'unknown',
               readyState: mongoStatus,
               name: mongoose.connection.name || 'unknown',
@@ -129,7 +89,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<ApiResponse<Sy
         health.components.database.status = 'error';
         health.components.database.message = `MongoDB is ${statusText}`;
         if (includeDetails) {
-          health.components.database.details = {
+          (health.components.database as DatabaseHealth).details = {
             readyState: mongoStatus,
           };
         }
@@ -142,7 +102,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<ApiResponse<Sy
         message: 'Error connecting to database'
       };
       if (includeDetails) {
-        health.components.database.details = {
+        (health.components.database as DatabaseHealth).details = {
           error: dbError instanceof Error ? dbError.message : 'Unknown error'
         };
       }
@@ -176,7 +136,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<ApiResponse<Sy
     const httpStatus = health.status === 'ok' ? 200 :
                        health.status === 'warning' ? 200 : 503;
     
-    return apiResponse(health, true, `System health is ${health.status}`, httpStatus);
+    return apiResponse<SystemHealth>(health, true, `System health is ${health.status}`, httpStatus);
   } catch (error) {
     // Calculate error response time
     const hrtime = process.hrtime(startTime);

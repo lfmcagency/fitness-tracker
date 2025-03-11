@@ -5,6 +5,7 @@ import NextAuth from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { apiError } from '@/lib/api-utils';
+import { ApiResponse } from '@/types/api/common';
 
 /**
  * NextAuth API route handler with error handling

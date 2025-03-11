@@ -1,75 +1,25 @@
 // src/app/api/admin/init-db/database/route.ts
 export const dynamic = 'force-dynamic';
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { withRoleProtection } from "@/lib/auth-utils";
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
-import { dbConnect, initDatabase, InitDatabaseResult } from '@/lib/db';
+import { dbConnect, initDatabase } from '@/lib/db';
 import mongoose from "mongoose";
-import { ApiResponse } from "@/types/api/common";
-
-// Define option types
-interface InitDatabaseOptions {
-  force: boolean;
-  seedData: boolean;
-  collections: string[];
-  skipConfirmation?: boolean;
-}
-
-// Define operation tracking interface
-interface DatabaseOperations {
-  collections: {
-    checked: number;
-    initialized: number;
-    skipped: number;
-    errors: string[];
-  };
-  seedData: {
-    totalRecords: number;
-    inserted: number;
-    skipped: number;
-    errors: string[];
-  };
-  newCollections: string[];
-}
-
-// Define API response data structure
-interface InitDatabaseResponseData {
-  success: boolean;
-  duration: string;
-  operations: DatabaseOperations;
-  collections: any[]; // Using any here as the collection summary might have varied structure
-}
-
-// Database status response
-interface DatabaseStatusResponseData {
-  connected: boolean;
-  database: string | undefined;
-  collections: Record<string, CollectionStats>;
-  modelStats: {
-    registered: number;
-    models: string[];
-  };
-  collectionCount: number;
-  collectionsError?: string;
-}
-
-// Collection statistics
-interface CollectionStats {
-  count?: number;
-  size?: number;
-  avgObjectSize?: number;
-  error?: string;
-}
+import {
+  DatabaseOperations,
+  DatabaseStatusResponseData,
+  InitDatabaseOptions,
+  InitDatabaseResult,
+} from '@/types/api/databaseResponses';
 
 /**
  * POST /api/admin/init-db/database
  * Initialize database with seed data (admin only)
  */
-export const POST = async (req: NextRequest): Promise<NextResponse<ApiResponse<InitDatabaseResponseData>>> => {
-  return withRoleProtection(['admin'])(req, async () => {
-    try {
-      await dbConnect();
+export const POST = withRoleProtection(['admin'])(async (req: NextRequest) => {
+  try {
+    await dbConnect();
 
       // Parse request body with defensive error handling
       let body: Record<string, any> = {};
@@ -197,30 +147,25 @@ export const POST = async (req: NextRequest): Promise<NextResponse<ApiResponse<I
       // Calculate duration
       const duration = Date.now() - initStartTime;
 
-      return apiResponse(
-        {
-          success: true,
-          duration: `${(duration / 1000).toFixed(2)}s`,
-          operations,
-          collections: initResults?.collectionSummary || [],
-        },
-        true,
-        'Database initialization completed'
-      );
+      return apiResponse({
+        success: true,
+        duration: `${(duration / 1000).toFixed(2)}s`,
+        operations,
+        collections: initResults?.collectionSummary || [],
+      }, true, 'Database initialization completed');
     } catch (error) {
       return handleApiError(error, 'Error initializing database');
     }
   });
-};
 
 /**
  * GET /api/admin/init-db/database
  * Get database status and initialization info (admin only)
  */
-export const GET = async (req: NextRequest): Promise<NextResponse<ApiResponse<DatabaseStatusResponseData>>> => {
-  return withRoleProtection(['admin'])(req, async () => {
-    try {
-      await dbConnect();
+export const GET = withRoleProtection(['admin'])(async (req: NextRequest) => {
+  // handler implementation
+  try {
+    await dbConnect();
 
       // Get initialization status
       const status: DatabaseStatusResponseData = {
@@ -268,8 +213,7 @@ export const GET = async (req: NextRequest): Promise<NextResponse<ApiResponse<Da
       }
 
       return apiResponse(status, true, 'Database status retrieved');
-    } catch (error) {
-      return handleApiError(error, 'Error getting database status');
-    }
-  });
-};
+  } catch (error) {
+    return handleApiError(error, 'Error getting database status');
+  }
+});

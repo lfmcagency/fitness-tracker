@@ -1,67 +1,47 @@
+// src/app/api/health/route.ts
 export const dynamic = 'force-dynamic';
 
-import { NextRequest } from "next/server";
-import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
+import { NextRequest, NextResponse } from "next/server";
+import { apiResponse, handleApiError } from '@/lib/api-utils';
 import { dbConnect } from '@/lib/db';
 import mongoose from "mongoose";
 import os from 'os';
-
-interface HealthStatus {
-  status: string;
-  uptime: number;
-  timestamp: string;
-  responseTime?: number;
-  components: {
-    server: {
-      status: string;
-      message: string;
-    };
-    database: {
-      status: string;
-      message: string;
-      details?: Record<string, any>;
-    };
-    memory: {
-      status: string;
-      total: number;
-      free: number;
-      usage: number;
-    };
-    environment?: {
-      status: string;
-      nodeVersion: string;
-      platform: string;
-      arch: string;
-      env: string;
-    };
-  };
-}
+import { 
+  SystemHealth, 
+  HealthStatus,
+  ComponentHealth,
+  DatabaseHealth,
+  MemoryHealth,
+  EnvironmentHealth,
+  HealthCheckResponse
+} from "@/types/api/healthResponses";
 
 /**
- * GET /api/debug/health
+ * GET /api/health
  * System health check endpoint
  */
-export async function GET(req: NextRequest) {
+export async function GET(req: NextRequest): Promise<NextResponse<HealthCheckResponse>> {
   // Track start time for response time calculation
   const startTime = process.hrtime();
   
   try {
     // Component health states
-    const health: HealthStatus = {
+    const health: SystemHealth = {
       status: 'ok',
       uptime: Math.floor(process.uptime()),
       timestamp: new Date().toISOString(),
       components: {
-        server: {
-          status: 'ok',
-          message: 'Next.js server is running'
+        server: { 
+          status: 'ok', 
+          message: 'Next.js server is running' 
         },
-        database: {
-          status: 'unknown',
-          message: 'Database check not attempted yet'
+        database: { 
+          status: 'unknown', 
+          message: 'Database check not attempted yet' 
         },
         memory: {
           status: 'ok',
+          message: 'Memory check completed',
           total: Math.round(os.totalmem() / (1024 * 1024)),
           free: Math.round(os.freemem() / (1024 * 1024)),
           usage: Math.round((1 - os.freemem() / os.totalmem()) * 100)
@@ -69,7 +49,7 @@ export async function GET(req: NextRequest) {
       }
     };
     
-    // Check authentication level for detailed info
+    // Check for detailed info request
     const url = new URL(req.url);
     const includeDetails = url.searchParams.get('details') === 'true';
     
@@ -98,7 +78,7 @@ export async function GET(req: NextRequest) {
       };
       
       if (includeDetails) {
-        health.components.database.details = {
+        (health.components.database as DatabaseHealth).details = {
           host: mongoose.connection.host || 'unknown',
           readyState: mongoStatus,
           name: mongoose.connection.name || 'unknown'
@@ -109,7 +89,7 @@ export async function GET(req: NextRequest) {
       if (mongoStatus !== 1) {
         health.status = 'error';
       }
-    } catch (dbError: any) {
+    } catch (dbError) {
       console.error('Health check database error:', dbError);
       
       health.components.database = {
@@ -118,7 +98,7 @@ export async function GET(req: NextRequest) {
       };
       
       if (includeDetails) {
-        health.components.database.details = {
+        (health.components.database as DatabaseHealth).details = {
           error: dbError instanceof Error ? dbError.message : 'Unknown error'
         };
       }
@@ -136,6 +116,7 @@ export async function GET(req: NextRequest) {
     if (includeDetails) {
       health.components.environment = {
         status: 'ok',
+        message: 'Environment information',
         nodeVersion: process.version,
         platform: process.platform,
         arch: process.arch,
@@ -152,17 +133,13 @@ export async function GET(req: NextRequest) {
     const httpStatus = health.status === 'ok' ? 200 :
                        health.status === 'warning' ? 200 : 503;
     
-    return apiResponse(health, true, `System health is ${health.status}`, httpStatus);
+    return apiResponse<SystemHealth>(health, true, `System health is ${health.status}`, httpStatus);
   } catch (error) {
     // Calculate error response time
     const hrtime = process.hrtime(startTime);
     const responseTimeMs = Math.round((hrtime[0] * 1000) + (hrtime[1] / 1000000));
     
-    // Handle unexpected errors
-    return handleApiError(
-      error, 
-      "Error performing health check", 
-      { responseTime: responseTimeMs }
-    );
+    // Handle unexpected errors - fix the call to handleApiError by removing the extra argument
+    return handleApiError(error, "Error performing health check");
   }
 }
