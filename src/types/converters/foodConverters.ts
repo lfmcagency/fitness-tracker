@@ -1,4 +1,4 @@
-import { IFood } from '../models/food';
+import { IFood } from '../../models/food';
 import { FoodData } from '../api/foodResponses';
 
 export function convertFoodToResponse(food: IFood): FoodData {

@@ -9,6 +9,7 @@ import { isValidObjectId } from "mongoose";
 import { FoodResponse } from "@/types/api/foodResponses";
 import { UpdateFoodRequest } from "@/types/api/foodRequests";
 import { convertFoodToResponse } from "@/types/converters/foodConverters";
+import { IFood } from "@/types/models/food";
 
 /**
  * GET /api/foods/[id]
@@ -37,7 +38,7 @@ export const GET = withAuth<FoodResponse['data'], { id: string }>(
       // Get food with defensive error handling
       let food;
       try {
-        food = await Food.findById(foodId);
+        food = await Food.findById(foodId) as IFood | null;
         
         if (!food) {
           return apiError('Food not found', 404, 'ERR_NOT_FOUND');
@@ -100,7 +101,7 @@ export const PUT = withAuth<FoodResponse['data'], { id: string }>(
       // Get existing food with defensive error handling
       let food;
       try {
-        food = await Food.findById(foodId);
+        food = await Food.findById(foodId) as IFood | null;
         
         if (!food) {
           return apiError('Food not found', 404, 'ERR_NOT_FOUND');
@@ -275,7 +276,7 @@ export const PUT = withAuth<FoodResponse['data'], { id: string }>(
           foodId,
           { $set: updates },
           { new: true, runValidators: true }
-        );
+        ) as IFood | null;
         
         if (!updatedFood) {
           return apiError('Food not found after update', 404, 'ERR_NOT_FOUND');
@@ -319,7 +320,7 @@ export const DELETE = withAuth<{ id: string }, { id: string }>(
       // Get food with defensive error handling
       let food;
       try {
-        food = await Food.findById(foodId);
+        food = await Food.findById(foodId) as IFood | null;
         
         if (!food) {
           return apiError('Food not found', 404, 'ERR_NOT_FOUND');

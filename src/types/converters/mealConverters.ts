@@ -7,7 +7,7 @@ export function convertMealToResponse(meal: IMeal): MealData {
     name: meal.name,
     time: meal.time,
     date: meal.date.toISOString(),
-    foods: meal.foods.map((food, index) => convertMealFoodToResponse(food, index)),
+    foods: meal.foods.map((food: any, index: number) => convertMealFoodToResponse(food, index)),
     totals: meal.totals || {
       protein: 0,
       carbs: 0,

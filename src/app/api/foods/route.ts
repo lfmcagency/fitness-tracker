@@ -8,7 +8,9 @@ import Food from "@/models/Food";
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { isValidObjectId } from "mongoose";
 import { FoodListResponse, FoodResponse } from "@/types/api/foodResponses";
+import { CreateFoodRequest } from "@/types/api/foodRequests";
 import { convertFoodToResponse } from "@/types/converters/foodConverters";
+import { IFood } from "@/types/models/food";
 
 // Default pagination values
 const DEFAULT_PAGE = 1;
@@ -77,7 +79,7 @@ export const GET = withAuth<FoodListResponse['data']>(
       }
       
       // Nutritional value filters with defensive parsing
-      const nutritionFilters = {};
+      const nutritionFilters: Record<string, any> = {};
       const nutritionParams = ['minProtein', 'maxProtein', 'minCarbs', 'maxCarbs', 'minFat', 'maxFat', 'minCalories', 'maxCalories'];
       
       for (const param of nutritionParams) {
@@ -101,7 +103,7 @@ export const GET = withAuth<FoodListResponse['data']>(
       }
       
       // Build query
-      const query: any = { ...userQuery };
+      const query: Record<string, any> = { ...userQuery };
       
       // Add search if provided
       if (search && search.trim() !== '') {
@@ -127,12 +129,12 @@ export const GET = withAuth<FoodListResponse['data']>(
       }
       
       // Get foods with defensive error handling
-      let foods = [];
+      let foods: IFood[] = [];
       try {
         foods = await Food.find(query)
           .sort({ name: 1 })
           .skip(skip)
-          .limit(limit);
+          .limit(limit) as IFood[];
       } catch (error) {
         return handleApiError(error, 'Error querying foods database');
       }
@@ -169,7 +171,7 @@ export const POST = withAuth<FoodResponse['data']>(
       await dbConnect();
       
       // Parse request body with defensive error handling
-      let body;
+      let body: CreateFoodRequest;
       try {
         body = await req.json();
       } catch (error) {
@@ -258,34 +260,31 @@ export const POST = withAuth<FoodResponse['data']>(
         unit: 'g'   // Default
       };
       
-      if (body.serving && typeof body.serving === 'object') {
-        // Validate serving size
-        if (body.serving.size !== undefined) {
-          if (typeof body.serving.size === 'string') {
-            serving.size = parseFloat(body.serving.size);
-          } else if (typeof body.serving.size === 'number') {
-            serving.size = body.serving.size;
-          }
-          
-          if (isNaN(serving.size) || serving.size <= 0) {
-            return apiError('Serving size must be a positive number', 400, 'ERR_VALIDATION');
-          }
+      if (body.servingSize !== undefined) {
+        if (typeof body.servingSize === 'string') {
+          serving.size = parseFloat(body.servingSize);
+        } else if (typeof body.servingSize === 'number') {
+          serving.size = body.servingSize;
         }
         
-        // Validate serving unit
-        if (body.serving.unit !== undefined) {
-          if (typeof body.serving.unit === 'string' && body.serving.unit.trim() !== '') {
-            const validUnits = ['g', 'ml', 'oz', 'cup', 'tbsp', 'tsp', 'piece'];
-            const unit = body.serving.unit.toLowerCase().trim();
-            
-            if (validUnits.includes(unit)) {
-              serving.unit = unit;
-            } else {
-              return apiError(`Invalid serving unit. Valid units: ${validUnits.join(', ')}`, 400, 'ERR_VALIDATION');
-            }
+        if (isNaN(serving.size) || serving.size <= 0) {
+          return apiError('Serving size must be a positive number', 400, 'ERR_VALIDATION');
+        }
+      }
+      
+      // Validate serving unit
+      if (body.servingUnit !== undefined) {
+        if (typeof body.servingUnit === 'string' && body.servingUnit.trim() !== '') {
+          const validUnits = ['g', 'ml', 'oz', 'cup', 'tbsp', 'tsp', 'piece'];
+          const unit = body.servingUnit.toLowerCase().trim();
+          
+          if (validUnits.includes(unit)) {
+            serving.unit = unit;
           } else {
-            return apiError('Serving unit must be a non-empty string', 400, 'ERR_VALIDATION');
+            return apiError(`Invalid serving unit. Valid units: ${validUnits.join(', ')}`, 400, 'ERR_VALIDATION');
           }
+        } else {
+          return apiError('Serving unit must be a non-empty string', 400, 'ERR_VALIDATION');
         }
       }
       
@@ -318,7 +317,7 @@ export const POST = withAuth<FoodResponse['data']>(
       // Create food with defensive error handling
       let newFood;
       try {
-        newFood = await Food.create(foodData);
+        newFood = await Food.create(foodData) as IFood;
       } catch (error) {
         return handleApiError(error, 'Error creating food in database');
       }
