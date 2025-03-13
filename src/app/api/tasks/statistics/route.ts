@@ -1,13 +1,14 @@
+// src/app/api/tasks/statistics/route.ts
 export const dynamic = 'force-dynamic';
 
 import { NextRequest } from 'next/server';
 import { dbConnect } from '@/lib/db';
-import Task, { ITask } from '@/models/Task';
+import Task from '@/models/Task';
+import { ITask } from '@/types/models/tasks';
 import { withAuth, AuthLevel } from '@/lib/auth-utils';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { TaskWithHistory } from '@/types';
-import { TaskStatisticsParams } from '@/types/api/taskRequests';
-import { convertTaskToEnhancedTask } from '@/lib/task-utils';
+import { convertToTaskWithHistory } from '@/types/converters/taskConverters';
 import {
   TaskStatistics,
   getPerformanceTrend,
@@ -19,59 +20,6 @@ import {
   getStreakSummary,
   getCategoryDistribution
 } from '@/lib/task-statistics';
-
-/**
- * Convert ITask to TaskWithHistory with defensive error handling
- */
-function convertToTaskWithHistory(task: ITask): TaskWithHistory {
-  if (!task) {
-    return {
-      id: '',
-      name: 'Unknown task',
-      completed: false,
-      completionHistory: [],
-      recurrencePattern: 'daily', // Default value for required field
-      currentStreak: 0,
-      bestStreak: 0,
-      category: 'general',
-      priority: 'medium',
-      scheduledTime: '00:00' // Default value for required field
-    };
-  }
-  
-  try {
-    const enhancedTask = convertTaskToEnhancedTask(task);
-    
-    return {
-      ...enhancedTask,
-      completionHistory: Array.isArray(task.completionHistory)
-        ? task.completionHistory.map(date => 
-            date instanceof Date ? date.toISOString() : String(date)
-          )
-        : []
-    };
-  } catch (error) {
-    console.error(`Error converting task ${task._id} to TaskWithHistory:`, error);
-    
-    // Provide fallback with basic properties
-    return {
-      id: task._id?.toString() || '',
-      name: task.name || 'Unknown task',
-      completed: !!task.completed,
-      recurrencePattern: task.recurrencePattern || 'daily',
-      currentStreak: task.currentStreak || 0,
-      bestStreak: task.bestStreak || 0, 
-      category: task.category || 'general',
-      priority: task.priority || 'medium',
-      scheduledTime: task.scheduledTime || '00:00',
-      completionHistory: Array.isArray(task.completionHistory)
-        ? task.completionHistory.map(date => 
-            date instanceof Date ? date.toISOString() : String(date)
-          )
-        : []
-    };
-  }
-}
 
 /**
  * GET /api/tasks/statistics

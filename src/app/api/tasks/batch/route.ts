@@ -2,7 +2,8 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest } from 'next/server';
 import { dbConnect } from '@/lib/db';
-import Task, { ITask } from '@/models/Task';
+import Task from '@/models/Task';
+import { ITask } from '@/types/models/tasks';
 import { withAuth, AuthLevel } from '@/lib/auth-utils';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { EnhancedTask } from '@/types';
