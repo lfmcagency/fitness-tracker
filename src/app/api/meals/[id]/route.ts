@@ -7,7 +7,7 @@ import { dbConnect } from '@/lib/db';
 import Meal from "@/models/Meal";
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { isValidObjectId } from "mongoose";
-import { MealData, MealResponse } from "@/types/api/mealResponses";
+import { MealData } from "@/types/api/mealResponses";
 import { UpdateMealRequest } from "@/types/api/mealRequests";
 import { convertMealToResponse } from "@/types/converters/mealConverters";
 import { IMeal } from "@/types/models/meal";
@@ -16,30 +16,25 @@ import { IMeal } from "@/types/models/meal";
  * GET /api/meals/[id]
  * Get a specific meal by ID
  */
-export const GET = withAuth<MealData, { mealId: string }>(
+export const GET = withAuth<MealData, { id: string }>(
   async (req: NextRequest, userId: string, context) => {
     try {
       await dbConnect();
       
-      if (!context?.params?.mealId) {
+      const { id } = context?.params || {};
+      
+      if (!id) {
         return apiError('Missing ID parameter', 400, 'ERR_MISSING_PARAM');
       }
       
-      const mealId = context.params.mealId;
-      
-      if (!mealId || typeof mealId !== 'string') {
-        return apiError('Meal ID is required', 400, 'ERR_VALIDATION');
-      }
-      
-      // Check if ID is valid MongoDB ObjectId
-      if (!isValidObjectId(mealId)) {
+      if (!isValidObjectId(id)) {
         return apiError('Invalid meal ID format', 400, 'ERR_VALIDATION');
       }
       
       // Get meal with defensive error handling
       let meal: IMeal | null;
       try {
-        meal = await Meal.findById(mealId) as IMeal | null;
+        meal = await Meal.findById(id) as IMeal | null;
         
         if (!meal) {
           return apiError('Meal not found', 404, 'ERR_NOT_FOUND');
@@ -68,20 +63,20 @@ export const GET = withAuth<MealData, { mealId: string }>(
  * PUT /api/meals/[id]
  * Update a specific meal by ID
  */
-export const PUT = withAuth<MealResponse['data'], { id: string }>(
-  async (req: NextRequest, userId, { params }) => {
+export const PUT = withAuth<MealData, { id: string }>(
+  async (req: NextRequest, userId: string, context) => {
     try {
       await dbConnect();
       
       // Validate meal ID from params
-      const mealId = params?.id;
+      const { id } = context?.params || {};
       
-      if (!mealId || typeof mealId !== 'string') {
+      if (!id) {
         return apiError('Meal ID is required', 400, 'ERR_VALIDATION');
       }
       
       // Check if ID is valid MongoDB ObjectId
-      if (!isValidObjectId(mealId)) {
+      if (!isValidObjectId(id)) {
         return apiError('Invalid meal ID format', 400, 'ERR_VALIDATION');
       }
       
@@ -101,7 +96,7 @@ export const PUT = withAuth<MealResponse['data'], { id: string }>(
       // Get existing meal with defensive error handling
       let meal: IMeal | null;
       try {
-        meal = await Meal.findById(mealId) as IMeal | null;
+        meal = await Meal.findById(id) as IMeal | null;
         
         if (!meal) {
           return apiError('Meal not found', 404, 'ERR_NOT_FOUND');
@@ -178,7 +173,7 @@ export const PUT = withAuth<MealResponse['data'], { id: string }>(
       let updatedMeal: IMeal | null;
       try {
         updatedMeal = await Meal.findByIdAndUpdate(
-          mealId,
+          id,
           { $set: updates },
           { new: true, runValidators: true }
         ) as IMeal | null;
@@ -206,26 +201,26 @@ export const PUT = withAuth<MealResponse['data'], { id: string }>(
  * Delete a specific meal by ID
  */
 export const DELETE = withAuth<{ id: string }, { id: string }>(
-  async (req: NextRequest, userId, { params }) => {
+  async (req: NextRequest, userId: string, context) => {
     try {
       await dbConnect();
       
       // Validate meal ID from params
-      const mealId = params?.id;
+      const { id } = context?.params || {};
       
-      if (!mealId || typeof mealId !== 'string') {
+      if (!id) {
         return apiError('Meal ID is required', 400, 'ERR_VALIDATION');
       }
       
       // Check if ID is valid MongoDB ObjectId
-      if (!isValidObjectId(mealId)) {
+      if (!isValidObjectId(id)) {
         return apiError('Invalid meal ID format', 400, 'ERR_VALIDATION');
       }
       
       // Get meal with defensive error handling
       let meal: IMeal | null;
       try {
-        meal = await Meal.findById(mealId) as IMeal | null;
+        meal = await Meal.findById(id) as IMeal | null;
         
         if (!meal) {
           return apiError('Meal not found', 404, 'ERR_NOT_FOUND');
@@ -241,12 +236,12 @@ export const DELETE = withAuth<{ id: string }, { id: string }>(
       
       // Delete meal with defensive error handling
       try {
-        await Meal.deleteOne({ _id: mealId });
+        await Meal.deleteOne({ _id: id });
       } catch (error) {
         return handleApiError(error, 'Error deleting meal from database');
       }
       
-      return apiResponse({ id: mealId }, true, 'Meal deleted successfully');
+      return apiResponse({ id }, true, 'Meal deleted successfully');
     } catch (error) {
       return handleApiError(error, "Error deleting meal");
     }

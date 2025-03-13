@@ -7,7 +7,7 @@ import Meal from "@/models/Meal";
 import Food from "@/models/Food";
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import mongoose, { isValidObjectId } from "mongoose";
-import { MealFoodData, MealFoodsResponse } from "@/types/api/mealResponses";
+import { MealFoodData } from "@/types/api/mealResponses";
 import { AddFoodToMealRequest } from "@/types/api/mealRequests";
 import { convertMealFoodToResponse } from "@/types/converters/mealConverters";
 import { IMeal } from "@/types/models/meal";
@@ -17,28 +17,36 @@ import { IFood } from "@/types/models/food";
  * GET /api/meals/[id]/foods
  * Get all foods in a meal
  */
-
-export const GET = withAuth<MealFoodData, { id: string }>(
-  async (req: NextRequest, id: string, context) => {
+export const GET = withAuth<{
+  foods: MealFoodData[];
+  mealId: string;
+  mealName: string;
+  count: number;
+  totals: {
+    protein: number;
+    carbs: number;
+    fat: number;
+    calories: number;
+  }
+}, { id: string }>(
+  async (req: NextRequest, userId: string, context) => {
     try {
       await dbConnect();
       
-      const { params } = context || {};
+      const { id } = context?.params || {};
       
-      if (!context?.params?.id) {
+      if (!id) {
         return apiError('Missing ID parameter', 400, 'ERR_MISSING_PARAM');
       }
       
-      const mealId = context.params.id;
-      
-      if (!isValidObjectId(mealId)) {
+      if (!isValidObjectId(id)) {
         return apiError('Invalid meal ID format', 400, 'ERR_VALIDATION');
       }
       
       // Get meal with defensive error handling
       let meal: IMeal | null;
       try {
-        meal = await Meal.findById(mealId);
+        meal = await Meal.findById(id);
         
         if (!meal) {
           return apiError('Meal not found', 404, 'ERR_NOT_FOUND');
@@ -61,7 +69,7 @@ export const GET = withAuth<MealFoodData, { id: string }>(
       };
       
       // Process foods with defensive array handling
-      const processedFoods = [];
+      const processedFoods: MealFoodData[] = [];
       if (Array.isArray(meal.foods)) {
         for (let i = 0; i < meal.foods.length; i++) {
           const food = meal.foods[i];
@@ -100,7 +108,7 @@ export const GET = withAuth<MealFoodData, { id: string }>(
       
       return apiResponse({
         foods: processedFoods,
-        mealId: mealId,
+        mealId: id,
         mealName: meal.name || 'Unnamed Meal',
         count: processedFoods.length,
         totals: mealTotals
@@ -116,21 +124,22 @@ export const GET = withAuth<MealFoodData, { id: string }>(
  * POST /api/meals/[id]/foods
  * Add a new food to a meal
  */
-
-export const POST = withAuth<{ food: MealFoodData, mealId: string, index: number }, { id: string }>(
+export const POST = withAuth<{
+  food: MealFoodData;
+  mealId: string;
+  index: number;
+}, { id: string }>(
   async (req: NextRequest, userId: string, context) => {
     try {
       await dbConnect();
       
-      const { params } = context || {};
+      const { id } = context?.params || {};
       
-      if (!params?.id) {
+      if (!id) {
         return apiError('Missing ID parameter', 400, 'ERR_MISSING_PARAM');
       }
 
-      const mealId = params.id;
-      
-      if (!isValidObjectId(mealId)) {
+      if (!isValidObjectId(id)) {
         return apiError('Invalid meal ID format', 400, 'ERR_VALIDATION');
       }
       
@@ -150,7 +159,7 @@ export const POST = withAuth<{ food: MealFoodData, mealId: string, index: number
       // Get existing meal with defensive error handling
       let meal: IMeal | null;
       try {
-        meal = await Meal.findById(mealId);
+        meal = await Meal.findById(id);
         
         if (!meal) {
           return apiError('Meal not found', 404, 'ERR_NOT_FOUND');
@@ -219,11 +228,7 @@ export const POST = withAuth<{ food: MealFoodData, mealId: string, index: number
           protein: roundToDecimal(foodFromDb.protein * ratio, 2),
           carbs: roundToDecimal(foodFromDb.carbs * ratio, 2),
           fat: roundToDecimal(foodFromDb.fat * ratio, 2),
-          calories: roundToDecimal(foodFromDb.calories * ratio, 2),
-          serving: {
-            size: foodFromDb.servingSize || 100,
-            unit: foodFromDb.servingUnit || 'g'
-          }
+          calories: roundToDecimal(foodFromDb.calories * ratio, 2)
         };
       } else {
         // Create custom food entry
@@ -264,39 +269,14 @@ export const POST = withAuth<{ food: MealFoodData, mealId: string, index: number
           calories = Math.round((protein * 4) + (carbs * 4) + (fat * 9));
         }
         
-        // Prepare serving information
-        const serving = {
-          size: 100,
-          unit: 'g'
-        };
-        
-        if (body.serving && typeof body.serving === 'object') {
-          if (body.serving.size !== undefined) {
-            const size = parseFloat(String(body.serving.size));
-            if (!isNaN(size) && size > 0) {
-              serving.size = size;
-            }
-          }
-          
-          if (body.serving.unit !== undefined && typeof body.serving.unit === 'string') {
-            const validUnits = ['g', 'ml', 'oz', 'cup', 'tbsp', 'tsp', 'piece'];
-            const unit = body.serving.unit.toLowerCase().trim();
-            
-            if (validUnits.includes(unit)) {
-              serving.unit = unit;
-            }
-          }
-        }
-        
         foodEntry = {
           name: body.name.trim(),
           amount,
-          unit: body.unit || serving.unit,
+          unit: body.unit || 'g',
           protein,
           carbs,
           fat,
-          calories,
-          serving
+          calories
         };
       }
       
@@ -324,7 +304,7 @@ export const POST = withAuth<{ food: MealFoodData, mealId: string, index: number
       
       return apiResponse({
         food: foodResponse,
-        mealId: mealId,
+        mealId: id,
         index: newIndex
       }, true, 'Food added to meal successfully', 201);
     } catch (error) {
@@ -338,20 +318,29 @@ export const POST = withAuth<{ food: MealFoodData, mealId: string, index: number
  * PUT /api/meals/[id]/foods
  * Replace all foods in a meal
  */
-export const PUT = withAuth<{ foods: MealFoodData[], count: number, totals: IMealTotals, mealId: string }, { id: string }>(
+export const PUT = withAuth<{
+  foods: MealFoodData[];
+  count: number;
+  totals: {
+    protein: number;
+    carbs: number;
+    fat: number;
+    calories: number;
+  };
+  mealId: string;
+  errors?: string[];
+}, { id: string }>(
   async (req: NextRequest, userId: string, context) => {
     try {
       await dbConnect();
       
-      const { params } = context || {};
+      const { id } = context?.params || {};
       
-      if (!params?.id) {
+      if (!id) {
         return apiError('Missing ID parameter', 400, 'ERR_MISSING_PARAM');
       }
       
-      const mealId = params.id;
-      
-      if (!isValidObjectId(mealId)) {
+      if (!isValidObjectId(id)) {
         return apiError('Invalid meal ID format', 400, 'ERR_VALIDATION');
       }
       
@@ -371,7 +360,7 @@ export const PUT = withAuth<{ foods: MealFoodData[], count: number, totals: IMea
       // Get existing meal with defensive error handling
       let meal: IMeal | null;
       try {
-        meal = await Meal.findById(mealId);
+        meal = await Meal.findById(id);
         
         if (!meal) {
           return apiError('Meal not found', 404, 'ERR_NOT_FOUND');
@@ -419,40 +408,15 @@ export const PUT = withAuth<{ foods: MealFoodData[], count: number, totals: IMea
             calories = Math.round((protein * 4) + (carbs * 4) + (fat * 9));
           }
           
-          // Prepare serving information
-          const serving = {
-            size: 100,
-            unit: 'g'
-          };
-          
-          if (food.serving && typeof food.serving === 'object') {
-            if (food.serving.size !== undefined) {
-              const size = parseFloat(String(food.serving.size));
-              if (!isNaN(size) && size > 0) {
-                serving.size = size;
-              }
-            }
-            
-            if (food.serving.unit !== undefined && typeof food.serving.unit === 'string') {
-              const validUnits = ['g', 'ml', 'oz', 'cup', 'tbsp', 'tsp', 'piece'];
-              const unit = food.serving.unit.toLowerCase().trim();
-              
-              if (validUnits.includes(unit)) {
-                serving.unit = unit;
-              }
-            }
-          }
-          
           // Create food entry
           const foodEntry: any = {
             name: food.name.trim(),
             amount,
-            unit: food.unit || serving.unit,
+            unit: food.unit || 'g',
             protein,
             carbs,
             fat,
-            calories,
-            serving
+            calories
           };
           
           // Add foodId if valid
@@ -498,7 +462,7 @@ export const PUT = withAuth<{ foods: MealFoodData[], count: number, totals: IMea
       
       // Format response using converter
       const responseData = {
-        mealId,
+        mealId: id,
         foods: processedFoods.map((food, index) => convertMealFoodToResponse(food, index)),
         count: processedFoods.length,
         totals: mealTotals,
