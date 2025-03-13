@@ -1,82 +1,61 @@
-'use client'
+'use client';
 
-import { useState, useEffect } from 'react'
-import { signIn } from 'next-auth/react'
-import { useRouter } from 'next/navigation'
-import Link from 'next/link'
+import { useState, useEffect } from 'react';
+import { signIn } from 'next-auth/react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 
 export default function SignIn() {
-  const router = useRouter()
-  
-  // Check URL parameters for email to pre-fill from registration
-  const [email, setEmail] = useState(() => {
-    // Check if we're on client side
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      return params.get('email') || 'test@example.com';
-    }
-    return 'test@example.com';
-  })
-  const [registered, setRegistered] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      return params.get('registered') === 'true';
-    }
-    return false;
-  })
-  const [password, setPassword] = useState('') // Don't pre-fill password for security
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
-  
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Get email and registered status from URL params
+  const [email, setEmail] = useState(searchParams.get('email') || 'test@example.com');
+  const [registered, setRegistered] = useState(searchParams.get('registered') === 'true');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+
   // Set success message if user just registered
   useEffect(() => {
     if (registered) {
       setSuccess('Account created successfully! Please sign in with your credentials.');
     }
   }, [registered]);
-  
+
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError('')
-    setSuccess('')
-    setIsLoading(true)
-    
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+    setIsLoading(true);
+
     try {
       console.log('Signing in with:', { email, password });
-      
+
       const result = await signIn('credentials', {
-        redirect: false,
         email,
         password,
-      })
-      
+        redirect: false, // Handle redirect manually
+      });
+
       if (result?.error) {
         console.error('Sign-in error:', result.error);
-        setError(`Authentication failed. Please check your email and password.`);
+        setError('Authentication failed. Please check your email and password.');
         setIsLoading(false);
         return;
       }
-      
-      if (result?.ok) {
-        console.log('Sign-in successful, redirecting to dashboard');
-        // Force a small delay to ensure the session is properly set
-        setTimeout(() => {
-          router.push('/dashboard');
-        }, 500);
-        return;
-      }
-      
-      setError('Unknown error occurred during sign-in');
-      setIsLoading(false);
-      
+
+      console.log('Sign-in successful, redirecting to dashboard');
+      router.push('/dashboard'); // Immediate redirect
+      router.refresh(); // Ensure session updates on the client
     } catch (error) {
       console.error('Authentication error:', error);
-      setError('Something went wrong with the authentication system. Please try again.');
+      setError('Something went wrong. Please try again.');
       setIsLoading(false);
     }
-  }
-  
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
@@ -98,7 +77,6 @@ export default function SignIn() {
           {success && (
             <div className="bg-green-50 p-3 rounded text-green-600 text-sm">{success}</div>
           )}
-          
           <div className="rounded-md shadow-sm -space-y-px">
             <div>
               <label htmlFor="email-address" className="sr-only">
@@ -114,6 +92,7 @@ export default function SignIn() {
                 placeholder="Email address"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                disabled={isLoading}
               />
             </div>
             <div>
@@ -130,14 +109,11 @@ export default function SignIn() {
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                disabled={isLoading}
               />
             </div>
           </div>
-          
-          {error && (
-            <div className="bg-red-50 p-3 rounded text-red-600 text-sm">{error}</div>
-          )}
-          
+          {error && <div className="bg-red-50 p-3 rounded text-red-600 text-sm">{error}</div>}
           <div>
             <button
               type="submit"
@@ -147,12 +123,11 @@ export default function SignIn() {
               {isLoading ? 'Signing in...' : 'Sign in'}
             </button>
           </div>
-          
           <div className="text-center text-sm text-gray-600">
             <p>For development: test@example.com / password</p>
           </div>
         </form>
       </div>
     </div>
-  )
+  );
 }
