@@ -251,7 +251,7 @@ UserProgressSchema.methods.summarizeDailyXp = async function(dateToSummarize?: D
   endOfDay.setHours(23, 59, 59, 999);
   
   // Find transactions for this day
-  const dayTransactions = this.xpHistory.filter(transaction => {
+  const dayTransactions = this.xpHistory.filter((transaction: { date: string | number | Date; }) => {
     const txDate = new Date(transaction.date);
     return txDate >= startOfDay && txDate <= endOfDay;
   });
@@ -293,7 +293,7 @@ UserProgressSchema.methods.summarizeDailyXp = async function(dateToSummarize?: D
     
     // Add to category totals if specified
     if (tx.category) {
-      categories[tx.category] += tx.amount;
+      categories[tx.category as 'core' | 'push' | 'pull' | 'legs'] += tx.amount;
     }
   }
   
@@ -306,7 +306,7 @@ UserProgressSchema.methods.summarizeDailyXp = async function(dateToSummarize?: D
   };
   
   // Check if we already have a summary for this day
-  const existingSummaryIndex = this.dailySummaries.findIndex(s => {
+  const existingSummaryIndex = this.dailySummaries.findIndex((s: { date: string | number | Date; }) => {
     const summaryDate = new Date(s.date);
     return summaryDate.toDateString() === startOfDay.toDateString();
   });
@@ -328,7 +328,7 @@ UserProgressSchema.methods.purgeOldHistory = async function(olderThan: Date): Pr
   const beforeCount = this.xpHistory.length;
   
   // Filter out transactions older than the specified date
-  this.xpHistory = this.xpHistory.filter(tx => new Date(tx.date) >= olderThan);
+  this.xpHistory = this.xpHistory.filter((tx: { date: string | number | Date; }) => new Date(tx.date) >= olderThan);
   
   // Calculate how many items were removed
   const removedCount = beforeCount - this.xpHistory.length;
