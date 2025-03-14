@@ -1,8 +1,8 @@
 // File: src/lib/task-utils.ts
 
 import { Types } from 'mongoose';
-import Task from '@/models/Task';
-import { awardTaskCompletionXp } from '@/lib/xp-manager';
+import { ITask } from '@/types/models/tasks';
+import { awardTaskCompletionXp } from '@/lib/xp-manager-improved';
 import { NextRequest } from 'next/server';
 import { apiError } from '@/lib/api-utils';
 import { EnhancedTask, RecurrencePattern, TaskPriority } from '@/types';
