@@ -1,20 +1,29 @@
 // src/models/UserProgress.ts
-import mongoose, { Schema, HydratedDocument } from 'mongoose';
-import { IUserProgress, IUserProgressModel, ProgressCategory } from '../types/models/progress';
+import mongoose, { Schema, Model, HydratedDocument } from 'mongoose';
 import { awardXp } from '@/lib/xp-manager-improved';
+import {
+  IUserProgress,
+  IUserProgressModel,
+  XpTransaction,
+  XpDailySummary,
+  BodyweightEntry,
+  CategoryProgress,
+} from '@/types/models/progress';
+import { ProgressCategory } from '@/constants/progressCategories'; // Adjust the path as necessary
 
-const XpTransactionSchema = new Schema({
+// Define schemas
+const xpTransactionSchema = new Schema<XpTransaction>({
   amount: { type: Number, required: true },
   source: { type: String, required: true },
-  category: { type: String, enum: ['core', 'push', 'pull', 'legs'] },
-  date: { type: Date, default: Date.now },
-  description: { type: String },
-  timestamp: { type: Number, default: () => Date.now() },
+  category: { type: String, enum: Object.values(ProgressCategory), default: undefined },
+  date: { type: Date, required: true },
+  description: String,
+  timestamp: Number,
 });
 
-const XpDailySummarySchema = new Schema({
+const xpDailySummarySchema = new Schema<XpDailySummary>({
   date: { type: Date, required: true },
-  totalXp: { type: Number, default: 0 },
+  totalXp: { type: Number, required: true },
   sources: { type: Map, of: Number, default: {} },
   categories: {
     core: { type: Number, default: 0 },
@@ -24,22 +33,23 @@ const XpDailySummarySchema = new Schema({
   },
 });
 
-const CategoryProgressSchema = new Schema({
+const categoryProgressSchema = new Schema<CategoryProgress>({
   level: { type: Number, default: 1 },
   xp: { type: Number, default: 0 },
   unlockedExercises: [{ type: Schema.Types.ObjectId, ref: 'Exercise' }],
 });
 
-const BodyweightEntrySchema = new Schema({
+const bodyweightEntrySchema = new Schema<BodyweightEntry>({
   date: { type: Date, default: Date.now },
   value: { type: Number, required: true },
-  unit: { type: String, enum: ['kg', 'lb'], default: 'kg', required: true }, // Ensure unit is required
+  unit: { type: String, enum: ['kg', 'lb'], default: 'kg', required: true },
 });
 
-const UserProgressSchema = new Schema<IUserProgress, IUserProgressModel>({
-  userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
+// Main schema
+const userProgressSchema = new Schema<IUserProgress>({
+  userId: { type: Schema.Types.ObjectId, required: true, unique: true },
   totalXp: { type: Number, default: 0 },
-  level: { type: Number, default: 1, min: 1 },
+  level: { type: Number, default: 1 },
   categoryXp: {
     core: { type: Number, default: 0 },
     push: { type: Number, default: 0 },
@@ -47,24 +57,26 @@ const UserProgressSchema = new Schema<IUserProgress, IUserProgressModel>({
     legs: { type: Number, default: 0 },
   },
   categoryProgress: {
-    core: { type: CategoryProgressSchema, default: () => ({}) },
-    push: { type: CategoryProgressSchema, default: () => ({}) },
-    pull: { type: CategoryProgressSchema, default: () => ({}) },
-    legs: { type: CategoryProgressSchema, default: () => ({}) },
+    core: categoryProgressSchema,
+    push: categoryProgressSchema,
+    pull: categoryProgressSchema,
+    legs: categoryProgressSchema,
   },
   achievements: [{ type: Schema.Types.ObjectId, ref: 'Achievement' }],
-  xpHistory: [XpTransactionSchema],
-  dailySummaries: [XpDailySummarySchema],
-  bodyweight: [BodyweightEntrySchema],
+  xpHistory: [xpTransactionSchema],
+  dailySummaries: [xpDailySummarySchema],
+  bodyweight: [bodyweightEntrySchema],
   lastUpdated: { type: Date, default: Date.now },
-}, { timestamps: true });
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now },
+});
 
-// Static Methods
-UserProgressSchema.statics.calculateLevelFromXp = function (xp: number): number {
+// Static methods
+userProgressSchema.statics.calculateLevelFromXp = function (xp: number): number {
   return Math.floor(1 + Math.pow(xp / 100, 0.8));
 };
 
-UserProgressSchema.statics.createInitialProgress = async function (
+userProgressSchema.statics.createInitialProgress = async function (
   userId: mongoose.Types.ObjectId
 ): Promise<HydratedDocument<IUserProgress>> {
   return await this.create({
@@ -95,12 +107,13 @@ UserProgressSchema.statics.createInitialProgress = async function (
   });
 };
 
-// Instance Methods
-UserProgressSchema.methods.calculateLevel = function (xp: number): number {
+// Instance methods
+userProgressSchema.methods.calculateLevel = function (this: HydratedDocument<IUserProgress>, xp: number): number {
   return (this.constructor as IUserProgressModel).calculateLevelFromXp(xp);
 };
 
-UserProgressSchema.methods.addXp = async function (
+userProgressSchema.methods.addXp = async function (
+  this: HydratedDocument<IUserProgress>,
   amount: number,
   source: string,
   category?: ProgressCategory,
@@ -110,7 +123,7 @@ UserProgressSchema.methods.addXp = async function (
   this.totalXp = result.totalXp;
   this.level = result.currentLevel;
   if (category) {
-    this.categoryXp[category] += amount; // Update category XP directly
+    this.categoryXp[category] += amount;
     this.categoryProgress[category].xp = this.categoryXp[category];
     this.categoryProgress[category].level = this.calculateLevel(this.categoryXp[category]);
   }
@@ -119,27 +132,33 @@ UserProgressSchema.methods.addXp = async function (
   return result.leveledUp;
 };
 
-UserProgressSchema.methods.getNextLevelXp = function (): number {
+userProgressSchema.methods.getNextLevelXp = function (this: HydratedDocument<IUserProgress>): number {
   const nextLevel = this.level + 1;
   return Math.ceil(Math.pow(nextLevel - 1, 1.25) * 100);
 };
 
-UserProgressSchema.methods.getXpToNextLevel = function (): number {
+userProgressSchema.methods.getXpToNextLevel = function (this: HydratedDocument<IUserProgress>): number {
   return this.getNextLevelXp() - this.totalXp;
 };
 
-UserProgressSchema.methods.hasLeveledUp = function (previousXp: number, newXp: number): boolean {
+userProgressSchema.methods.hasLeveledUp = function (
+  this: HydratedDocument<IUserProgress>,
+  previousXp: number,
+  newXp: number
+): boolean {
   return this.calculateLevel(newXp) > this.calculateLevel(previousXp);
 };
 
-UserProgressSchema.methods.summarizeDailyXp = async function (date?: Date): Promise<any> {
-  const targetDate = date || new Date();
-  const startOfDay = new Date(targetDate);
+userProgressSchema.methods.summarizeDailyXp = async function (
+  this: HydratedDocument<IUserProgress>,
+  date: Date = new Date()
+): Promise<XpDailySummary> {
+  const startOfDay = new Date(date);
   startOfDay.setHours(0, 0, 0, 0);
   const endOfDay = new Date(startOfDay);
   endOfDay.setHours(23, 59, 59, 999);
 
-  const dayTransactions = this.xpHistory.filter((tx: { date: string | number | Date; }) => {
+  const dayTransactions = this.xpHistory.filter((tx: XpTransaction) => {
     const txDate = new Date(tx.date);
     return txDate >= startOfDay && txDate <= endOfDay;
   });
@@ -158,8 +177,8 @@ UserProgressSchema.methods.summarizeDailyXp = async function (date?: Date): Prom
     if (tx.category) categories[tx.category] += tx.amount;
   }
 
-  const summary = { date: startOfDay, totalXp, sources, categories };
-  const existingIndex = this.dailySummaries.findIndex((s: { date: string | number | Date; }) =>
+  const summary: XpDailySummary = { date: startOfDay, totalXp, sources, categories };
+  const existingIndex = this.dailySummaries.findIndex((s: XpDailySummary) =>
     new Date(s.date).toDateString() === startOfDay.toDateString()
   );
 
@@ -172,12 +191,17 @@ UserProgressSchema.methods.summarizeDailyXp = async function (date?: Date): Prom
   return summary;
 };
 
-UserProgressSchema.methods.purgeOldHistory = async function (olderThan: Date): Promise<number> {
+userProgressSchema.methods.purgeOldHistory = async function (
+  this: HydratedDocument<IUserProgress>,
+  olderThan: Date
+): Promise<number> {
   const beforeCount = this.xpHistory.length;
-  this.xpHistory = this.xpHistory.filter((tx: { date: string | number | Date; }) => new Date(tx.date) >= olderThan);
+  this.xpHistory = this.xpHistory.filter((tx: XpTransaction) => new Date(tx.date) >= olderThan);
   const removedCount = beforeCount - this.xpHistory.length;
   if (removedCount > 0) await this.save();
   return removedCount;
 };
 
-export default mongoose.models.UserProgress || mongoose.model<IUserProgress, IUserProgressModel>('UserProgress', UserProgressSchema);
+const UserProgress = mongoose.models.UserProgress || mongoose.model<IUserProgress, IUserProgressModel>('UserProgress', userProgressSchema);
+export default UserProgress;
+export type { XpTransaction, XpDailySummary }; // Ensure these are exported

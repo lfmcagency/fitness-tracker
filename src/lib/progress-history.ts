@@ -90,7 +90,7 @@ export async function purgeOldHistory(
     
     // Filter out summaries older than the threshold
     userProgress.dailySummaries = userProgress.dailySummaries.filter(
-      summary => new Date(summary.date) >= olderThan
+      (      summary: { date: string | number | Date; }) => new Date(summary.date) >= olderThan
     );
     
     // If we removed any summaries, save the document
@@ -163,7 +163,7 @@ export async function getProgressHistoryData(
     
     // Get summaries in range
     const relevantSummaries = userProgress.dailySummaries.filter(
-      summary => new Date(summary.date) >= startDate
+      (      summary: { date: string | number | Date; }) => new Date(summary.date) >= startDate
     );
     
     if (relevantSummaries.length > 0) {
@@ -176,7 +176,7 @@ export async function getProgressHistoryData(
   if (!historyData) {
     // Get transactions in range
     const relevantTransactions = userProgress.xpHistory.filter(
-      tx => new Date(tx.date) >= startDate
+      (      tx: { date: string | number | Date; }) => new Date(tx.date) >= startDate
     );
     
     historyData = relevantTransactions;

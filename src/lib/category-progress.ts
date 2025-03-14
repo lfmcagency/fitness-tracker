@@ -1,4 +1,5 @@
-import { IUserProgress, XpTransaction } from '@/models/UserProgress';
+import { XpTransaction } from '@/models/UserProgress';
+import { IUserProgress} from '@/types/models/progress';
 import { AchievementDefinition, ACHIEVEMENTS } from './achievements';
 import { HydratedDocument } from 'mongoose';
 
@@ -148,7 +149,7 @@ export function getCategoryAchievements(
   }
   
   // Get user's achievement IDs
-  const userAchievementIds = userProgress.achievements.map(id => id.toString());
+  const userAchievementIds = userProgress.achievements.map((id: { toString: () => any; }) => id.toString());
   
   // Annotate achievements with unlock status and progress
   return categoryAchievements.map(achievement => {
