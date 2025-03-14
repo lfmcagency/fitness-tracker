@@ -3,20 +3,20 @@ import { MealData, MealFoodData } from '../api/mealResponses';
 
 export function convertMealToResponse(meal: IMeal): MealData {
   return {
-    id: meal._id.toString(),
-    name: meal.name,
-    time: meal.time,
-    date: meal.date.toISOString(),
-    foods: meal.foods.map((food: any, index: number) => convertMealFoodToResponse(food, index)),
-    totals: meal.totals || {
-      protein: 0,
-      carbs: 0,
-      fat: 0,
-      calories: 0
-    },
-    notes: meal.notes,
-    createdAt: meal.createdAt.toISOString()
-  };
+  id: meal.id.toString(),
+  name: meal.name,
+  time: meal.time,
+  date: meal.date.toISOString(),
+  foods: meal.foods.map((food: any, index: number) => convertMealFoodToResponse(food, index)),
+  totals: meal.totals || {
+    protein: 0,
+    carbs: 0,
+    fat: 0,
+    calories: 0
+  },
+  notes: meal.notes,
+  createdAt: meal.createdAt.toISOString()
+};
 }
 
 export function convertMealFoodToResponse(food: any, index: number): MealFoodData {

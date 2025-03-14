@@ -23,6 +23,7 @@ export interface FoodData {
 export type FoodResponse = ApiResponse<FoodData>;
 
 export type FoodListResponse = ApiResponse<{
+  categories: never[];
   foods: FoodData[];
   pagination: PaginationInfo;
 }>;

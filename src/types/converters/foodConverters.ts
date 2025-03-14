@@ -3,7 +3,7 @@ import { FoodData } from '../api/foodResponses';
 
 export function convertFoodToResponse(food: IFood): FoodData {
   return {
-    id: food._id.toString(),
+    id: food.id.toString(),
     name: food.name,
     description: food.description,
     servingSize: food.servingSize,
