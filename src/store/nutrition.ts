@@ -63,7 +63,7 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
         const transformedMeals = data.data.meals.map(meal => ({
           ...meal,
           // Ensure backward compatibility by using _id as id if needed
-          id: typeof meal.id === 'number' ? meal.id : parseInt(meal._id || '', 36) % 100000
+          id: typeof meal.id === 'number' ? meal.id : meal.id ? parseInt(meal.id, 36) : 0
         }));
         
         set({ 
@@ -135,7 +135,7 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
       if (data.success) {
         set({ 
           foods: data.data.foods,
-          foodCategories: data.data.categories || [],
+          foodCategories: (data.data as any).categories || [],
           foodsLoading: false
         });
       } else {
@@ -311,7 +311,7 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
         // Replace temp meal with real one from server
         const serverMeal = {
           ...data.data,
-          id: data.data.id || parseInt(data.data._id || '', 36) % 100000 // Ensure ID for UI components
+          id: typeof data.data.id === 'string' ? parseInt(data.data.id, 36) % 100000 : data.data.id
         };
         
         set((state) => ({
@@ -385,7 +385,7 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
         // Update with server data to ensure everything is in sync
         const serverMeal = {
           ...data.data,
-          id: data.data.id || parseInt(data.data._id || '', 36) % 100000
+          id: typeof data.data.id === 'string' ? parseInt(data.data.id, 36) % 100000 : data.data.id
         };
         
         set((state: NutritionState) => ({
@@ -475,7 +475,7 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
         // Update with server data to ensure everything is in sync
         const serverMeal = {
           ...data.data,
-          id: data.data.id || parseInt(data.data._id || '', 36) % 100000
+          id: typeof data.data.id === 'string' ? parseInt(data.data.id, 36) % 100000 : data.data.id
         };
         
         set((state: NutritionState) => ({
