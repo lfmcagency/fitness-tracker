@@ -4,21 +4,24 @@ import { NextRequest } from 'next/server';
 import { dbConnect } from '@/lib/db';
 import { withAuth, AuthLevel } from '@/lib/auth-utils';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
-import { validateRequest, schemas } from '@/lib/validation';
+import { validateRequest } from '@/lib/validation';
 import { awardXp } from '@/lib/xp-manager-improved';
 import { Types } from 'mongoose';
+import { AddXpResponse, AddXpResponseData } from '@/types/api/progressResponses';
+import { schemas } from '@/lib/validation';
+import { ProgressCategory } from '@/types/models/progress';
 
 /**
  * POST /api/progress/add-xp
  * 
  * Adds XP to a user's progress and returns updated progress information.
  */
-export const POST = withAuth(async (req: NextRequest, userId) => {
+export const POST = withAuth<AddXpResponseData>(async (req: NextRequest, userId: string) => {
   try {
     await dbConnect();
     
     // Defensive check for userId
-    if (!userId) {
+    if (!userId || !Types.ObjectId.isValid(userId)) {
       return apiError('Invalid user ID', 400, 'ERR_INVALID_ID');
     }
     
@@ -29,9 +32,9 @@ export const POST = withAuth(async (req: NextRequest, userId) => {
         req,
         schemas.xp.addXp
       );
-    } catch (error) {
-      // validateRequest already returns an API error response
-      if (error.status && error.json) {
+    } catch (error: any) {
+      // If validateRequest already returned an API error response
+      if (error && typeof error.status === 'number' && typeof error.json === 'function') {
         return error;
       }
       return apiError('Invalid request data', 400, 'ERR_VALIDATION');
@@ -39,7 +42,7 @@ export const POST = withAuth(async (req: NextRequest, userId) => {
     
     // Safely extract values with defaults
     const xpAmount = Number(requestData?.xpAmount || 0);
-    const category = requestData?.category;
+    const category = requestData?.category as ProgressCategory | undefined;
     const source = requestData?.source || '';
     const details = requestData?.details || '';
     
@@ -53,18 +56,13 @@ export const POST = withAuth(async (req: NextRequest, userId) => {
     }
     
     // Award XP and get comprehensive result with error handling
-    let result;
-    try {
-      result = await awardXp(
-        userId,
-        xpAmount,
-        source,
-        category,
-        details
-      );
-    } catch (error) {
-      return handleApiError(error, 'Error processing XP award');
-    }
+    const result = await awardXp(
+      userId,
+      xpAmount,
+      source,
+      category,
+      details
+    );
     
     // Handle case where result is undefined or null
     if (!result) {
@@ -72,7 +70,7 @@ export const POST = withAuth(async (req: NextRequest, userId) => {
     }
     
     // Generate appropriate success message with defensive checks
-    let message;
+    let message: string;
     
     if (result.leveledUp && result.achievements?.count && result.category?.milestone) {
       message = `Congratulations! You've leveled up to ${result.currentLevel}, reached the ${result.category.milestone.milestone} milestone in ${category}, and unlocked ${result.achievements.count} achievement(s)!`;
