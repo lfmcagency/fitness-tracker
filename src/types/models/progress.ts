@@ -32,6 +32,12 @@ export interface CategoryProgress {
   unlockedExercises: mongoose.Types.ObjectId[];
 }
 
+export interface BodyweightEntry {
+  date: Date;
+  value: number;
+  unit: 'kg' | 'lb';
+}
+
 export interface IUserProgress extends mongoose.Document {
   _id: mongoose.Types.ObjectId;
   userId: mongoose.Types.ObjectId;
@@ -52,6 +58,7 @@ export interface IUserProgress extends mongoose.Document {
   achievements: mongoose.Types.ObjectId[];
   xpHistory: XpTransaction[];
   dailySummaries: XpDailySummary[];
+  bodyweight: BodyweightEntry[];
   lastUpdated: Date;
   createdAt: Date;
   updatedAt: Date;
