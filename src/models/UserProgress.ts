@@ -139,7 +139,7 @@ UserProgressSchema.methods.summarizeDailyXp = async function (date?: Date): Prom
   const endOfDay = new Date(startOfDay);
   endOfDay.setHours(23, 59, 59, 999);
 
-  const dayTransactions = this.xpHistory.filter(tx => {
+  const dayTransactions = this.xpHistory.filter((tx: { date: string | number | Date; }) => {
     const txDate = new Date(tx.date);
     return txDate >= startOfDay && txDate <= endOfDay;
   });
@@ -159,7 +159,7 @@ UserProgressSchema.methods.summarizeDailyXp = async function (date?: Date): Prom
   }
 
   const summary = { date: startOfDay, totalXp, sources, categories };
-  const existingIndex = this.dailySummaries.findIndex(s =>
+  const existingIndex = this.dailySummaries.findIndex((s: { date: string | number | Date; }) =>
     new Date(s.date).toDateString() === startOfDay.toDateString()
   );
 
@@ -174,7 +174,7 @@ UserProgressSchema.methods.summarizeDailyXp = async function (date?: Date): Prom
 
 UserProgressSchema.methods.purgeOldHistory = async function (olderThan: Date): Promise<number> {
   const beforeCount = this.xpHistory.length;
-  this.xpHistory = this.xpHistory.filter(tx => new Date(tx.date) >= olderThan);
+  this.xpHistory = this.xpHistory.filter((tx: { date: string | number | Date; }) => new Date(tx.date) >= olderThan);
   const removedCount = beforeCount - this.xpHistory.length;
   if (removedCount > 0) await this.save();
   return removedCount;

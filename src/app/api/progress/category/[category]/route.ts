@@ -8,11 +8,12 @@ import { withAuth, AuthLevel } from '@/lib/auth-utils';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { 
   ProgressCategory, 
-  VALID_CATEGORIES, 
-  getCategoryStatistics, 
-  getRecentCategoryActivity 
+  VALID_CATEGORIES,
+  getCategoryStatistics
 } from '@/lib/category-progress';
 import { Exercise } from '@/models/Exercise';
+import { CategoryProgressData } from '@/types/api/progressResponses';
+import { IUserProgress, IUserProgressModel } from '@/types/models/progress';
 
 /**
  * GET /api/progress/category/[category]
@@ -25,7 +26,7 @@ import { Exercise } from '@/models/Exercise';
  * Query parameters:
  * - includeExercises: boolean - Whether to include unlocked exercises details
  */
-export const GET = withAuth<ResponseType['data'], { category: string }>(
+export const GET = withAuth<CategoryProgressData, { category: string }>(
   async (req: NextRequest, userId: string, context) => {
     try {
       if (!context?.params?.category) {
@@ -34,158 +35,94 @@ export const GET = withAuth<ResponseType['data'], { category: string }>(
       
       const category = context.params.category;
     
-    if (!category || typeof category !== 'string' || !VALID_CATEGORIES.includes(category as ProgressCategory)) {
-      return apiError(
-        `Invalid category: ${category}. Valid categories are: ${VALID_CATEGORIES.join(', ')}`,
-        400,
-        'ERR_INVALID_CATEGORY'
-      );
-    }
-    
-    await dbConnect();
-    
-    // Defensive check for userId
-    if (!userId || !Types.ObjectId.isValid(userId)) {
-      return apiError('Invalid user ID', 400, 'ERR_INVALID_ID');
-    }
-    
-    const userObjectId = userId instanceof Types.ObjectId ? userId : new Types.ObjectId(userId);
-    
-    // Parse query parameters with defensive checks
-    let includeExercises = false;
-    
-    try {
-      const url = new URL(req.url);
-      includeExercises = url.searchParams.get('includeExercises') === 'true';
-    } catch (error) {
-      console.error('Error parsing URL:', error);
-      // Continue with default values
-    }
-    
-    // Try to get the user's progress document with error handling
-    let userProgress;
-    try {
-      userProgress = await UserProgress.findOne({ userId: userObjectId });
-    } catch (error) {
-      return handleApiError(error, 'Database error while fetching user progress');
-    }
-    
-    // If no progress document exists, create one with initial values
-    if (!userProgress) {
-      try {
-        userProgress = await UserProgress.createInitialProgress(userObjectId);
-      } catch (error) {
-        return handleApiError(error, 'Failed to create initial progress record');
+      if (!category || typeof category !== 'string' || !VALID_CATEGORIES.includes(category as ProgressCategory)) {
+        return apiError(
+          `Invalid category: ${category}. Valid categories are: ${VALID_CATEGORIES.join(', ')}`,
+          400,
+          'ERR_INVALID_CATEGORY'
+        );
       }
-    }
     
-    // Defensive null check for userProgress
-    if (!userProgress) {
-      return apiError('Unable to find or create user progress', 500, 'ERR_DATABASE');
-    }
+      await dbConnect();
     
-    // Defensive null checks for category progress
-    if (!userProgress.categoryProgress) {
-      // Create empty category progress structure if missing
-      userProgress.categoryProgress = {
-        core: { level: 1, xp: 0, unlockedExercises: [] },
-        push: { level: 1, xp: 0, unlockedExercises: [] },
-        pull: { level: 1, xp: 0, unlockedExercises: [] },
-        legs: { level: 1, xp: 0, unlockedExercises: [] }
-      };
-      
-      try {
-        await userProgress.save();
-      } catch (error) {
-        console.error('Error saving new category progress structure:', error);
-        // Continue anyway - we'll use the in-memory structure
+      // Defensive check for userId
+      if (!userId || !Types.ObjectId.isValid(userId)) {
+        return apiError('Invalid user ID', 400, 'ERR_INVALID_ID');
       }
-    }
     
-    if (!userProgress.categoryProgress[category]) {
-      // Initialize category if it doesn't exist
-      userProgress.categoryProgress[category] = {
-        level: 1,
-        xp: 0,
-        unlockedExercises: []
-      };
-      
+      const userObjectId = new Types.ObjectId(userId);
+    
+      // Try to get the user's progress document with error handling
+      let userProgress: IUserProgress | null = null;
       try {
-        await userProgress.save();
+        userProgress = await UserProgress.findOne({ userId: userObjectId });
       } catch (error) {
-        console.error(`Error saving new ${category} category:`, error);
-        // Continue anyway - we'll use the in-memory structure
+        return handleApiError(error, 'Database error while fetching user progress');
       }
-    }
     
-    // Get category statistics with defensive null checks
-    let categoryStats;
-    try {
-      categoryStats = getCategoryStatistics(category as ProgressCategory, userProgress);
-    } catch (error) {
-      console.error('Error getting category statistics:', error);
-      // Create default stats as fallback
-      categoryStats = {
-        level: 1,
-        xp: 0,
-        rank: 'Novice',
-        nextRank: 'Beginner',
-        percentOfTotal: 0,
-        percentToNextRank: 0
-      };
-    }
+      // If no progress document exists, create one with initial values
+      if (!userProgress) {
+        try {
+          userProgress = await (UserProgress as IUserProgressModel).createInitialProgress(userObjectId);
+        } catch (error) {
+          return handleApiError(error, 'Failed to create initial progress record');
+        }
+      }
     
-    // Ensure we have valid category stats
-    if (!categoryStats) {
-      categoryStats = {
-        level: 1,
-        xp: 0,
-        rank: 'Novice',
-        nextRank: 'Beginner',
-        percentOfTotal: 0,
-        percentToNextRank: 0
-      };
-    }
+      // Defensive null check for userProgress
+      if (!userProgress) {
+        return apiError('Unable to find or create user progress', 500, 'ERR_DATABASE');
+      }
     
-    // If requested, include unlocked exercises details with defensive approach
-    let unlockedExercises = [];
-    
-    // Add defensive null check for unlockedExercises
-    const categoryProgress = userProgress.categoryProgress[category] || { unlockedExercises: [] };
-    const categoryUnlockedExercises = Array.isArray(categoryProgress.unlockedExercises) 
-      ? categoryProgress.unlockedExercises 
-      : [];
-    
-    if (includeExercises && categoryUnlockedExercises.length > 0) {
-      try {
-        const exerciseResults = await Exercise.find({
-          _id: { $in: categoryUnlockedExercises }
-        }).select('name difficulty description category');
+      // Defensive null checks for category progress
+      if (!userProgress.categoryProgress) {
+        // Create empty category progress structure if missing
+        userProgress.categoryProgress = {
+          core: { level: 1, xp: 0, unlockedExercises: [] },
+          push: { level: 1, xp: 0, unlockedExercises: [] },
+          pull: { level: 1, xp: 0, unlockedExercises: [] },
+          legs: { level: 1, xp: 0, unlockedExercises: [] }
+        };
         
-        // Add unlocked property to each exercise
-        unlockedExercises = exerciseResults.map(ex => ({
-          ...ex.toObject(),
-          unlocked: true // Add this property to fix the test error
-        }));
-      } catch (error) {
-        console.error('Error fetching unlocked exercises:', error);
-        // Continue execution even if exercise fetching fails
+        try {
+          await userProgress.save();
+        } catch (error) {
+          console.error('Error saving new category progress structure:', error);
+          // Continue anyway - we'll use the in-memory structure
+        }
       }
+    
+      const validCategory = category as ProgressCategory;
+      
+      if (!userProgress.categoryProgress[validCategory]) {
+        // Initialize category if it doesn't exist
+        userProgress.categoryProgress[validCategory] = {
+          level: 1,
+          xp: 0,
+          unlockedExercises: []
+        };
+        
+        try {
+          await userProgress.save();
+        } catch (error) {
+          console.error(`Error saving new ${category} category:`, error);
+          // Continue anyway - we'll use the in-memory structure
+        }
+      }
+    
+      // Get the minimal data needed for CategoryProgressData
+      const categoryProgress = userProgress.categoryProgress[validCategory];
+      
+      // Create the simple response matching CategoryProgressData
+      const response: CategoryProgressData = {
+        level: categoryProgress.level,
+        xp: userProgress.categoryXp[validCategory] || 0
+      };
+    
+      return apiResponse(response, true, `${category} progress retrieved successfully`);
+    } catch (error) {
+      return handleApiError(error, 'Error retrieving category progress');
     }
-    
-    // If no exercises were found or there was an error, provide an empty array with correct structure
-    if (!Array.isArray(unlockedExercises) || unlockedExercises.length === 0) {
-      unlockedExercises = [];
-    }
-    
-    // Build response with defensive checks
-    const response = {
-      ...categoryStats,
-      exercises: includeExercises ? unlockedExercises : undefined
-    };
-    
-    return apiResponse(response, true, `${category} progress retrieved successfully`);
-  } catch (error) {
-    return handleApiError(error, 'Error retrieving category progress');
-  }
-}, AuthLevel.DEV_OPTIONAL);
+  }, 
+  AuthLevel.DEV_OPTIONAL
+);
