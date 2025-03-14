@@ -1,5 +1,9 @@
+// src/store/nutrition.ts
 import { create } from 'zustand';
-import type { Meal, Food, FoodDB, MacroGoals, ApiResponse } from '@/types';
+import { ApiResponse, ApiSuccessResponse, ApiErrorResponse } from '@/types/api/common';
+import type { Meal, Food, FoodDB, MacroGoals } from '@/types';
+import { FoodResponse, FoodListResponse } from '@/types/api/foodResponses';
+import { MealResponse, MealListResponse } from '@/types/api/mealResponses';
 
 interface NutritionState {
   meals: Meal[];
@@ -52,14 +56,14 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
         throw new Error(`Failed to fetch meals: ${response.status} ${response.statusText}`);
       }
       
-      const data = await response.json() as ApiResponse<{ meals: Meal[] }>;
+      const data = await response.json() as MealListResponse;
       
-      if (data.success && data.data?.meals) {
+      if (data.success) {
         // Transform API response to match frontend state structure
         const transformedMeals = data.data.meals.map(meal => ({
           ...meal,
           // Ensure backward compatibility by using _id as id if needed
-          id: meal.id || parseInt(meal._id || '', 36) % 100000
+          id: typeof meal.id === 'number' ? meal.id : parseInt(meal._id || '', 36) % 100000
         }));
         
         set({ 
@@ -67,7 +71,9 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
           isLoading: false
         });
       } else {
-        throw new Error(data.message || 'Failed to fetch meals');
+        // Handle API error
+        const errorData = data as ApiErrorResponse;
+        throw new Error(errorData.error.message || 'Failed to fetch meals');
       }
     } catch (error) {
       console.error('Error fetching meals:', error);
@@ -124,16 +130,18 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
         throw new Error(`Failed to fetch foods: ${response.status} ${response.statusText}`);
       }
       
-      const data = await response.json() as ApiResponse<{ foods: FoodDB[], categories: string[] }>;
+      const data = await response.json() as FoodListResponse;
       
-      if (data.success && data.data) {
+      if (data.success) {
         set({ 
           foods: data.data.foods,
           foodCategories: data.data.categories || [],
           foodsLoading: false
         });
       } else {
-        throw new Error(data.message || 'Failed to fetch foods');
+        // Handle API error
+        const errorData = data as ApiErrorResponse;
+        throw new Error(errorData.error.message || 'Failed to fetch foods');
       }
     } catch (error) {
       console.error('Error fetching foods:', error);
@@ -157,12 +165,14 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
         throw new Error(`Failed to fetch food: ${response.status} ${response.statusText}`);
       }
       
-      const data = await response.json() as ApiResponse<FoodDB>;
+      const data = await response.json() as FoodResponse;
       
-      if (data.success && data.data) {
+      if (data.success) {
         return data.data;
       } else {
-        throw new Error(data.message || 'Failed to fetch food');
+        // Handle API error
+        const errorData = data as ApiErrorResponse;
+        throw new Error(errorData.error.message || 'Failed to fetch food');
       }
     } catch (error) {
       console.error('Error fetching food:', error);
@@ -183,17 +193,19 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
         throw new Error(`Error adding food: ${response.status} ${response.statusText}`);
       }
       
-      const data = await response.json() as ApiResponse<FoodDB>;
+      const data = await response.json() as FoodResponse;
       
-      if (data.success && data.data) {
+      if (data.success) {
         // Add new food to state
         set((state) => ({
-          foods: [...state.foods, data.data!]
+          foods: [...state.foods, data.data]
         }));
         
         return data.data;
       } else {
-        throw new Error(data.message || 'Failed to add food');
+        // Handle API error
+        const errorData = data as ApiErrorResponse;
+        throw new Error(errorData.error.message || 'Failed to add food');
       }
     } catch (error) {
       console.error('Error adding food:', error);
@@ -214,17 +226,19 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
         throw new Error(`Error updating food: ${response.status} ${response.statusText}`);
       }
       
-      const data = await response.json() as ApiResponse<FoodDB>;
+      const data = await response.json() as FoodResponse;
       
-      if (data.success && data.data) {
+      if (data.success) {
         // Update food in state
         set((state) => ({
-          foods: state.foods.map(f => f._id === id ? data.data! : f)
+          foods: state.foods.map(f => f._id === id ? data.data : f)
         }));
         
         return data.data;
       } else {
-        throw new Error(data.message || 'Failed to update food');
+        // Handle API error
+        const errorData = data as ApiErrorResponse;
+        throw new Error(errorData.error.message || 'Failed to update food');
       }
     } catch (error) {
       console.error('Error updating food:', error);
@@ -243,7 +257,7 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
         throw new Error(`Error deleting food: ${response.status} ${response.statusText}`);
       }
       
-      const data = await response.json() as ApiResponse<null>;
+      const data = await response.json() as ApiResponse;
       
       if (data.success) {
         // Remove food from state
@@ -253,7 +267,9 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
         
         return true;
       } else {
-        throw new Error(data.message || 'Failed to delete food');
+        // Handle API error
+        const errorData = data as ApiErrorResponse;
+        throw new Error(errorData.error.message || 'Failed to delete food');
       }
     } catch (error) {
       console.error('Error deleting food:', error);
@@ -289,9 +305,9 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
         throw new Error(`Error adding meal: ${response.status} ${response.statusText}`);
       }
       
-      const data = await response.json() as ApiResponse<Meal>;
+      const data = await response.json() as MealResponse;
       
-      if (data.success && data.data) {
+      if (data.success) {
         // Replace temp meal with real one from server
         const serverMeal = {
           ...data.data,
@@ -300,11 +316,13 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
         
         set((state) => ({
           meals: state.meals.map(m => 
-            m.id === tempId ? serverMeal : m
+            m.id === tempId ? { ...serverMeal, id: Number(serverMeal.id) } : m
           )
         }));
       } else {
-        throw new Error(data.message || 'Failed to add meal');
+        // Handle API error
+        const errorData = data as ApiErrorResponse;
+        throw new Error(errorData.error.message || 'Failed to add meal');
       }
     } catch (error) {
       console.error('Error adding meal:', error);
@@ -361,22 +379,22 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
         throw new Error(`Error adding food: ${response.status} ${response.statusText}`);
       }
       
-      const data = await response.json() as ApiResponse<Meal>;
+      const data = await response.json() as MealResponse;
       
-      if (data.success && data.data) {
+      if (data.success) {
         // Update with server data to ensure everything is in sync
         const serverMeal = {
           ...data.data,
           id: data.data.id || parseInt(data.data._id || '', 36) % 100000
         };
         
-        set((state) => ({
-          meals: state.meals.map(m => 
-            (m._id === mealId || m.id?.toString() === mealId) ? serverMeal : m
-          )
-        }));
+        set((state: NutritionState) => ({
+  meals: state.meals.map(m => 
+    (m._id === mealId || m.id?.toString() === mealId) ? { ...serverMeal, id: Number(serverMeal.id) } : m
+  )
+}));
       } else {
-        throw new Error(data.message || 'Failed to add food to meal');
+        throw new Error(data.error?.message || 'Failed to add food to meal');
       }
     } catch (error) {
       console.error('Error adding food to meal:', error);
@@ -451,22 +469,22 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
         throw new Error(`Error removing food: ${response.status} ${response.statusText}`);
       }
       
-      const data = await response.json() as ApiResponse<Meal>;
+      const data = await response.json() as MealResponse;
       
-      if (data.success && data.data) {
+      if (data.success) {
         // Update with server data to ensure everything is in sync
         const serverMeal = {
           ...data.data,
           id: data.data.id || parseInt(data.data._id || '', 36) % 100000
         };
         
-        set((state) => ({
+        set((state: NutritionState) => ({
           meals: state.meals.map(m => 
-            (m._id === mealId || m.id?.toString() === mealId) ? serverMeal : m
+            (m._id === mealId || m.id?.toString() === mealId) ? { ...serverMeal, id: Number(serverMeal.id) } : m
           )
         }));
       } else {
-        throw new Error(data.message || 'Failed to remove food from meal');
+        throw new Error(typeof data.error === 'string' ? data.error : 'Failed to remove food from meal');
       }
     } catch (error) {
       console.error('Error removing food from meal:', error);
