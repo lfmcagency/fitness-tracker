@@ -1,12 +1,15 @@
 // src/types/models/progress.ts
 import mongoose from 'mongoose';
+import { ProgressCategory } from '@/lib/category-progress';
 
-export type ProgressCategory = 'core' | 'push' | 'pull' | 'legs';
+export type { ProgressCategory };
+
+export type LocalProgressCategory = 'core' | 'push' | 'pull' | 'legs';
 
 export interface XpTransaction {
   amount: number;
   source: string;
-  category?: ProgressCategory;
+  category?: LocalProgressCategory;
   date: Date;
   description?: string;
   timestamp?: number;

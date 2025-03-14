@@ -1,21 +1,22 @@
 // src/models/UserProgress.ts
-import mongoose, { Schema, Model, HydratedDocument } from 'mongoose';
+import mongoose, { Schema, HydratedDocument } from 'mongoose';
 import { awardXp } from '@/lib/xp-manager-improved';
 import {
   IUserProgress,
   IUserProgressModel,
   XpTransaction,
   XpDailySummary,
+  ProgressCategory,
   BodyweightEntry,
   CategoryProgress,
 } from '@/types/models/progress';
-import { ProgressCategory } from '@/constants/progressCategories'; // Adjust the path as necessary
+import { ProgressCategoryEnum } from '@/lib/category-progress'; // Import the corrected enum
 
 // Define schemas
 const xpTransactionSchema = new Schema<XpTransaction>({
   amount: { type: Number, required: true },
   source: { type: String, required: true },
-  category: { type: String, enum: Object.values(ProgressCategory), default: undefined },
+  category: { type: String, enum: Object.values(ProgressCategoryEnum), default: undefined },
   date: { type: Date, required: true },
   description: String,
   timestamp: Number,
@@ -26,10 +27,10 @@ const xpDailySummarySchema = new Schema<XpDailySummary>({
   totalXp: { type: Number, required: true },
   sources: { type: Map, of: Number, default: {} },
   categories: {
-    core: { type: Number, default: 0 },
-    push: { type: Number, default: 0 },
-    pull: { type: Number, default: 0 },
-    legs: { type: Number, default: 0 },
+    [ProgressCategoryEnum.core]: { type: Number, default: 0 },
+    [ProgressCategoryEnum.push]: { type: Number, default: 0 },
+    [ProgressCategoryEnum.pull]: { type: Number, default: 0 },
+    [ProgressCategoryEnum.legs]: { type: Number, default: 0 },
   },
 });
 
@@ -51,16 +52,16 @@ const userProgressSchema = new Schema<IUserProgress>({
   totalXp: { type: Number, default: 0 },
   level: { type: Number, default: 1 },
   categoryXp: {
-    core: { type: Number, default: 0 },
-    push: { type: Number, default: 0 },
-    pull: { type: Number, default: 0 },
-    legs: { type: Number, default: 0 },
+    [ProgressCategoryEnum.core]: { type: Number, default: 0 },
+    [ProgressCategoryEnum.push]: { type: Number, default: 0 },
+    [ProgressCategoryEnum.pull]: { type: Number, default: 0 },
+    [ProgressCategoryEnum.legs]: { type: Number, default: 0 },
   },
   categoryProgress: {
-    core: categoryProgressSchema,
-    push: categoryProgressSchema,
-    pull: categoryProgressSchema,
-    legs: categoryProgressSchema,
+    [ProgressCategoryEnum.core]: categoryProgressSchema,
+    [ProgressCategoryEnum.push]: categoryProgressSchema,
+    [ProgressCategoryEnum.pull]: categoryProgressSchema,
+    [ProgressCategoryEnum.legs]: categoryProgressSchema,
   },
   achievements: [{ type: Schema.Types.ObjectId, ref: 'Achievement' }],
   xpHistory: [xpTransactionSchema],
@@ -71,7 +72,7 @@ const userProgressSchema = new Schema<IUserProgress>({
   updatedAt: { type: Date, default: Date.now },
 });
 
-// Static methods
+// Static methods using Mongoose's statics
 userProgressSchema.statics.calculateLevelFromXp = function (xp: number): number {
   return Math.floor(1 + Math.pow(xp / 100, 0.8));
 };
@@ -83,33 +84,47 @@ userProgressSchema.statics.createInitialProgress = async function (
     userId,
     totalXp: 0,
     level: 1,
-    categoryXp: { core: 0, push: 0, pull: 0, legs: 0 },
-    categoryProgress: {
-      core: { level: 1, xp: 0, unlockedExercises: [] },
-      push: { level: 1, xp: 0, unlockedExercises: [] },
-      pull: { level: 1, xp: 0, unlockedExercises: [] },
-      legs: { level: 1, xp: 0, unlockedExercises: [] },
+    categoryXp: {
+      [ProgressCategoryEnum.core]: 0,
+      [ProgressCategoryEnum.push]: 0,
+      [ProgressCategoryEnum.pull]: 0,
+      [ProgressCategoryEnum.legs]: 0,
     },
-    xpHistory: [{
-      amount: 0,
-      source: 'account_creation',
-      date: new Date(),
-      description: 'Initial progress tracking setup',
-      timestamp: Date.now(),
-    }],
-    dailySummaries: [{
-      date: new Date(),
-      totalXp: 0,
-      sources: { account_creation: 0 },
-      categories: { core: 0, push: 0, pull: 0, legs: 0 },
-    }],
+    categoryProgress: {
+      [ProgressCategoryEnum.core]: { level: 1, xp: 0, unlockedExercises: [] },
+      [ProgressCategoryEnum.push]: { level: 1, xp: 0, unlockedExercises: [] },
+      [ProgressCategoryEnum.pull]: { level: 1, xp: 0, unlockedExercises: [] },
+      [ProgressCategoryEnum.legs]: { level: 1, xp: 0, unlockedExercises: [] },
+    },
+    xpHistory: [
+      {
+        amount: 0,
+        source: 'account_creation',
+        date: new Date(),
+        description: 'Initial progress tracking setup',
+        timestamp: Date.now(),
+      },
+    ],
+    dailySummaries: [
+      {
+        date: new Date(),
+        totalXp: 0,
+        sources: { account_creation: 0 },
+        categories: {
+          [ProgressCategoryEnum.core]: 0,
+          [ProgressCategoryEnum.push]: 0,
+          [ProgressCategoryEnum.pull]: 0,
+          [ProgressCategoryEnum.legs]: 0,
+        },
+      },
+    ],
     bodyweight: [],
   });
 };
 
 // Instance methods
 userProgressSchema.methods.calculateLevel = function (this: HydratedDocument<IUserProgress>, xp: number): number {
-  return (this.constructor as IUserProgressModel).calculateLevelFromXp(xp);
+  return (this.constructor as any).calculateLevelFromXp(xp);
 };
 
 userProgressSchema.methods.addXp = async function (
@@ -164,12 +179,27 @@ userProgressSchema.methods.summarizeDailyXp = async function (
   });
 
   if (dayTransactions.length === 0) {
-    return { date: startOfDay, totalXp: 0, sources: {}, categories: { core: 0, push: 0, pull: 0, legs: 0 } };
+    return {
+      date: startOfDay,
+      totalXp: 0,
+      sources: {},
+      categories: {
+        [ProgressCategoryEnum.core]: 0,
+        [ProgressCategoryEnum.push]: 0,
+        [ProgressCategoryEnum.pull]: 0,
+        [ProgressCategoryEnum.legs]: 0,
+      },
+    };
   }
 
   let totalXp = 0;
   const sources: { [key: string]: number } = {};
-  const categories = { core: 0, push: 0, pull: 0, legs: 0 };
+  const categories = {
+    [ProgressCategoryEnum.core]: 0,
+    [ProgressCategoryEnum.push]: 0,
+    [ProgressCategoryEnum.pull]: 0,
+    [ProgressCategoryEnum.legs]: 0,
+  };
 
   for (const tx of dayTransactions) {
     totalXp += tx.amount;
@@ -202,6 +232,9 @@ userProgressSchema.methods.purgeOldHistory = async function (
   return removedCount;
 };
 
-const UserProgress = mongoose.models.UserProgress || mongoose.model<IUserProgress, IUserProgressModel>('UserProgress', userProgressSchema);
+// Define the model with explicit typing
+const UserProgress: IUserProgressModel = (mongoose.models.UserProgress ||
+  mongoose.model<IUserProgress, IUserProgressModel>('UserProgress', userProgressSchema)) as IUserProgressModel;
+
 export default UserProgress;
-export type { XpTransaction, XpDailySummary }; // Ensure these are exported
+export type { XpTransaction, XpDailySummary };

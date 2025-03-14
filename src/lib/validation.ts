@@ -44,7 +44,7 @@ export async function validateRequest<T>(
     }
   } catch (error) {
     // If the error is already an API error response, propagate it
-    if (error.status && error.json) {
+    if (error instanceof Error && 'status' in error && 'json' in error) {
       throw error;
     }
     

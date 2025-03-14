@@ -1,10 +1,22 @@
+// src/lib/category-progress.ts
 import { XpTransaction } from '@/models/UserProgress';
-import { IUserProgress} from '@/types/models/progress';
+import { IUserProgress } from '@/types/models/progress';
 import { AchievementDefinition, ACHIEVEMENTS } from './achievements';
 import { HydratedDocument } from 'mongoose';
 
-export type ProgressCategory = 'core' | 'push' | 'pull' | 'legs';
-export const VALID_CATEGORIES: ProgressCategory[] = ['core', 'push', 'pull', 'legs'];
+// Define the runtime enum for categories with lowercase values
+export enum ProgressCategoryEnum {
+  core = 'core',
+  push = 'push',
+  pull = 'pull',
+  legs = 'legs',
+}
+
+// Define the type based on the enum values
+export type ProgressCategory = keyof typeof ProgressCategoryEnum;
+
+// Array of valid categories for runtime checks
+const VALID_CATEGORIES = Object.values(ProgressCategoryEnum) as ProgressCategory[];
 
 /**
  * Type guard to check if a string is a valid category
@@ -24,38 +36,38 @@ export const CATEGORY_METADATA: Record<ProgressCategory, {
   primaryMuscles: string[];
   scaling: number;
 }> = {
-  core: {
+  [ProgressCategoryEnum.core]: {
     name: 'Core',
     description: 'Abdominal and lower back exercises',
     icon: 'disc',
     color: 'bg-blue-500',
     primaryMuscles: ['Rectus Abdominis', 'Obliques', 'Transverse Abdominis', 'Erector Spinae'],
-    scaling: 1.0 // Baseline scaling factor for level calculation
+    scaling: 1.0,
   },
-  push: {
+  [ProgressCategoryEnum.push]: {
     name: 'Push',
     description: 'Pushing movements involving chest, shoulders, and triceps',
     icon: 'arrow-up',
     color: 'bg-red-500',
     primaryMuscles: ['Pectoralis', 'Deltoids', 'Triceps'],
-    scaling: 1.0
+    scaling: 1.0,
   },
-  pull: {
+  [ProgressCategoryEnum.pull]: {
     name: 'Pull',
     description: 'Pulling movements involving back and biceps',
     icon: 'arrow-down',
     color: 'bg-green-500',
     primaryMuscles: ['Latissimus Dorsi', 'Rhomboids', 'Trapezius', 'Biceps'],
-    scaling: 1.0
+    scaling: 1.0,
   },
-  legs: {
+  [ProgressCategoryEnum.legs]: {
     name: 'Legs',
     description: 'Lower body exercises involving quadriceps, hamstrings, and calves',
     icon: 'activity',
     color: 'bg-purple-500',
     primaryMuscles: ['Quadriceps', 'Hamstrings', 'Gluteus', 'Calves'],
-    scaling: 1.1 // Slightly higher scaling to encourage leg training
-  }
+    scaling: 1.1,
+  },
 };
 
 // Milestone XP thresholds for categories
@@ -64,7 +76,7 @@ export const CATEGORY_MILESTONES = {
   INTERMEDIATE: 1500,
   ADVANCED: 3000,
   EXPERT: 6000,
-  MASTER: 10000
+  MASTER: 10000,
 };
 
 // Category ranks based on XP thresholds
@@ -74,7 +86,7 @@ export const CATEGORY_RANKS = [
   { name: 'Intermediate', threshold: CATEGORY_MILESTONES.INTERMEDIATE, icon: 'shield' },
   { name: 'Advanced', threshold: CATEGORY_MILESTONES.ADVANCED, icon: 'star' },
   { name: 'Expert', threshold: CATEGORY_MILESTONES.EXPERT, icon: 'crown' },
-  { name: 'Master', threshold: CATEGORY_MILESTONES.MASTER, icon: 'award-filled' }
+  { name: 'Master', threshold: CATEGORY_MILESTONES.MASTER, icon: 'award-filled' },
 ];
 
 /**
@@ -83,40 +95,37 @@ export const CATEGORY_RANKS = [
  * @returns The user's rank information
  */
 export function getCategoryRank(xp: number) {
-  // Start from the highest rank and work backwards
   for (let i = CATEGORY_RANKS.length - 1; i >= 0; i--) {
     if (xp >= CATEGORY_RANKS[i].threshold) {
       const currentRank = CATEGORY_RANKS[i];
       const nextRank = i < CATEGORY_RANKS.length - 1 ? CATEGORY_RANKS[i + 1] : null;
-      
-      // Calculate progress to next rank
+
       let progressPercent = 100;
       let xpToNextRank = 0;
-      
+
       if (nextRank) {
         const rangeSize = nextRank.threshold - currentRank.threshold;
         const progress = xp - currentRank.threshold;
         progressPercent = Math.min(100, Math.floor((progress / rangeSize) * 100));
         xpToNextRank = nextRank.threshold - xp;
       }
-      
+
       return {
         rank: currentRank.name,
         icon: currentRank.icon,
         nextRank: nextRank ? nextRank.name : null,
         progressPercent,
-        xpToNextRank
+        xpToNextRank,
       };
     }
   }
-  
-  // Fallback (should never happen as first rank has 0 threshold)
+
   return {
     rank: CATEGORY_RANKS[0].name,
     icon: CATEGORY_RANKS[0].icon,
     nextRank: CATEGORY_RANKS[1].name,
     progressPercent: 0,
-    xpToNextRank: CATEGORY_RANKS[1].threshold
+    xpToNextRank: CATEGORY_RANKS[1].threshold,
   };
 }
 
@@ -126,48 +135,38 @@ export function getCategoryRank(xp: number) {
  * @param userProgress The user's progress document
  * @returns Array of category achievements with unlock status
  */
-export function getCategoryAchievements(
-  category: ProgressCategory,
-  userProgress: IUserProgress | null
-) {
-  // Filter achievements specific to this category
-  const categoryAchievements = ACHIEVEMENTS.filter(achievement => {
-    // Check if this achievement is specific to the requested category
+export function getCategoryAchievements(category: ProgressCategory, userProgress: IUserProgress | null) {
+  const categoryAchievements = ACHIEVEMENTS.filter((achievement) => {
     if (achievement.requirements.categoryLevel) {
       return achievement.requirements.categoryLevel.category === category;
     }
     return false;
   });
-  
-  // If we don't have user progress, just return the achievements
+
   if (!userProgress) {
-    return categoryAchievements.map(achievement => ({
+    return categoryAchievements.map((achievement) => ({
       ...achievement,
       unlocked: false,
-      progress: 0
+      progress: 0,
     }));
   }
-  
-  // Get user's achievement IDs
-  const userAchievementIds = userProgress.achievements.map((id: { toString: () => any; }) => id.toString());
-  
-  // Annotate achievements with unlock status and progress
-  return categoryAchievements.map(achievement => {
-    // Check if unlocked
+
+  const userAchievementIds = userProgress.achievements.map((id) => id.toString());
+
+  return categoryAchievements.map((achievement) => {
     const unlocked = userAchievementIds.includes(achievement.id);
-    
-    // Calculate progress
+
     let progress = 0;
     if (achievement.requirements.categoryLevel) {
-      const { category, level } = achievement.requirements.categoryLevel;
-      const userCategoryLevel = userProgress.categoryProgress[category].level;
+      const { category: achievementCategory, level } = achievement.requirements.categoryLevel;
+      const userCategoryLevel = userProgress.categoryProgress[achievementCategory].level;
       progress = Math.min(100, Math.floor((userCategoryLevel / level) * 100));
     }
-    
+
     return {
       ...achievement,
       unlocked,
-      progress
+      progress,
     };
   });
 }
@@ -179,27 +178,22 @@ export function getCategoryAchievements(
  * @returns Category statistics
  */
 export function getCategoryStatistics(category: ProgressCategory, userProgress: IUserProgress) {
-  // Get basic category data
   const categoryXp = userProgress.categoryXp[category];
   const categoryLevel = userProgress.categoryProgress[category].level;
   const rank = getCategoryRank(categoryXp);
-  
-  // Calculate percentage of total XP
-  const percentOfTotal = userProgress.totalXp > 0 
-    ? Math.round((categoryXp / userProgress.totalXp) * 100) 
+
+  const percentOfTotal = userProgress.totalXp > 0
+    ? Math.round((categoryXp / userProgress.totalXp) * 100)
     : 0;
-  
-  // Calculate recent activity in this category
+
   const recentActivity = getRecentCategoryActivity(category, userProgress.xpHistory);
-  
-  // Get number of unlocked exercises
+
   const unlockedExercises = userProgress.categoryProgress[category].unlockedExercises.length;
-  
-  // Get category-specific achievements
+
   const achievements = getCategoryAchievements(category, userProgress);
-  const unlockedAchievements = achievements.filter(a => a.unlocked).length;
+  const unlockedAchievements = achievements.filter((a) => a.unlocked).length;
   const totalAchievements = achievements.length;
-  
+
   return {
     category,
     metadata: CATEGORY_METADATA[category],
@@ -216,8 +210,8 @@ export function getCategoryStatistics(category: ProgressCategory, userProgress: 
     achievements: {
       unlocked: unlockedAchievements,
       total: totalAchievements,
-      list: achievements
-    }
+      list: achievements,
+    },
   };
 }
 
@@ -228,32 +222,25 @@ export function getCategoryStatistics(category: ProgressCategory, userProgress: 
  * @param limit Maximum number of entries to return
  * @returns Recent activity in the specified category
  */
-export function getRecentCategoryActivity(
-  category: ProgressCategory, 
-  xpHistory: XpTransaction[],
-  limit: number = 5
-) {
+export function getRecentCategoryActivity(category: ProgressCategory, xpHistory: XpTransaction[], limit: number = 5) {
   if (!xpHistory || xpHistory.length === 0) {
     return [];
   }
-  
-  // Filter and sort transactions for this category
+
   const categoryTransactions = xpHistory
-    .filter(tx => tx.category === category)
+    .filter((tx) => tx.category === category)
     .sort((a, b) => {
-      // Sort by timestamp if available, otherwise by date
       if (a.timestamp && b.timestamp) {
         return b.timestamp - a.timestamp;
       }
       return new Date(b.date).getTime() - new Date(a.date).getTime();
     });
-  
-  // Take the most recent entries
-  return categoryTransactions.slice(0, limit).map(tx => ({
+
+  return categoryTransactions.slice(0, limit).map((tx) => ({
     date: tx.date,
     amount: tx.amount,
     source: tx.source,
-    description: tx.description || tx.source
+    description: tx.description || tx.source,
   }));
 }
 
@@ -263,12 +250,11 @@ export function getRecentCategoryActivity(
  * @returns Comparative statistics for categories
  */
 export function getCategoriesComparison(userProgress: HydratedDocument<IUserProgress>) {
-  // Prepare category data
-  const categoryData = VALID_CATEGORIES.map(category => {
+  const categoryData = VALID_CATEGORIES.map((category) => {
     const xp = userProgress.categoryXp[category];
     const level = userProgress.categoryProgress[category].level;
     const rank = getCategoryRank(xp);
-    
+
     return {
       category,
       name: CATEGORY_METADATA[category].name,
@@ -277,44 +263,34 @@ export function getCategoriesComparison(userProgress: HydratedDocument<IUserProg
       xp,
       level,
       rank: rank.rank,
-      percentOfTotal: userProgress.totalXp > 0 
-        ? Math.round((xp / userProgress.totalXp) * 100) 
-        : 0
+      percentOfTotal: userProgress.totalXp > 0
+        ? Math.round((xp / userProgress.totalXp) * 100)
+        : 0,
     };
   });
-  
-  // Sort by XP (highest to lowest)
+
   const sortedByXp = [...categoryData].sort((a, b) => b.xp - a.xp);
-  
-  // Identify strongest and weakest categories
+
   const strongest = sortedByXp[0];
-  // Ensure type safety for weakest category
-  const weakest = {
-    ...sortedByXp[sortedByXp.length - 1],
-    category: sortedByXp[sortedByXp.length - 1].category as ProgressCategory
-  };
-  
-  // Calculate balance score (0-100)
-  // Higher score means more balanced distribution of XP across categories
+  const weakest = sortedByXp[sortedByXp.length - 1];
+
   let balanceScore = 0;
   if (userProgress.totalXp > 0) {
-    // Ideal distribution would be 25% per category
     const idealPercent = 25;
-    const deviations = categoryData.map(cat => 
+    const deviations = categoryData.map((cat) =>
       Math.abs(cat.percentOfTotal - idealPercent)
     );
     const averageDeviation = deviations.reduce((sum, val) => sum + val, 0) / deviations.length;
-    
-    // Convert to a score where 0 deviation = 100 score, and max deviation (25) = 0 score
-    balanceScore = Math.max(0, Math.min(100, 100 - (averageDeviation * 4)));
+
+    balanceScore = Math.max(0, Math.min(100, 100 - averageDeviation * 4));
   }
-  
+
   return {
     categories: categoryData,
     strongest,
     weakest,
     balanceScore,
-    balanceMessage: getBalanceMessage(balanceScore)
+    balanceMessage: getBalanceMessage(balanceScore),
   };
 }
 
@@ -325,15 +301,15 @@ export function getCategoriesComparison(userProgress: HydratedDocument<IUserProg
  */
 function getBalanceMessage(balanceScore: number): string {
   if (balanceScore >= 90) {
-    return "Excellent balance across all fitness categories!";
+    return 'Excellent balance across all fitness categories!';
   } else if (balanceScore >= 70) {
-    return "Good overall balance. Keep it up!";
+    return 'Good overall balance. Keep it up!';
   } else if (balanceScore >= 50) {
-    return "Decent balance, but some categories need attention.";
+    return 'Decent balance, but some categories need attention.';
   } else if (balanceScore >= 30) {
-    return "Significant imbalance detected. Try to focus on weaker categories.";
+    return 'Significant imbalance detected. Try to focus on weaker categories.';
   } else {
-    return "Major imbalance across categories. Consider a more balanced approach.";
+    return 'Major imbalance across categories. Consider a more balanced approach.';
   }
 }
 
@@ -344,25 +320,18 @@ function getBalanceMessage(balanceScore: number): string {
  * @param newXp New XP value
  * @returns Milestone information if a milestone was reached, null otherwise
  */
-export function checkCategoryMilestone(
-  category: ProgressCategory,
-  previousXp: number,
-  newXp: number
-) {
-  // Check against each milestone
+export function checkCategoryMilestone(category: ProgressCategory, previousXp: number, newXp: number) {
   for (const [name, threshold] of Object.entries(CATEGORY_MILESTONES)) {
-    // If we crossed a milestone threshold
     if (previousXp < threshold && newXp >= threshold) {
       return {
         category,
         milestone: name,
         threshold,
         newXp,
-        message: `Reached ${name} milestone in ${CATEGORY_METADATA[category].name} category!`
+        message: `Reached ${name} milestone in ${CATEGORY_METADATA[category].name} category!`,
       };
     }
   }
-  
-  // No milestone reached
+
   return null;
 }
