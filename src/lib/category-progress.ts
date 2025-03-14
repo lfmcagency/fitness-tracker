@@ -16,7 +16,7 @@ export enum ProgressCategoryEnum {
 export type ProgressCategory = keyof typeof ProgressCategoryEnum;
 
 // Array of valid categories for runtime checks
-const VALID_CATEGORIES = Object.values(ProgressCategoryEnum) as ProgressCategory[];
+export const VALID_CATEGORIES = Object.values(ProgressCategoryEnum) as ProgressCategory[];
 
 /**
  * Type guard to check if a string is a valid category

@@ -1,6 +1,6 @@
 import { Types, Document, HydratedDocument } from 'mongoose';
 import Achievement from '@/models/Achievement';
-import { IUserProgress } from '@/models/UserProgress';
+import { IUserProgress } from '@/types/models/progress';
 
 /**
  * Achievement requirement types
