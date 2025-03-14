@@ -1,6 +1,8 @@
 import { create } from 'zustand';
-import type { EnhancedTask, ApiResponse, RecurrencePattern, TaskPriority, TaskWithHistory } from '@/types';
+import type { EnhancedTask, RecurrencePattern, TaskPriority, TaskWithHistory } from '@/types';
 import { TaskStatistics } from '@/lib/task-statistics';
+import { TaskListResponse, TaskResponse, TaskStatisticsResponse } from '@/types/api/taskResponses';
+import { ApiSuccessResponse, ApiErrorResponse } from '@/types/api/common';
 
 // Task filter parameters interface
 export interface TaskFilter {
@@ -117,30 +119,26 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         throw new Error(`Failed to fetch tasks: ${response.status} ${response.statusText}`);
       }
       
-      const data = await response.json() as ApiResponse<EnhancedTask[]>;
+      const data = await response.json() as TaskListResponse;
       
-      if (data.success && data.data) {
-        // Extract pagination information if available
-        const pagination = data.pagination || {
-          total: data.data.length,
-          page: 1,
-          limit: data.data.length,
-          pages: 1
-        };
+      if (data.success) {
+        // Extract tasks and pagination information
+        const tasks = data.data.data;
+        const pagination = data.data.pagination;
         
         set({ 
-          tasks: data.data,
-          filteredTasks: data.data,
-          completedTasks: data.data.filter((task: EnhancedTask) => task.completed).length,
+          tasks: tasks,
+          filteredTasks: tasks,
+          completedTasks: tasks.filter((task: EnhancedTask) => task.completed).length,
           currentPage: pagination.page,
           totalPages: pagination.pages,
           totalTasks: pagination.total,
           isLoading: false
         });
-        
-        return;
       } else {
-        throw new Error(data.message || 'Failed to fetch tasks');
+        // Handle API error
+        const errorData = data as ApiErrorResponse;
+        throw new Error(errorData.error.message || 'Failed to fetch tasks');
       }
     } catch (error) {
       console.error('Error fetching tasks:', error);
@@ -169,17 +167,19 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         throw new Error(`Failed to fetch task: ${response.status} ${response.statusText}`);
       }
       
-      const data = await response.json() as ApiResponse<EnhancedTask>;
+      const data = await response.json() as TaskResponse;
       
-      if (data.success && data.data) {
+      if (data.success) {
         // Add to local state
         set((state) => ({
-          tasks: [...state.tasks.filter(t => getTaskId(t.id!) !== id), data.data!]
+          tasks: [...state.tasks.filter(t => getTaskId(t.id!) !== id), data.data]
         }));
         
         return data.data;
       } else {
-        throw new Error(data.message || 'Failed to fetch task');
+        // Handle API error
+        const errorData = data as ApiErrorResponse;
+        throw new Error(errorData.error.message || `Failed to fetch task ${id}`);
       }
     } catch (error) {
       console.error(`Error fetching task ${id}:`, error);
@@ -230,18 +230,20 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         throw new Error(`Failed to add task: ${response.status} ${response.statusText}`);
       }
       
-      const data = await response.json() as ApiResponse<EnhancedTask>;
+      const data = await response.json() as TaskResponse;
       
-      if (data.success && data.data) {
+      if (data.success) {
         // Replace temp task with real one from server
         set((state) => ({
-          tasks: state.tasks.map(t => getTaskId(t.id!) === tempId ? data.data! : t),
-          filteredTasks: state.filteredTasks.map(t => getTaskId(t.id!) === tempId ? data.data! : t)
+          tasks: state.tasks.map(t => getTaskId(t.id!) === tempId ? data.data : t),
+          filteredTasks: state.filteredTasks.map(t => getTaskId(t.id!) === tempId ? data.data : t)
         }));
         
         return data.data;
       } else {
-        throw new Error(data.message || 'Failed to add task');
+        // Handle API error
+        const errorData = data as ApiErrorResponse;
+        throw new Error(errorData.error.message || 'Failed to add task');
       }
     } catch (error) {
       console.error('Error adding task:', error);
@@ -285,14 +287,16 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         throw new Error(`Failed to update task: ${response.status} ${response.statusText}`);
       }
       
-      const data = await response.json() as ApiResponse<EnhancedTask>;
+      const data = await response.json() as TaskResponse;
       
-      if (data.success && data.data) {
+      if (data.success) {
         // Update with server data to ensure consistency
         get().updateLocalTask(id, data.data);
         return data.data;
       } else {
-        throw new Error(data.message || 'Failed to update task');
+        // Handle API error
+        const errorData = data as ApiErrorResponse;
+        throw new Error(errorData.error.message || 'Failed to update task');
       }
     } catch (error) {
       console.error(`Error updating task ${id}:`, error);
@@ -344,14 +348,16 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         throw new Error(`Failed to complete task: ${response.status} ${response.statusText}`);
       }
       
-      const data = await response.json() as ApiResponse<EnhancedTask>;
+      const data = await response.json() as TaskResponse;
       
-      if (data.success && data.data) {
+      if (data.success) {
         // Update with server data to ensure streak is calculated correctly
         get().updateLocalTask(id, data.data);
         return data.data;
       } else {
-        throw new Error(data.message || 'Failed to complete task');
+        // Handle API error
+        const errorData = data as ApiErrorResponse;
+        throw new Error(errorData.error.message || 'Failed to complete task');
       }
     } catch (error) {
       console.error(`Error completing task ${id}:`, error);
@@ -400,12 +406,14 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         throw new Error(`Failed to delete task: ${response.status} ${response.statusText}`);
       }
       
-      const data = await response.json() as ApiResponse<{ id: string }>;
+      const data = await response.json();
       
       if (data.success) {
         return true;
       } else {
-        throw new Error(data.message || 'Failed to delete task');
+        // Handle API error
+        const errorData = data as ApiErrorResponse;
+        throw new Error(errorData.error.message || 'Failed to delete task');
       }
     } catch (error) {
       console.error(`Error deleting task ${id}:`, error);
@@ -438,9 +446,9 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         throw new Error(`Failed to fetch statistics: ${response.status} ${response.statusText}`);
       }
       
-      const data = await response.json() as ApiResponse<TaskStatistics>;
+      const data = await response.json() as TaskStatisticsResponse;
       
-      if (data.success && data.data) {
+      if (data.success) {
         set({ 
           statistics: data.data,
           isLoadingStats: false
@@ -448,7 +456,9 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         
         return data.data;
       } else {
-        throw new Error(data.message || 'Failed to fetch statistics');
+        // Handle API error
+        const errorData = data as ApiErrorResponse;
+        throw new Error(errorData.error.message || 'Failed to fetch statistics');
       }
     } catch (error) {
       console.error('Error fetching statistics:', error);
