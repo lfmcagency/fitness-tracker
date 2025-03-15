@@ -8,4 +8,13 @@
       "test:api:nutrition": "node tests/api/test-nutrition.js",
       "test:api:integration": "node tests/api/test-integration.js"
     }
+  ,
+  "dependencies": {
+    "colors": "^1.4.0",
+    "dotenv": "^16.3.1",
+    "node-fetch": "^2.7.0"
+  },
+  "engines": {
+    "node": ">=14.0.0"
   }
+}
