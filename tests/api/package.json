@@ -1,0 +1,11 @@
+{
+    "scripts": {
+      "test:api:all": "node tests/api/run-tests.js",
+      "test:api:auth": "node tests/api/test-auth.js",
+      "test:api:tasks": "node tests/api/test-tasks.js",
+      "test:api:progress": "node tests/api/test-progress.js",
+      "test:api:exercises": "node tests/api/test-exercises.js",
+      "test:api:nutrition": "node tests/api/test-nutrition.js",
+      "test:api:integration": "node tests/api/test-integration.js"
+    }
+  }
