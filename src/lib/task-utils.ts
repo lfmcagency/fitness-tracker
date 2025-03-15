@@ -1,5 +1,3 @@
-// File: src/lib/task-utils.ts
-
 import { Types } from 'mongoose';
 import { ITask } from '@/types/models/tasks';
 import { awardTaskCompletionXp } from '@/lib/xp-manager-improved';

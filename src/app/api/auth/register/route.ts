@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest } from "next/server";
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { dbConnect } from '@/lib/db';
-import { registerUser } from "@/lib/auth";
+import { registerUser } from "@/lib/auth/index";
 import { RegisterRequest, UserProfile } from "@/types/api/authResponses";
 import { ErrorCode } from '@/types/validation';
 

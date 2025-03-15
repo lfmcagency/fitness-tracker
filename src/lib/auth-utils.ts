@@ -1,7 +1,6 @@
 // src/lib/auth-utils.ts
 import { NextRequest, NextResponse } from "next/server";
-import { getAuth } from "./auth";
-import { getUserById } from "./auth/index";
+import { getUserById, getAuth } from "./auth/index";
 import { apiError } from "./api-utils";
 import { dbConnect } from '@/lib/db';
 import UserProgress from "../models/UserProgress";
