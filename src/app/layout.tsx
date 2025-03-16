@@ -6,9 +6,12 @@ import { SessionProvider } from '@/components/SessionProvider'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata = {
-  title: 'Fitness Tracker',
-  description: 'Track your fitness journey',
+  title: 'Kalos - Fitness Tracker',
+  description: 'Track your fitness journey with a holistic approach',
 }
+
+// Explicitly mark as dynamic to avoid build-time auth issues
+export const dynamic = 'force-dynamic'
 
 export default function RootLayout({
   children,
@@ -25,7 +28,7 @@ export default function RootLayout({
                 <div className="flex justify-between h-16">
                   <div className="flex">
                     <div className="flex-shrink-0 flex items-center">
-                      <span className="text-xl font-bold">FitnessTracker</span>
+                      <span className="text-xl font-bold">Kalos</span>
                     </div>
                     <Navigation />
                   </div>
