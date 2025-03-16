@@ -163,10 +163,11 @@ export const GET = withAuth<{ data: EnhancedTask[]; pagination: PaginationInfo }
             date: task.date?.toISOString() || new Date().toISOString(),
             recurrencePattern: task.recurrencePattern || 'daily',
             currentStreak: task.currentStreak || 0,
-            bestStreak: task.bestStreak || 0, 
+            bestStreak: task.bestStreak || 0,
             category: task.category || 'general',
             priority: task.priority || 'medium',
-            scheduledTime: task.scheduledTime || '00:00'
+            scheduledTime: task.scheduledTime || '00:00',
+            description: undefined
           });
         }
       }

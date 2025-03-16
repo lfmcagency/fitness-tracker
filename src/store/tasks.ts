@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { EnhancedTask as Task } from '@/types';
 import type { EnhancedTask, RecurrencePattern, TaskPriority, TaskWithHistory } from '@/types';
 import { TaskStatistics } from '@/lib/task-statistics';
 import { TaskListResponse, TaskResponse, TaskStatisticsResponse } from '@/types/api/taskResponses';
@@ -28,6 +29,8 @@ export interface CreateTaskParams {
   category?: string;
   priority?: TaskPriority;
   date?: string;
+  description?: string;
+  timeBlock?: string;
 }
 
 interface TaskState {
@@ -550,3 +553,4 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     get().fetchTasks();
   }
 }));
+export type { Task };

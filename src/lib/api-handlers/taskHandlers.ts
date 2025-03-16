@@ -27,7 +27,7 @@ export async function createTask(taskData: Omit<Task, 'id' | 'currentStreak' | '
       name: taskData.name,
       description: taskData.description || '',
       scheduledTime: taskData.scheduledTime,
-      date: format(new Date(taskData.date), 'yyyy-MM-dd'),
+      date: format(new Date(taskData.date || new Date()), 'yyyy-MM-dd'),
       recurrencePattern: taskData.recurrencePattern,
       category: taskData.category,
       priority: taskData.priority,
