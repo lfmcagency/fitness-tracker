@@ -23,6 +23,7 @@ export type Endpoint = {
   responseTime: number
   lastChecked: string
   routes: Route[]
+  domain: string
 }
 
 export default function DatabaseManagement() {
@@ -34,6 +35,35 @@ export default function DatabaseManagement() {
   const [availableFiles, setAvailableFiles] = useState<{name: string; path: string; size: number; type: string}[]>([])
   const [availableModels, setAvailableModels] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
+
+  // Domain mapping for API endpoints
+  const domainMapping: Record<string, string> = {
+    // Database & System Management
+    'admin': 'Database & System Management',
+    'debug': 'Database & System Management',
+    'health': 'Database & System Management',
+    'test': 'Database & System Management',
+    'test-db': 'Database & System Management',
+    
+    // Authentication & User Management
+    'auth': 'Authentication & User Management',
+    'user': 'Authentication & User Management',
+    
+    // Task Management
+    'tasks': 'Task Management',
+    
+    // Exercise & Training System
+    'exercises': 'Exercise & Training System',
+    'workouts': 'Exercise & Training System',
+    
+    // Nutrition System
+    'foods': 'Nutrition System',
+    'meals': 'Nutrition System',
+    
+    // Progress & Achievements
+    'progress': 'Progress & Achievements',
+    'achievements': 'Progress & Achievements'
+  }
 
   // Fetch health data on load and when refreshing
   useEffect(() => {
@@ -83,6 +113,7 @@ export default function DatabaseManagement() {
           status,
           responseTime: name === 'health' ? (healthData.data.responseTime || 0) : 0,
           lastChecked: new Date().toLocaleTimeString(),
+          domain: domainMapping[name] || 'Other',
           routes: name === 'health' ? [
             { path: "/api/health", method: "GET", status, responseTime: healthData.data.responseTime || 0 }
           ] : name === 'debug' ? [
