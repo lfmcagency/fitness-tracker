@@ -12,22 +12,23 @@ import { EnhancedTask, RecurrencePattern, TaskPriority } from '@/types';
  */
 export function convertTaskToEnhancedTask(task: any): EnhancedTask {
   return {
-    id: task._id.toString(),
-    name: task.name,
-    scheduledTime: task.scheduledTime,
-    completed: task.completed,
-    date: task.date ? new Date(task.date).toISOString() : undefined,
-    recurrencePattern: task.recurrencePattern as RecurrencePattern,
-    customRecurrenceDays: task.customRecurrenceDays,
-    currentStreak: task.currentStreak || 0,
-    bestStreak: task.bestStreak || 0,
-    lastCompletedDate: task.lastCompletedDate ? new Date(task.lastCompletedDate).toISOString() : null,
-    category: task.category || 'general',
-    priority: task.priority as TaskPriority || 'medium',
-    user: task.user ? task.user.toString() : undefined,
-    createdAt: task.createdAt ? new Date(task.createdAt).toISOString() : undefined,
-    updatedAt: task.updatedAt ? new Date(task.updatedAt).toISOString() : undefined
-  };
+  id: task._id.toString(),
+  name: task.name,
+  scheduledTime: task.scheduledTime,
+  completed: task.completed,
+  date: task.date ? new Date(task.date).toISOString() : undefined,
+  recurrencePattern: task.recurrencePattern as RecurrencePattern,
+  customRecurrenceDays: task.customRecurrenceDays,
+  currentStreak: task.currentStreak || 0,
+  bestStreak: task.bestStreak || 0,
+  lastCompletedDate: task.lastCompletedDate ? new Date(task.lastCompletedDate).toISOString() : null,
+  category: task.category || 'general',
+  priority: task.priority as TaskPriority || 'medium',
+  user: task.user ? task.user.toString() : undefined,
+  createdAt: task.createdAt ? new Date(task.createdAt).toISOString() : undefined,
+  updatedAt: task.updatedAt ? new Date(task.updatedAt).toISOString() : undefined,
+  description: undefined
+};
 }
 
 /**
