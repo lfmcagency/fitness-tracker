@@ -30,8 +30,24 @@ export default function DailyRoutineManager() {
     ? Math.round((completedTasks / totalTasks) * 100) 
     : 0
 
+  // Check authentication on component mount
   useEffect(() => {
-    // Convert date to YYYY-MM-DD format for the API
+    const checkAuth = async () => {
+      try {
+        const response = await fetch('/api/user/profile');
+        if (!response.ok) {
+          console.error('Authentication issue:', await response.text());
+        }
+      } catch (error) {
+        console.error('Auth check failed:', error);
+      }
+    };
+    
+    checkAuth();
+  }, []);
+
+  // Fetch tasks when date changes
+  useEffect(() => {
     const dateString = format(date, 'yyyy-MM-dd')
     fetchTasks({ date: dateString })
   }, [date, fetchTasks])
@@ -49,12 +65,10 @@ export default function DailyRoutineManager() {
   }
 
   const toggleFilter = (filterId: string) => {
-    // Update filter state
-    if (activeFilters.includes(filterId)) {
-      setActiveFilters(activeFilters.filter(id => id !== filterId))
-    } else {
-      setActiveFilters([...activeFilters, filterId])
-    }
+    setActiveFilters(activeFilters.includes(filterId)
+      ? activeFilters.filter(id => id !== filterId)
+      : [...activeFilters, filterId]
+    )
   }
 
   return (

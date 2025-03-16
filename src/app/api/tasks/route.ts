@@ -21,8 +21,12 @@ const DEFAULT_LIMIT = 20;
 export const GET = withAuth<{ data: EnhancedTask[]; pagination: PaginationInfo }>(
   async (req: NextRequest, userId: string) => {
     try {
+      console.log('GET /api/tasks - User ID:', userId);
+      console.log('Request URL:', req.url);
+
       await dbConnect();
-      
+      console.log('Database connected successfully');
+
       // Get query parameters for filtering with defensive checks
       const url = new URL(req.url);
       const completedParam = url.searchParams.get('completed');
@@ -185,6 +189,7 @@ export const GET = withAuth<{ data: EnhancedTask[]; pagination: PaginationInfo }
         }
       });
     } catch (error) {
+      console.error('GET /api/tasks - Error:', error);
       return handleApiError(error, 'Error fetching tasks');
     }
   },
