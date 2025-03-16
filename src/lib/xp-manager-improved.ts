@@ -70,9 +70,13 @@ export async function awardXp(
   let previousCategoryLevel: number | undefined;
   let previousCategoryXp: number | undefined;
 
-  if (category) {
+  if (category && userProgress.categoryProgress && userProgress.categoryProgress[category]) {
     previousCategoryLevel = userProgress.categoryProgress[category].level;
-    previousCategoryXp = userProgress.categoryXp[category];
+    previousCategoryXp = userProgress.categoryXp[category] || 0;
+  } else {
+    // Set defaults if category progress doesn't exist
+    previousCategoryLevel = 1;
+    previousCategoryXp = 0;
   }
 
   const leveledUp = await userProgress.addXp(amount, source, category, details || '');

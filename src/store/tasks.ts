@@ -115,6 +115,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       // Build query string from current filters
       const queryString = buildQueryString(get().currentFilter);
       
+      console.log("Fetching tasks with URL:", `/api/tasks${queryString}`);
+
       // Fetch tasks from API
       const response = await fetch(`/api/tasks${queryString}`);
       
@@ -144,6 +146,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         throw new Error(errorData.error.message || 'Failed to fetch tasks');
       }
     } catch (error) {
+      const queryString = buildQueryString(get().currentFilter);
+      console.log("Fetching tasks with URL:", `/api/tasks${queryString}`);
       console.error('Error fetching tasks:', error);
       set({ 
         error: error instanceof Error ? error.message : 'Failed to fetch tasks', 
