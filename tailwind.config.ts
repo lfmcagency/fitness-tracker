@@ -7,14 +7,13 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        border: "hsl(214.3 31.8% 91.4%)",
-        input: "hsl(214.3 31.8% 91.4%)",
-        ring: "hsl(215 20.2% 65.1%)",
-        background: "hsl(0 0% 100%)",
-        foreground: "hsl(222.2 47.4% 11.2%)",
-        primary: {
-          DEFAULT: "hsl(222.2 47.4% 11.2%)",
-          foreground: "hsl(210 40% 98%)",
+        kalos: {
+          background: "#F7F3F0",
+          text: "#1A1A1A",
+          secondary: "#6B6B6B",
+          high: "#B85C38",
+          medium: "#A4907C",
+          low: "#7D8F69",
         },
         secondary: {
           DEFAULT: "hsl(210 40% 96.1%)",

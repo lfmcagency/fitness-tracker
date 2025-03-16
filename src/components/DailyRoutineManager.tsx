@@ -1,99 +1,122 @@
-'use client'
-import React, { useState, useEffect } from 'react';
-import { CheckCircle2, Circle, Info, ChevronRight, Timer, Zap } from 'lucide-react';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { useTaskStore } from '@/store/tasks';
+// src/components/DailyRoutineManager.tsx
+"use client"
 
-const DailyRoutineManager: React.FC = () => {
-  const { tasks, completeTask, fetchTasks } = useTaskStore();
+import { useState, useEffect } from 'react'
+import { format } from 'date-fns'
+import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
+import TaskList from './routine/TaskList'
+import CreateTaskModal from './routine/CreateTaskModal' 
+import TaskFilters from './routine/TaskFilters'
+import DateSelector from './routine/DateSelector'
+import ProgressIndicator from './routine/ProgressIndicator'
+import { useTaskStore } from '@/store/tasks'
 
-  // Function to toggle task completion
-  const toggleTask = (taskId: string | number) => {
-    const task = tasks.find(t => t.id === taskId);
-    if (task) {
-      completeTask(taskId, new Date().toISOString());
-    }
-  };
+export default function DailyRoutineManager() {
+  const [date, setDate] = useState<Date>(new Date())
+  const [createTaskOpen, setCreateTaskOpen] = useState(false)
+  const [activeFilters, setActiveFilters] = useState<string[]>([])
+  
+  const { 
+    tasks, 
+    fetchTasks, 
+    isLoading, 
+    error, 
+    completedTasks, 
+    totalTasks
+  } = useTaskStore()
+
+  // Calculate completion percentage
+  const completionPercentage = totalTasks > 0 
+    ? Math.round((completedTasks / totalTasks) * 100) 
+    : 0
 
   useEffect(() => {
-    fetchTasks();
-  }, [fetchTasks]);
+    // Convert date to YYYY-MM-DD format for the API
+    const dateString = format(date, 'yyyy-MM-dd')
+    fetchTasks({ date: dateString })
+  }, [date, fetchTasks])
 
-  const completedTasks = tasks.filter(task => task.completed).length;
-  const totalTasks = tasks.length;
-  const completionRate = (completedTasks / totalTasks) * 100;
+  const handlePreviousDay = () => {
+    const prevDay = new Date(date)
+    prevDay.setDate(prevDay.getDate() - 1)
+    setDate(prevDay)
+  }
+
+  const handleNextDay = () => {
+    const nextDay = new Date(date)
+    nextDay.setDate(nextDay.getDate() + 1)
+    setDate(nextDay)
+  }
+
+  const toggleFilter = (filterId: string) => {
+    // Update filter state
+    if (activeFilters.includes(filterId)) {
+      setActiveFilters(activeFilters.filter(id => id !== filterId))
+    } else {
+      setActiveFilters([...activeFilters, filterId])
+    }
+  }
 
   return (
-    <div className="max-w-2xl mx-auto p-6 space-y-6">
-      {/* Header Section */}
-      <div className="space-y-2">
-        <h1 className="text-2xl font-bold">Daily Routine Manager</h1>
-        <p className="text-gray-600">Monday, February 17</p>
-      </div>
-
-      {/* Progress Overview */}
-      <Alert className="bg-blue-50 border-blue-200">
-        <Zap className="h-4 w-4" />
-        <AlertTitle>Today's Progress</AlertTitle>
-        <AlertDescription>
-          <div className="mt-2 space-y-2">
-            <div className="flex justify-between items-center">
-              <span>Completion Rate</span>
-              <span className="font-medium">{completionRate.toFixed(0)}%</span>
-            </div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <div 
-                className="bg-blue-600 rounded-full h-2 transition-all duration-300"
-                style={{ width: `${completionRate}%` }}
-              />
-            </div>
-          </div>
-        </AlertDescription>
-      </Alert>
-
-      {/* Tasks List */}
-      <div className="space-y-3">
-        {tasks.map(task => (
-          <div 
-            key={task.id || task._id || ''}
-            className="flex items-center justify-between p-4 bg-white rounded-lg border border-gray-200 hover:border-blue-200 transition-colors cursor-pointer"
-            onClick={() => task.id && toggleTask(task.id)}
+    <div className="flex flex-col min-h-screen bg-kalos-background text-kalos-text max-w-md mx-auto">
+      {/* Header */}
+      <header className="px-6 pt-12 pb-4">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-2xl font-light tracking-wide">Kalos</h1>
+          <button
+            className="w-10 h-10 rounded-full bg-kalos-text text-white flex items-center justify-center"
+            onClick={() => setCreateTaskOpen(true)}
           >
-            <div className="flex items-center space-x-4">
-              {task.completed ? 
-                <CheckCircle2 className="h-6 w-6 text-green-500" /> :
-                <Circle className="h-6 w-6 text-gray-400" />
-              }
-              <div>
-                <h3 className="font-medium">{task.name}</h3>
-                <div className="flex items-center space-x-2 text-sm text-gray-500">
-                  <Timer className="h-4 w-4" />
-                  <span>{task.scheduledTime}</span>
-                </div>
-              </div>
-            </div>
-            
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-1">
-                <Zap className="h-4 w-4 text-yellow-500" />
-                <span className="text-sm font-medium">{task.currentStreak || 0} days</span>
-              </div>
-              <ChevronRight className="h-5 w-5 text-gray-400" />
-            </div>
+            <Plus className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="flex items-center justify-between mb-6">
+          <button className="p-2" onClick={handlePreviousDay}>
+            <ChevronLeft className="w-5 h-5 text-kalos-secondary" />
+          </button>
+          <DateSelector date={date} onDateChange={setDate} />
+          <button className="p-2" onClick={handleNextDay}>
+            <ChevronRight className="w-5 h-5 text-kalos-secondary" />
+          </button>
+        </div>
+
+        <ProgressIndicator percentage={completionPercentage} />
+      </header>
+
+      {/* Main content */}
+      <main className="flex-1 px-6 pb-20">
+        <div className="flex justify-between items-center mb-8">
+          <h2 className="text-xl font-medium">Tasks</h2>
+          <TaskFilters 
+            activeFilters={activeFilters} 
+            toggleFilter={toggleFilter} 
+          />
+        </div>
+
+        {isLoading ? (
+          <div className="text-center py-8">
+            <p className="text-kalos-secondary">Loading tasks...</p>
           </div>
-        ))}
-      </div>
+        ) : error ? (
+          <div className="text-center py-8">
+            <p className="text-kalos-high">Error: {error}</p>
+          </div>
+        ) : (
+          <TaskList 
+            tasks={tasks} 
+            activeFilters={activeFilters} 
+            date={date}
+          />
+        )}
+      </main>
 
-      {/* Info Card */}
-      <Alert className="bg-gray-50">
-        <Info className="h-4 w-4" />
-        <AlertTitle>Tip</AlertTitle>
-        <AlertDescription>
-          Complete all tasks to maintain your streak. Your longest streak is 15 days!
-        </AlertDescription>
-      </Alert>
+      {/* Create Task Dialog */}
+      <CreateTaskModal 
+        open={createTaskOpen} 
+        onOpenChange={setCreateTaskOpen}
+        date={date}
+      />
     </div>
-  );
-};
-
-export default DailyRoutineManager;
+  )
+}

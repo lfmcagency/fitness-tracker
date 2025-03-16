@@ -25,6 +25,7 @@
         "bcryptjs": "^2.4.3",
         "class-variance-authority": "^0.7.0",
         "clsx": "^2.0.0",
+        "date-fns": "^4.1.0",
         "lucide-react": "^0.288.0",
         "mongodb": "^5.9.0",
         "mongoose": "^7.6.3",

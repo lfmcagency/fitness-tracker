@@ -208,7 +208,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       category: taskData.category || 'general',
       priority: taskData.priority || 'medium',
       date: taskData.date || new Date().toISOString(),
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      description: undefined
     };
     
     // Optimistic update

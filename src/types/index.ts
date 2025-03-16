@@ -69,6 +69,7 @@ export interface Task {
 
 // Enhanced Task interfaces
 export interface EnhancedTask {
+  description: any;
   id?: string | number;
   _id?: string;
   name: string;
