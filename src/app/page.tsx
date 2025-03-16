@@ -19,11 +19,10 @@ export default function Home() {
       <div className="flex-1 flex flex-col items-center justify-center px-6 py-12">
         <div className="w-full max-w-md text-center">
           <h1 className="text-4xl font-light tracking-wide text-[#1A1A1A] mb-3">
-            <span className="block">Welcome to</span>
             <span className="block font-medium">Kalos</span>
           </h1>
           <p className="mt-3 text-lg text-[#6B6B6B] mb-8">
-            Track your fitness journey with a holistic approach to training, nutrition, and daily routines.
+            sculpt your future
           </p>
           <div className="flex flex-col space-y-3">
             <Link
