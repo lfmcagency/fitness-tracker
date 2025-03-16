@@ -15,33 +15,29 @@ export default function Home() {
   }
 
   return (
-    <div className="py-12">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="lg:text-center">
-          <h1 className="text-4xl font-extrabold tracking-tight text-gray-900 sm:text-5xl md:text-6xl">
+    <div className="min-h-screen bg-[#F7F3F0] flex flex-col">
+      <div className="flex-1 flex flex-col items-center justify-center px-6 py-12">
+        <div className="w-full max-w-md text-center">
+          <h1 className="text-4xl font-light tracking-wide text-[#1A1A1A] mb-3">
             <span className="block">Welcome to</span>
-            <span className="block text-blue-600">Kalos Fitness</span>
+            <span className="block font-medium">Kalos</span>
           </h1>
-          <p className="mt-3 max-w-md mx-auto text-lg text-gray-500 sm:text-xl md:mt-5 md:max-w-3xl">
+          <p className="mt-3 text-lg text-[#6B6B6B] mb-8">
             Track your fitness journey with a holistic approach to training, nutrition, and daily routines.
           </p>
-          <div className="mt-10 flex justify-center">
-            <div className="rounded-md shadow">
-              <Link
-                href="/auth/signin"
-                className="w-full flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 md:py-4 md:text-lg md:px-10"
-              >
-                Sign In
-              </Link>
-            </div>
-            <div className="ml-3">
-              <Link
-                href="/auth/signup"
-                className="w-full flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 md:py-4 md:text-lg md:px-10"
-              >
-                Sign Up
-              </Link>
-            </div>
+          <div className="flex flex-col space-y-3">
+            <Link
+              href="/auth/signin"
+              className="w-full py-3 bg-[#1A1A1A] text-white rounded-md font-medium transition-colors hover:bg-[#333333]"
+            >
+              Sign In
+            </Link>
+            <Link
+              href="/auth/signup"
+              className="w-full py-3 border border-[#1A1A1A] text-[#1A1A1A] rounded-md font-medium transition-colors hover:bg-[#E5E0DC]"
+            >
+              Sign Up
+            </Link>
           </div>
         </div>
       </div>

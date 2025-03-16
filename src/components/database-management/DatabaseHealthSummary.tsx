@@ -31,8 +31,12 @@ export function DatabaseHealthSummary({
           className="w-10 h-10 rounded-full bg-[#1A1A1A] text-white flex items-center justify-center"
           onClick={onRefresh}
           disabled={refreshing}
+          title="Check all endpoints"
         >
           <RefreshCw className={cn("w-5 h-5", refreshing && "animate-spin")} />
+          {refreshing && (
+            <span className="sr-only">Checking all endpoints...</span>
+          )}
         </button>
       </div>
 
