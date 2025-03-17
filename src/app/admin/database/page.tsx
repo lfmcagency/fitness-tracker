@@ -1,4 +1,4 @@
-import { DatabaseManagement } from '@/components/database-management'
+import { DatabaseManagement } from '@/components/db-management'
 
 export default function DatabaseAdminPage() {
   return <DatabaseManagement />
