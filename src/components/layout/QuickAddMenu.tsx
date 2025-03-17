@@ -4,6 +4,7 @@
 import { X, Dumbbell, Apple, ClipboardCheck, BarChart3, BookOpen, User } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { AnimatePresence, motion } from "framer-motion"
+import { useAuth } from '@/hooks/useAuth'
 
 interface QuickAddMenuProps {
   isOpen: boolean
@@ -20,8 +21,15 @@ interface QuickOption {
 
 export default function QuickAddMenu({ isOpen, onClose }: QuickAddMenuProps) {
   const router = useRouter()
+  const { isAuthenticated } = useAuth()
   
   const handleOption = (path: string) => {
+    if (!isAuthenticated) {
+      router.push('/auth/signin')
+      onClose()
+      return
+    }
+    
     router.push(path)
     onClose()
   }

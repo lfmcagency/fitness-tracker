@@ -3,6 +3,7 @@
 
 import Link from "next/link"
 import { User } from "lucide-react"
+import { useAuth } from '@/hooks/useAuth'
 
 interface HeaderProps {
   showBackButton?: boolean
@@ -10,6 +11,8 @@ interface HeaderProps {
 }
 
 export default function Header({ showBackButton, onBackClick }: HeaderProps) {
+  const { isAuthenticated } = useAuth()
+  
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-[#F7F3F0] border-b border-[#E5E0DC]">
       <div className="px-6 py-4 flex items-center justify-between">
@@ -32,11 +35,20 @@ export default function Header({ showBackButton, onBackClick }: HeaderProps) {
         </div>
         
         {/* Right - Profile icon */}
-        <Link href="/profile" className="w-10 flex justify-end">
-          <div className="w-8 h-8 rounded-full bg-[#1A1A1A] flex items-center justify-center">
-            <User className="w-4 h-4 text-white" />
-          </div>
-        </Link>
+        {isAuthenticated && (
+          <Link href="/profile" className="w-10 flex justify-end">
+            <div className="w-8 h-8 rounded-full bg-[#1A1A1A] flex items-center justify-center">
+              <User className="w-4 h-4 text-white" />
+            </div>
+          </Link>
+        )}
+        {!isAuthenticated && (
+          <Link href="/auth/signin" className="w-10 flex justify-end">
+            <div className="w-8 h-8 rounded-full bg-[#1A1A1A] flex items-center justify-center">
+              <User className="w-4 h-4 text-white" />
+            </div>
+          </Link>
+        )}
       </div>
     </header>
   )

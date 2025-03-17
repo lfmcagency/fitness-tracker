@@ -1,9 +1,9 @@
-// src/components/layout/BottomNavigation.tsx
 "use client"
 
 import { usePathname } from "next/navigation"
 import Link from "next/link"
 import { BarChart3, Apple, Plus, ClipboardCheck, Dumbbell } from "lucide-react"
+import { useAuth } from '@/hooks/useAuth'
 
 interface BottomNavigationProps {
   onQuickAddClick: () => void
@@ -11,6 +11,7 @@ interface BottomNavigationProps {
 
 export default function BottomNavigation({ onQuickAddClick }: BottomNavigationProps) {
   const pathname = usePathname()
+  const { isAuthenticated } = useAuth()
   
   const isActive = (path: string) => {
     return pathname === path || pathname?.startsWith(path + '/');

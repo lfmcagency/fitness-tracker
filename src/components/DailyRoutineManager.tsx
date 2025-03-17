@@ -1,4 +1,3 @@
-// src/components/DailyRoutineManager.tsx
 "use client"
 
 import { useState, useEffect } from 'react'
@@ -10,8 +9,10 @@ import TaskFilters from './routine/TaskFilters'
 import DateSelector from './routine/DateSelector'
 import ProgressIndicator from './routine/ProgressIndicator'
 import { useTaskStore } from '@/store/tasks'
+import { useAuth } from '@/hooks/useAuth'
 
 export default function DailyRoutineManager() {
+  const { isAuthenticated } = useAuth()
   const [date, setDate] = useState<Date>(new Date())
   const [createTaskOpen, setCreateTaskOpen] = useState(false)
   const [activeFilters, setActiveFilters] = useState<string[]>([])
@@ -30,27 +31,13 @@ export default function DailyRoutineManager() {
     ? Math.round((completedTasks / totalTasks) * 100) 
     : 0
 
-  // Check authentication on component mount
+  // Replace the fetch auth check with the hook
   useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const response = await fetch('/api/user/profile');
-        if (!response.ok) {
-          console.error('Authentication issue:', await response.text());
-        }
-      } catch (error) {
-        console.error('Auth check failed:', error);
-      }
-    };
-    
-    checkAuth();
-  }, []);
-
-  // Fetch tasks when date changes
-  useEffect(() => {
-    const dateString = format(date, 'yyyy-MM-dd')
-    fetchTasks({ date: dateString })
-  }, [date, fetchTasks])
+    if (isAuthenticated) {
+  const dateString = format(date, 'yyyy-MM-dd')
+      fetchTasks({ date: dateString })
+    }
+  }, [date, fetchTasks, isAuthenticated])
 
   const handlePreviousDay = () => {
     const prevDay = new Date(date)

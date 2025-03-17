@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { NextRequest } from 'next/server';
 import { dbConnect } from '@/lib/db';
 import Exercise from '@/models/Exercise';

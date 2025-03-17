@@ -2,14 +2,13 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useSession } from 'next-auth/react'
+import { useAuth } from '@/hooks/useAuth'
 import { Database, Dumbbell, Activity, Award, LineChart, Home, LogOut } from 'lucide-react'
 
 export function Navigation() {
   const pathname = usePathname()
-  const { data: session, status } = useSession()
-  const isAuthenticated = status === 'authenticated'
-  const isAdmin = session?.user?.role === 'admin'
+  const { user, isAuthenticated } = useAuth()
+  const isAdmin = user?.role === 'admin'
 
   const mainLinks = [
     { href: '/dashboard', label: 'Dashboard', requireAuth: true },
