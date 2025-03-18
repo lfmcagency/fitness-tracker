@@ -24,7 +24,7 @@ const lucidaTypewriter = localFont({
 })
 
 const lucidaConsole = localFont({
-  src: '../public/fonts/lucida/lucon.ttf',
+  src: '/fonts/lucida/lucon.ttf',
   variable: '--font-body',
   display: 'swap',
 })
