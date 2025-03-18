@@ -31,7 +31,7 @@ export default function QuickAddMenu({ isOpen, onClose }: QuickAddMenuProps) {
   const mainDomains = [
     {
       name: "Arete",
-      description: "progress & achievements",
+      description: "progress & goals",
       path: "/progress",
       symbol: "Α" // Alpha
     },
