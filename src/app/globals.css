@@ -15,9 +15,7 @@
   --status-warning: 205, 198, 174;  /* #CDC6AE */
   --status-danger: 157, 105, 90;    /* #9D695A */
 
-  /* Font settings */
-  --font-heading: "Lucida Sans Typewriter", monaco, monospace;
-  --font-body: "Lucida Console", monaco, monospace;
+  /* Font settings managed through next/font/local in layout.tsx */
 }
 
 @layer components {
@@ -106,7 +104,6 @@
 body {
   background: rgb(var(--background-rgb));
   color: rgb(var(--foreground-rgb));
-  font-family: var(--font-body);
 }
 
 /* New Kalos theme styles */

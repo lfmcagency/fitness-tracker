@@ -1,12 +1,33 @@
 export const dynamic = 'force-dynamic'
 
 import './globals.css'
-import { Inter } from 'next/font/google'
 import type { Metadata } from 'next'
 import { SessionProvider } from '@/components/SessionProvider'
+import localFont from 'next/font/local'
 
-const inter = Inter({ subsets: ['latin'] })
+// Define local fonts
+const lucidaTypewriter = localFont({
+  src: [
+    {
+      path: '../public/fonts/lucida/LTYPE.TTF',
+      weight: '400',
+      style: 'normal',
+    },
+    {
+      path: '../public/fonts/lucida/LTYPEB.TTF',
+      weight: '700',
+      style: 'normal',
+    },
+  ],
+  variable: '--font-heading',
+  display: 'swap',
+})
 
+const lucidaConsole = localFont({
+  src: '../public/fonts/lucida/lucon.ttf',
+  variable: '--font-body',
+  display: 'swap',
+})
 
 export const metadata: Metadata = {
   title: 'Kalos - Fitness App',
@@ -19,8 +40,8 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
-      <body className={inter.className}>
+    <html lang="en" className={`${lucidaTypewriter.variable} ${lucidaConsole.variable}`}>
+      <body className="font-body">
         <SessionProvider>
           {children}
         </SessionProvider>
