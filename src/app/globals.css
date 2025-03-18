@@ -20,6 +20,79 @@
   --font-body: "Lucida Console", monaco, monospace;
 }
 
+@layer components {
+  /* Popover overrides */
+  .PopoverContent {
+    @apply bg-kalos-bg !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  
+  /* Dialog/Modal overrides */
+  .Dialog, 
+  .DialogOverlay,
+  .DialogContent {
+    @apply bg-kalos-bg !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  
+  /* Dialog backdrop should be solid */
+  .DialogOverlay {
+    @apply bg-black/50 !important;
+  }
+  
+  /* Dropdown menu overrides */
+  .SelectContent,
+  .DropdownMenuContent,
+  .CommandDialog {
+    @apply bg-kalos-bg !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  
+  /* For shadcn components specifically */
+  [data-radix-popper-content-wrapper] > div {
+    @apply bg-kalos-bg !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  
+  /* Calendar popover */
+  .CalendarContent {
+    @apply bg-kalos-bg !important;
+  }
+  
+  /* General backdrop blur removal */
+  .backdrop-blur-sm {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    @apply bg-kalos-bg !important;
+  }
+}
+
+/* Override tailwind classes */
+.bg-kalos-bg\/95 {
+  @apply bg-kalos-bg !important;
+}
+
+/* For custom components we've created */
+.kalos-modal-content,
+.kalos-popover-content,
+.kalos-dropdown-content {
+  @apply bg-kalos-bg !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Ensure filter menus and command palettes have solid backgrounds */
+.filter-menu,
+.command-palette {
+  @apply bg-kalos-bg !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
 @layer base {
   html {
     font-family: var(--font-body);

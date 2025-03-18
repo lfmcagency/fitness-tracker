@@ -5,13 +5,12 @@ import Link from "next/link"
 import { Salad, ListChecks, UserCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from '@/hooks/useAuth'
+import { colors } from '@/lib/colors'
 // Import the custom icons
 import { 
   SisyphusIcon,
-  PhiMenuIcon,
-  SomaIcon3, PhiIcon,
-  StylisedPhiIcon,
-  SimplePhiIcon,
+  PhiIcon,
+  SomaIcon3
 } from '../icons/CustomIcons'
 
 interface BottomNavigationProps {
@@ -64,12 +63,12 @@ export default function BottomNavigation({ onQuickAddClick }: BottomNavigationPr
   }
   
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-[#F7F3F0] border-t border-[#E5E0DC]">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-kalos-bg border-t border-kalos-border">
       <div className="max-w-[1400px] mx-auto flex items-center justify-between px-4 py-2">
         {/* Quick Add Button (Left Corner) with custom icon */}
         <button
           onClick={onQuickAddClick}
-          className="flex items-center justify-center w-14 h-14 rounded-full bg-[#1A1A1A] text-white transition-transform hover:scale-105 shadow-lg"
+          className="flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-kalos-text text-white transition-transform hover:scale-105 shadow-lg"
           aria-label="Quick add menu"
         >
           <PhiIcon />
@@ -84,13 +83,13 @@ export default function BottomNavigation({ onQuickAddClick }: BottomNavigationPr
               className={cn(
                 "flex flex-col items-center justify-center py-2 px-1 rounded-md transition-colors",
                 item.active 
-                  ? "text-[#1A1A1A]" 
-                  : "text-[#6B6B6B] hover:text-[#1A1A1A] hover:bg-[#E5E0DC]/50"
+                  ? "text-[#7392B7]" 
+                  : "text-kalos-text hover:text-kalos-dark hover:bg-kalos-highlight/50"
               )}
               aria-label={item.label}
             >
               {item.icon}
-              <span className="text-[10px] mt-1 font-medium">
+              <span className="text-[10px] mt-1 font-body">
                 {item.label}
               </span>
             </Link>

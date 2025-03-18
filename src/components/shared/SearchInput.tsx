@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Search, X, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { colors } from '@/lib/colors';
 
 export interface SearchCategory {
   /** Unique identifier for the category */
@@ -145,9 +144,9 @@ export function SearchInput({
 
   // Determine variant classes
   const variantClasses = {
-    default: `bg-${colors.kalosBg} border border-${colors.kalosBorder} focus-within:border-${colors.kalosText}`,
-    outline: `bg-transparent border border-${colors.kalosText}`,
-    minimal: `bg-transparent border-b border-${colors.kalosBorder} rounded-none focus-within:border-${colors.kalosText}`,
+    default: 'bg-kalos-bg border border-kalos-border focus-within:border-kalos-text',
+    outline: 'bg-transparent border border-kalos-text',
+    minimal: 'bg-transparent border-b border-kalos-border rounded-none focus-within:border-kalos-text',
   };
 
   const selectedCat = getSelectedCategory();
@@ -165,7 +164,7 @@ export function SearchInput({
         >
           {/* Search icon */}
           <div className="flex items-center justify-center pl-3">
-            <Search className={`w-4 h-4 text-${colors.kalosMuted}`} />
+            <Search className="w-4 h-4 text-kalos-muted" />
           </div>
           
           {/* Category selector (if categories provided) */}
@@ -176,7 +175,7 @@ export function SearchInput({
                   type="button"
                   className={cn(
                     "flex items-center h-full px-2 text-sm",
-                    selectedCat ? `text-${colors.kalosText}` : `text-${colors.kalosMuted}`
+                    selectedCat ? "text-kalos-text" : "text-kalos-muted"
                   )}
                   disabled={disabled}
                 >
@@ -185,13 +184,13 @@ export function SearchInput({
                   <ChevronDown className="w-3 h-3" />
                 </button>
               </PopoverTrigger>
-              <PopoverContent className={`w-48 p-1 bg-${colors.kalosBg} border-${colors.kalosBorder}`}>
+              <PopoverContent className="w-48 p-1 bg-kalos-bg border-kalos-border">
                 <div className="space-y-1">
                   <button
                     type="button"
                     className={cn(
-                      "w-full text-left px-3 py-1.5 rounded text-sm hover:bg-${colors.kalosBorder} transition-colors",
-                      !selectedCategory && `bg-${colors.kalosBorder} font-medium`
+                      "w-full text-left px-3 py-1.5 rounded text-sm hover:bg-kalos-highlight transition-colors",
+                      !selectedCategory && "bg-kalos-highlight font-medium"
                     )}
                     onClick={() => handleCategorySelect('')}
                   >
@@ -203,8 +202,8 @@ export function SearchInput({
                       key={category.id}
                       type="button"
                       className={cn(
-                        "w-full text-left px-3 py-1.5 rounded text-sm hover:bg-${colors.kalosBorder} transition-colors flex items-center",
-                        selectedCategory === category.id && `bg-${colors.kalosBorder} font-medium`
+                        "w-full text-left px-3 py-1.5 rounded text-sm hover:bg-kalos-highlight transition-colors flex items-center",
+                        selectedCategory === category.id && "bg-kalos-highlight font-medium"
                       )}
                       onClick={() => handleCategorySelect(category.id)}
                     >
@@ -221,7 +220,7 @@ export function SearchInput({
           
           {/* Divider between category and input (if categories) */}
           {categories.length > 0 && (
-            <div className={`w-px h-5 bg-${colors.kalosBorder}`} />
+            <div className="w-px h-5 bg-kalos-border" />
           )}
           
           {/* Input field */}
@@ -245,7 +244,7 @@ export function SearchInput({
             <button
               type="button"
               onClick={handleClear}
-              className={`px-2 text-${colors.kalosMuted} hover:text-${colors.kalosText} transition-colors`}
+              className="px-2 text-kalos-muted hover:text-kalos-text transition-colors"
               disabled={disabled}
             >
               <X className="w-4 h-4" />
@@ -255,13 +254,13 @@ export function SearchInput({
 
         {/* Suggestions popover */}
         {showSuggestions && (
-          <div className={`absolute z-10 w-full mt-1 border border-${colors.kalosBorder} rounded-md bg-${colors.kalosBg} shadow-sm max-h-60 overflow-auto`}>
+          <div className="absolute z-10 w-full mt-1 border border-kalos-border rounded-md bg-kalos-bg shadow-sm max-h-60 overflow-auto">
             <div className="p-1">
               {suggestions.map(option => (
                 <button
                   key={option.id}
                   type="button"
-                  className={`w-full text-left px-3 py-2 text-sm hover:bg-${colors.kalosBorder} rounded transition-colors flex items-center`}
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-kalos-highlight rounded transition-colors flex items-center"
                   onClick={() => handleSuggestionClick(option)}
                 >
                   {option.icon && (
@@ -270,11 +269,11 @@ export function SearchInput({
                   <div className="flex-1">
                     <div className="font-medium">{option.label}</div>
                     {option.description && (
-                      <div className={`text-xs text-${colors.kalosMuted}`}>{option.description}</div>
+                      <div className="text-xs text-kalos-muted">{option.description}</div>
                     )}
                   </div>
                   {option.category && (
-                    <div className={`text-xs text-${colors.kalosMuted} ml-2`}>{option.category}</div>
+                    <div className="text-xs text-kalos-muted ml-2">{option.category}</div>
                   )}
                 </button>
               ))}
