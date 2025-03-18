@@ -9,12 +9,12 @@ import localFont from 'next/font/local'
 const lucidaTypewriter = localFont({
   src: [
     {
-      path: '/fonts/lucida/LTYPE.TTF', // Absolute path
+      path: '../public/fonts/lucida/LTYPE.TTF', // Relative path
       weight: '400',
       style: 'normal',
     },
     {
-      path: '/fonts/lucida/LTYPEB.TTF', // Absolute path
+      path: '../public/fonts/lucida/LTYPEB.TTF', // Relative path
       weight: '700',
       style: 'normal',
     },
@@ -24,7 +24,7 @@ const lucidaTypewriter = localFont({
 })
 
 const lucidaConsole = localFont({
-  src: '/fonts/lucida/lucon.ttf', // Absolute path
+  src: '../public/fonts/lucida/lucon.ttf', // Relative path
   variable: '--font-body',
   display: 'swap',
 })

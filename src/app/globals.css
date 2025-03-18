@@ -15,7 +15,7 @@
   --status-warning: 205, 198, 174;  /* #CDC6AE */
   --status-danger: 157, 105, 90;    /* #9D695A */
 
-  /* Font settings managed through next/font/local in layout.tsx */
+  /* Font settings managed through /local in lanext/fontyout.tsx */
 }
 
 @layer components {
