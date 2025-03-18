@@ -8,6 +8,9 @@ export { default as FilterBar } from './FilterBar';
 export { default as StreakIndicator } from './StreakIndicator';
 export { default as SearchInput } from './SearchInput';
 export { default as TimeBlockContainer } from './TimeBlockContainer';
+export { default as CategoryPills } from './CategoryPills';
+export { default as DetailExpander } from './metrics/DetailExpander';
+export { default as MetricChart } from './metrics/MetricChart';
 
 // Export types
 export type { ProgressBarProps } from './ProgressBar';
@@ -19,3 +22,6 @@ export type { FilterBarProps, FilterOption } from './FilterBar';
 export type { StreakIndicatorProps } from './StreakIndicator';
 export type { SearchInputProps, SearchOption, SearchCategory } from './SearchInput';
 export type { TimeBlockContainerProps } from './TimeBlockContainer';
+export type { CategoryPillsProps, CategoryOption } from './CategoryPills';
+export type { DetailExpanderProps } from './metrics/DetailExpander';
+export type { MetricChartProps, MetricChartPoint, ChartType } from './metrics/MetricChart';
