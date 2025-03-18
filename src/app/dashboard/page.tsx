@@ -1,335 +1,392 @@
-"use client"
+'use client';
 
-import { useState } from "react"
-import AppLayout from "@/components/layout/AppLayout"
-import Link from "next/link"
-import { ChevronLeft } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
-import { Calendar } from "@/components/ui/calendar"
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
-import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
-import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover"
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
-import { Container, Section } from "@/components/ui/layout"
-import { TabGroup } from "@/components/ui/tabs"
+import React, { useState } from 'react';
+import { 
+  Activity, 
+  BarChart, 
+  Calendar, 
+  Dumbbell, 
+  Flame, 
+  Heart, 
+  Info, 
+  List, 
+  Salad, 
+  Scale, 
+  Trophy,
+  User
+} from 'lucide-react';
 
-import { Info, X, Check, ExternalLink, AlertTriangle, ChevronRight, ChevronDown } from "lucide-react"
+// Import shared components
+import { 
+  ProgressBar, 
+  ProgressRing,
+  StatCard,
+  StatusBadge,
+  DateNavigator,
+  FilterBar,
+  StreakIndicator,
+  SearchInput,
+  TimeBlockContainer
+} from '@/components/shared';
 
-export default function ComponentsGallery() {
+export default function DashboardPage() {
   // State for interactive components
-  const [date, setDate] = useState<Date | undefined>(new Date())
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [popoverOpen, setPopoverOpen] = useState(false)
-  const [selectValue, setSelectValue] = useState("")
-  const [activeTab, setActiveTab] = useState("typography")
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [searchValue, setSearchValue] = useState('');
+  const [activeFilters, setActiveFilters] = useState<string[]>([]);
   
-  const tabs = [
-    { id: "typography", label: "Typography" },
-    { id: "colors", label: "Colors" },
-    { id: "layout", label: "Layout" },
-    { id: "forms", label: "Forms" }
-  ]
+  // Example filter options
+  const filterOptions = [
+    { id: 'completed', label: 'Completed', group: 'status' },
+    { id: 'incomplete', label: 'Incomplete', group: 'status' },
+    { id: 'high', label: 'High Priority', group: 'priority' },
+    { id: 'medium', label: 'Medium Priority', group: 'priority' },
+    { id: 'low', label: 'Low Priority', group: 'priority' },
+    { id: 'nous', label: 'Nous', group: 'category' },
+    { id: 'soma', label: 'Soma', group: 'category' },
+    { id: 'trophe', label: 'Trophe', group: 'category' },
+  ];
+
+  // Example search categories
+  const searchCategories = [
+    { id: 'exercises', label: 'Exercises', icon: <Dumbbell className="w-4 h-4" /> },
+    { id: 'meals', label: 'Meals', icon: <Salad className="w-4 h-4" /> },
+    { id: 'tasks', label: 'Tasks', icon: <List className="w-4 h-4" /> },
+  ];
+
+  // Example search suggestions
+  const searchSuggestions = [
+    { id: '1', label: 'Push-up', description: 'Beginner push exercise', category: 'Push', icon: <Dumbbell className="w-4 h-4" /> },
+    { id: '2', label: 'Hollow hold', description: 'Core exercise', category: 'Core', icon: <Dumbbell className="w-4 h-4" /> },
+    { id: '3', label: 'Protein shake', description: '25g protein, 2g fat', category: 'Nutrition', icon: <Salad className="w-4 h-4" /> },
+  ];
+
+  // Handler for filter changes
+  const handleFilterChange = (filters: string[]) => {
+    setActiveFilters(filters);
+    console.log('Filters changed:', filters);
+  };
 
   return (
-    <AppLayout title="Components" requireAuth={false}>
-      <Container className="py-8">
-        <h1 className="text-3xl font-light mb-8 tracking-wide">Kalos UI Components</h1>
+    <div className="min-h-screen bg-[#F7F3F0] p-4 max-w-2xl mx-auto">
+      <h1 className="text-2xl font-bold mb-8">Kalos Shared Components</h1>
+      
+      {/* DateNavigator Section */}
+      <section className="mb-12 p-6 border border-[#E5E0DC] rounded-lg">
+        <h2 className="text-xl font-medium mb-4">Date Navigation</h2>
+        <DateNavigator
+          date={selectedDate}
+          onDateChange={setSelectedDate}
+          showToday={true}
+          useRelativeDates={true}
+        />
+      </section>
+
+      {/* Progress Indicators Section */}
+      <section className="mb-12 p-6 border border-[#E5E0DC] rounded-lg">
+        <h2 className="text-xl font-medium mb-4">Progress Indicators</h2>
         
-        <p className="text-[#6B6B6B] mb-8">
-          This gallery showcases the available UI components in the Kalos design system.
-          Use this as a reference when building new features.
-        </p>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
-          {/* Left column */}
-          <div className="space-y-10 md:col-span-2">
-            {/* Typography */}
-            <Section title="Typography" className="space-y-6">
-              <div className="space-y-3">
-                <h1 className="text-3xl font-medium">Heading 1 (text-3xl)</h1>
-                <h2 className="text-2xl font-medium">Heading 2 (text-2xl)</h2>
-                <h3 className="text-xl font-medium">Heading 3 (text-xl)</h3>
-                <h4 className="text-lg font-medium">Heading 4 (text-lg)</h4>
-                <h5 className="text-base font-medium">Heading 5 (text-base)</h5>
-                <h6 className="text-sm font-medium">Heading 6 (text-sm)</h6>
-              </div>
-              
-              <div className="space-y-3">
-                <p className="text-base">Regular paragraph text (text-base)</p>
-                <p className="text-sm text-[#6B6B6B]">Small muted text (text-sm text-[#6B6B6B])</p>
-                <p className="text-xs">Extra small text (text-xs)</p>
-                <p><strong>Bold text</strong> and <em>italic text</em> examples</p>
-              </div>
-            </Section>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className="space-y-6">
+            <h3 className="text-base font-medium">ProgressBar</h3>
             
-            {/* Buttons */}
-            <Section title="Buttons" className="space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-3">
-                  <h4 className="text-base font-medium mb-3">Button Variants</h4>
-                  <div className="space-y-3">
-                    <Button>Default Button</Button>
-                    <Button variant="outline" className="block">Outline Button</Button>
-                    <Button variant="secondary" className="block">Secondary Button</Button>
-                    <Button variant="ghost" className="block">Ghost Button</Button>
-                    <Button variant="link" className="block">Link Button</Button>
-                    <Button variant="destructive" className="block">Destructive Button</Button>
-                  </div>
-                </div>
-                
-                <div className="space-y-3">
-                  <h4 className="text-base font-medium mb-3">Button Sizes</h4>
-                  <div className="space-y-3">
-                    <Button size="sm">Small Button</Button>
-                    <Button size="default" className="block">Default Button</Button>
-                    <Button size="lg" className="block">Large Button</Button>
-                    <Button size="icon" className="block"><Check className="h-4 w-4" /></Button>
-                  </div>
-                  
-                  <h4 className="text-base font-medium mt-6 mb-3">Button States</h4>
-                  <div className="space-y-3">
-                    <Button disabled>Disabled Button</Button>
-                    <Button className="block">
-                      <Check className="mr-2 h-4 w-4" /> With Icon
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </Section>
-            
-            {/* Forms */}
-            <Section title="Form Controls" className="space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div className="space-y-3">
-                  <div className="space-y-2">
-                    <label htmlFor="default-input" className="text-sm font-medium">
-                      Default Input
-                    </label>
-                    <Input id="default-input" placeholder="Enter text..." />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <label htmlFor="disabled-input" className="text-sm font-medium">
-                      Disabled Input
-                    </label>
-                    <Input id="disabled-input" placeholder="Disabled input" disabled />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <label htmlFor="textarea-example" className="text-sm font-medium">
-                      Textarea
-                    </label>
-                    <Textarea id="textarea-example" placeholder="Enter longer text..." />
-                  </div>
-                </div>
-                
-                <div className="space-y-3">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Select Input</label>
-                    <Select value={selectValue} onValueChange={setSelectValue}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select an option" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="option1">Option 1</SelectItem>
-                        <SelectItem value="option2">Option 2</SelectItem>
-                        <SelectItem value="option3">Option 3</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Date Picker</label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" className="w-full justify-start text-left font-normal">
-                          {date ? date.toDateString() : "Pick a date"}
-                          <ChevronDown className="ml-auto h-4 w-4 opacity-50" />
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={date}
-                          onSelect={setDate}
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                </div>
-              </div>
-            </Section>
-            
-            {/* Cards */}
-            <Section title="Cards" className="space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Simple Card</CardTitle>
-                    <CardDescription>Card with minimal content</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <p>This is a basic card component example.</p>
-                  </CardContent>
-                </Card>
-                
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Card with Footer</CardTitle>
-                    <CardDescription>Includes actions in the footer</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <p>Cards can contain different types of content including text, images, and actions.</p>
-                  </CardContent>
-                  <CardFooter className="flex justify-between">
-                    <Button variant="ghost">Cancel</Button>
-                    <Button>Action</Button>
-                  </CardFooter>
-                </Card>
-              </div>
-            </Section>
-            
-            {/* Feedback */}
-            <Section title="Feedback & Alerts" className="space-y-6">
-              <div className="space-y-4">
-                <Alert>
-                  <Info className="h-4 w-4" />
-                  <AlertTitle>Information</AlertTitle>
-                  <AlertDescription>
-                    This is an informational alert with neutral styling.
-                  </AlertDescription>
-                </Alert>
-                
-                <Alert variant="destructive">
-                  <AlertTriangle className="h-4 w-4" />
-                  <AlertTitle>Error</AlertTitle>
-                  <AlertDescription>
-                    This is a destructive alert for errors and warnings.
-                  </AlertDescription>
-                </Alert>
-              </div>
-            </Section>
+            <div className="space-y-4">
+              <ProgressBar value={75} showPercentage={true} label="Overall Progress" />
+              <ProgressBar value={45} variant="success" size="sm" />
+              <ProgressBar value={65} variant="warning" size="md" />
+              <ProgressBar value={25} variant="danger" size="lg" label="Danger Zone" labelInside={true} />
+            </div>
           </div>
           
-          {/* Right column */}
-          <div className="space-y-10">
-            {/* Colors */}
-            <Section title="Color Palette" className="space-y-4">
-              <div className="space-y-3">
-                <div className="p-4 bg-[#1A1A1A] text-white rounded-md">
-                  Primary - #1A1A1A
-                </div>
-                <div className="p-4 bg-[#F7F3F0] border border-[#E5E0DC] text-[#1A1A1A] rounded-md">
-                  Background - #F7F3F0
-                </div>
-                <div className="p-4 bg-[#E5E0DC] text-[#1A1A1A] rounded-md">
-                  Border - #E5E0DC
-                </div>
-                <div className="p-4 bg-white border border-[#E5E0DC] text-[#1A1A1A] rounded-md">
-                  Card - White
-                </div>
-                <div className="p-4 bg-[#F7F3F0] text-[#6B6B6B] border border-[#E5E0DC] rounded-md">
-                  Muted Text - #6B6B6B
-                </div>
-              </div>
-              
-              <div className="space-y-2">
-                <h4 className="text-base font-medium mb-2">Semantic Colors</h4>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="p-3 bg-[#7D8F69] text-white rounded-md">
-                    Success - #7D8F69
-                  </div>
-                  <div className="p-3 bg-[#A4907C] text-white rounded-md">
-                    Warning - #A4907C
-                  </div>
-                  <div className="p-3 bg-[#B85C38] text-white rounded-md">
-                    Error - #B85C38
-                  </div>
-                  <div className="p-3 bg-[#6B6B6B] text-white rounded-md">
-                    Neutral - #6B6B6B
-                  </div>
-                </div>
-              </div>
-            </Section>
+          <div className="space-y-6">
+            <h3 className="text-base font-medium">ProgressRing</h3>
             
-            {/* Dialogs & Popovers */}
-            <Section title="Dialogs & Popovers" className="space-y-4">
-              <div className="space-y-3">
-                <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button>Open Dialog</Button>
-                  </DialogTrigger>
-                  <DialogContent className="bg-[#F7F3F0] border-[#E5E0DC]">
-                    <DialogHeader>
-                      <DialogTitle>Dialog Title</DialogTitle>
-                      <DialogDescription>
-                        This is a description of the dialog content.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="py-4">
-                      <p>Dialog content goes here. This could be a form, information, or confirmation.</p>
-                    </div>
-                    <DialogFooter>
-                      <Button variant="outline" onClick={() => setDialogOpen(false)}>
-                        Cancel
-                      </Button>
-                      <Button onClick={() => setDialogOpen(false)}>Continue</Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-                
-                <div className="mt-6">
-                  <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline">Open Popover</Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="bg-[#F7F3F0] border-[#E5E0DC]">
-                      <div className="space-y-2">
-                        <h5 className="font-medium">Popover Title</h5>
-                        <p className="text-sm">This is popover content that appears when triggered.</p>
-                        <Button size="sm" className="w-full" onClick={() => setPopoverOpen(false)}>
-                          Dismiss
-                        </Button>
-                      </div>
-                    </PopoverContent>
-                  </Popover>
-                </div>
-              </div>
-            </Section>
-            
-            {/* Navigation */}
-            <Section title="Navigation" className="space-y-4">
-              <div className="space-y-3">
-                <h4 className="text-base font-medium mb-3">Tabs</h4>
-                <TabGroup
-                  tabs={tabs}
-                  activeTab={activeTab}
-                  onChange={setActiveTab}
-                  className="mb-4 border-b border-[#E5E0DC]"
-                />
-                
-                <div className="bg-white border border-[#E5E0DC] p-4 rounded-md mt-4">
-                  <p className="text-center text-[#6B6B6B]">
-                    Content for the "{activeTab}" tab would appear here
-                  </p>
-                </div>
-                
-                <h4 className="text-base font-medium mt-6 mb-3">Breadcrumbs</h4>
-                <div className="flex items-center text-sm">
-                  <a href="#" className="text-[#6B6B6B] hover:text-[#1A1A1A]">Home</a>
-                  <ChevronRight className="w-4 h-4 mx-2 text-[#6B6B6B]" />
-                  <a href="#" className="text-[#6B6B6B] hover:text-[#1A1A1A]">Components</a>
-                  <ChevronRight className="w-4 h-4 mx-2 text-[#6B6B6B]" />
-                  <span className="font-medium">Navigation</span>
-                </div>
-              </div>
-            </Section>
+            <div className="flex flex-wrap gap-4 items-center justify-center">
+              <ProgressRing value={75} showPercentage={true} />
+              <ProgressRing value={45} variant="success" size={80} thickness={8} />
+              <ProgressRing value={65} variant="warning" size={50} label={<Heart className="w-5 h-5 text-[#A4907C]" />} />
+              <ProgressRing value={25} variant="danger" size={100} thickness={12} label="25%" labelSize="lg" />
+            </div>
           </div>
         </div>
-      </Container>
-    </AppLayout>
-  )
+      </section>
+      
+      {/* Stat Cards Section */}
+      <section className="mb-12 p-6 border border-[#E5E0DC] rounded-lg">
+        <h2 className="text-xl font-medium mb-4">Stat Cards</h2>
+        
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+          <StatCard 
+            title="Total XP" 
+            value="1,250" 
+            previousValue="980" 
+            icon={<Trophy className="w-5 h-5" />} 
+          />
+          
+          <StatCard 
+            title="Weight" 
+            value="75.5" 
+            unit="kg" 
+            previousValue="77.2" 
+            changeFormat="absolute" 
+            icon={<Scale className="w-5 h-5" />} 
+          />
+          
+          <StatCard 
+            title="Daily Tasks" 
+            value="8/12" 
+            previousValue="6/12" 
+            changeFormat="percentage" 
+            icon={<List className="w-5 h-5" />} 
+            variant="outline"
+          />
+          
+          <StatCard 
+            title="Workout Streak" 
+            value="14" 
+            unit="days" 
+            previousValue="7" 
+            icon={<Flame className="w-5 h-5" />} 
+            size="lg"
+          />
+          
+          <StatCard 
+            title="Activity Level" 
+            value="Medium" 
+            previousValue="Low" 
+            changeFormat="none" 
+            icon={<Activity className="w-5 h-5" />} 
+            variant="filled"
+          />
+          
+          <StatCard 
+            title="Protein Intake" 
+            value="85%" 
+            previousValue="72%" 
+            icon={<Salad className="w-5 h-5" />} 
+            size="sm"
+          />
+        </div>
+      </section>
+      
+      {/* Status Badges Section */}
+      <section className="mb-12 p-6 border border-[#E5E0DC] rounded-lg">
+        <h2 className="text-xl font-medium mb-4">Status Badges</h2>
+        
+        <div className="space-y-6">
+          <div className="flex flex-wrap gap-3">
+            <StatusBadge status="success" text="Completed" />
+            <StatusBadge status="error" text="Failed" />
+            <StatusBadge status="warning" text="Needs Attention" />
+            <StatusBadge status="pending" text="In Progress" />
+            <StatusBadge status="neutral" text="Neutral" />
+            <StatusBadge status="active" text="Active" />
+          </div>
+          
+          <div className="flex flex-wrap gap-3">
+            <StatusBadge status="success" variant="outline" />
+            <StatusBadge status="error" variant="outline" />
+            <StatusBadge status="warning" variant="outline" />
+            <StatusBadge status="pending" variant="outline" />
+            <StatusBadge status="neutral" variant="outline" />
+            <StatusBadge status="active" variant="outline" />
+          </div>
+          
+          <div className="flex flex-wrap gap-3">
+            <StatusBadge status="success" iconOnly={true} size="lg" />
+            <StatusBadge status="error" iconOnly={true} size="lg" />
+            <StatusBadge status="warning" iconOnly={true} size="lg" />
+            <StatusBadge status="pending" iconOnly={true} size="lg" pulse={true} />
+            <StatusBadge status="active" iconOnly={true} size="lg" pulse={true} />
+          </div>
+        </div>
+      </section>
+      
+      {/* Streak Indicator Section */}
+      <section className="mb-12 p-6 border border-[#E5E0DC] rounded-lg">
+        <h2 className="text-xl font-medium mb-4">Streak Indicators</h2>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Short streak:</span>
+              <StreakIndicator count={2} maxStreak={14} />
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Medium streak:</span>
+              <StreakIndicator count={7} maxStreak={14} />
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Long streak:</span>
+              <StreakIndicator count={14} maxStreak={14} />
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Epic streak:</span>
+              <StreakIndicator count={30} maxStreak={30} />
+            </div>
+          </div>
+          
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Minimal variant:</span>
+              <StreakIndicator count={7} variant="minimal" />
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Badge variant:</span>
+              <StreakIndicator count={14} variant="badge" />
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <span className="text-sm">No flames:</span>
+              <StreakIndicator count={21} showFlames={false} />
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Large size:</span>
+              <StreakIndicator count={30} size="lg" />
+            </div>
+          </div>
+        </div>
+      </section>
+      
+      {/* Search & Filter Section */}
+      <section className="mb-12 p-6 border border-[#E5E0DC] rounded-lg">
+        <h2 className="text-xl font-medium mb-4">Search & Filter</h2>
+        
+        <div className="space-y-8">
+          <div className="space-y-4">
+            <h3 className="text-base font-medium">SearchInput</h3>
+            
+            <SearchInput 
+              value={searchValue}
+              onChange={setSearchValue}
+              placeholder="Search exercises, meals, tasks..."
+              categories={searchCategories}
+              suggestions={searchSuggestions}
+              onSearch={(value, category) => console.log('Search:', value, category)}
+            />
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+              <SearchInput 
+                value={searchValue}
+                onChange={setSearchValue}
+                placeholder="Outline variant"
+                variant="outline"
+                size="sm"
+              />
+              
+              <SearchInput 
+                value={searchValue}
+                onChange={setSearchValue}
+                placeholder="Minimal variant"
+                variant="minimal"
+                size="lg"
+              />
+            </div>
+          </div>
+          
+          <div className="space-y-4">
+            <h3 className="text-base font-medium">FilterBar</h3>
+            
+            <FilterBar 
+              options={filterOptions}
+              activeFilters={activeFilters}
+              onFilterChange={handleFilterChange}
+              showSelectedPills={true}
+              label="Filters"
+            />
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+              <FilterBar 
+                options={filterOptions.filter(f => f.group === 'priority')}
+                activeFilters={activeFilters}
+                onFilterChange={handleFilterChange}
+                label="Priority"
+                variant="outline"
+                showSelectedPills={false}
+              />
+              
+              <FilterBar 
+                options={filterOptions.filter(f => f.group === 'status')}
+                activeFilters={activeFilters}
+                onFilterChange={handleFilterChange}
+                label="Status"
+                variant="minimal"
+                showSelectedPills={false}
+              />
+              
+              <FilterBar 
+                options={filterOptions.filter(f => f.group === 'category')}
+                activeFilters={activeFilters}
+                onFilterChange={handleFilterChange}
+                label="Category"
+                showSelectedPills={false}
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+      
+      {/* Time Block Section */}
+      <section className="mb-12 p-6 border border-[#E5E0DC] rounded-lg">
+        <h2 className="text-xl font-medium mb-4">Time Blocks</h2>
+        
+        <div className="space-y-2">
+          <TimeBlockContainer 
+            title="Morning" 
+            timeRange="6:00 - 12:00" 
+            showAddButton={true}
+            onAdd={() => console.log('Add morning item')}
+          >
+            <div className="p-4 border border-[#E5E0DC] rounded-md">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-medium">Morning Meditation</h4>
+                <StreakIndicator count={7} variant="minimal" size="sm" />
+              </div>
+              <p className="text-sm text-[#6B6B6B]">10 minutes mindfulness practice</p>
+            </div>
+            
+            <div className="p-4 border border-[#E5E0DC] rounded-md">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-medium">Strength Training</h4>
+                <StatusBadge status="pending" size="sm" />
+              </div>
+              <p className="text-sm text-[#6B6B6B]">Upper body focus</p>
+            </div>
+          </TimeBlockContainer>
+          
+          <TimeBlockContainer 
+            title="Afternoon" 
+            timeRange="12:00 - 18:00" 
+            showAddButton={true}
+            onAdd={() => console.log('Add afternoon item')}
+          >
+            <div className="p-4 border border-[#E5E0DC] rounded-md">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-medium">Healthy Lunch</h4>
+                <StatusBadge status="success" size="sm" />
+              </div>
+              <p className="text-sm text-[#6B6B6B]">Balanced macros with protein focus</p>
+            </div>
+          </TimeBlockContainer>
+          
+          <TimeBlockContainer 
+            title="Evening"
+            timeRange="18:00 - 23:00"
+            showAddButton={true}
+            onAdd={() => console.log('Add evening item')}
+            isEmpty={true}
+            emptyContent={<div className="text-center">
+              <Info className="w-8 h-8 text-[#6B6B6B] mx-auto mb-2" />
+              <p className="text-sm text-[#6B6B6B]">Nothing planned for the evening</p>
+              <button className="mt-2 text-[#1A1A1A] underline text-sm">Add evening activity</button>
+            </div>} children={undefined}          />
+        </div>
+      </section>
+    </div>
+  );
 }
