@@ -16,6 +16,20 @@ module.exports = {
     },
     extend: {
       colors: {
+        
+        // Status colors
+        'status-primary': '#1D3461',    // Dark blue
+        'status-success': '#3F4531',    // Dark olive green
+        'status-info': '#7392B7',       // Steel blue
+        'status-warning': '#9D695A',    // Light beige
+        'status-danger': '#9D695A',     // Terracotta
+        
+        // Keep existing Kalos colors
+        'kalos-bg': '#F7F3F0',
+        'kalos-text': '#1A1A1A',
+        'kalos-border': '#E5E0DC',
+        'kalos-muted': '#6B6B6B',     
+
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
