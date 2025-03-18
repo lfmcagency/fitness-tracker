@@ -43,7 +43,7 @@ export default function QuickAddMenu({ isOpen, onClose }: QuickAddMenuProps) {
     },
     {
       name: "Ethos",
-      description: "dsicipline & habits",
+      description: "routines & habits",
       path: "/routine",
       symbol: "Η" // Eta
     },
