@@ -74,21 +74,25 @@ export default function AppLayout({
     return null // Will redirect via useEffect
   }
 
+  // Calculate proper top padding based on if we have breadcrumbs or not
+  const topPadding = (showBackButton || activeBreadcrumbs.length > 0) 
+    ? "pt-[90px] sm:pt-[95px]" 
+    : "pt-[63px] sm:pt-[68px]";
+
   return (
     <div className="flex flex-col min-h-screen bg-[#F7F3F0] text-[#1A1A1A] max-w-[1400px] mx-auto">
       <Header />
       
-      {/* Conditional SubNavigation */}
-      {(showBackButton || activeBreadcrumbs.length > 0) && (
-        <SubNavigation 
-          breadcrumbs={activeBreadcrumbs}
-          showBackButton={showBackButton}
-          onBackClick={handleBackClick}
-        />
-      )}
+      {/* Always show SubNavigation for the Greek pattern, 
+          but only show breadcrumbs when needed */}
+      <SubNavigation 
+        breadcrumbs={activeBreadcrumbs}
+        showBackButton={showBackButton}
+        onBackClick={handleBackClick}
+      />
       
       {/* Main content with responsive padding */}
-      <main className="flex-1 pt-20 pb-24 px-4 sm:px-6 md:px-8 overflow-auto">
+      <main className={`flex-1 ${topPadding} pb-24 px-4 sm:px-6 md:px-8 overflow-auto`}>
         <div className="max-w-screen-xl mx-auto">
           {children}
         </div>

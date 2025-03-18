@@ -9,11 +9,9 @@ import { useAuth } from '@/hooks/useAuth'
 import { 
   SisyphusIcon,
   PhiMenuIcon,
-  SomaIcon3,
-  GreekKeyMenuIcon,
-  ShieldMenuIcon,
-  FourElementsMenuIcon,
-  CompassMenuIcon
+  SomaIcon3, PhiIcon,
+  StylisedPhiIcon,
+  SimplePhiIcon,
 } from '../icons/CustomIcons'
 
 interface BottomNavigationProps {
@@ -74,7 +72,7 @@ export default function BottomNavigation({ onQuickAddClick }: BottomNavigationPr
           className="flex items-center justify-center w-14 h-14 rounded-full bg-[#1A1A1A] text-white transition-transform hover:scale-105 shadow-lg"
           aria-label="Quick add menu"
         >
-          <PhiMenuIcon />
+          <PhiIcon />
         </button>
         
         {/* Navigation Icons */}

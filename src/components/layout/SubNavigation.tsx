@@ -68,82 +68,134 @@ export default function SubNavigation({
           )}
         </div>
         
-        {/* Combined Greek Pattern - Using text color */}
-        <div className="w-full overflow-hidden">
+        {/* Greek Meander Pattern */}
+        <div className="w-full overflow-hidden h-[24px]">
           <svg 
             width="100%" 
-            height="34" 
-            viewBox="0 0 1000 34" 
-            fill="none" 
-            preserveAspectRatio="none"
+            height="24" 
+            viewBox="0 0 1200 24" 
+            preserveAspectRatio="xRepeat meet"
             xmlns="http://www.w3.org/2000/svg"
             className="text-[#1A1A1A]"
           >
             <defs>
-              {/* Greek Key Pattern from version 2 - Enhanced for clarity */}
-              <pattern id="enhancedGreekKey" x="0" y="0" width="60" height="16" patternUnits="userSpaceOnUse">
-                <rect x="0" y="0" width="10" height="3" fill="currentColor" />
-                <rect x="0" y="0" width="3" height="10" fill="currentColor" />
-                <rect x="7" y="7" width="10" height="3" fill="currentColor" />
-                <rect x="14" y="0" width="3" height="10" fill="currentColor" />
-                <rect x="17" y="0" width="10" height="3" fill="currentColor" />
-                <rect x="24" y="0" width="3" height="10" fill="currentColor" />
-                <rect x="24" y="7" width="10" height="3" fill="currentColor" />
-                <rect x="31" y="0" width="3" height="10" fill="currentColor" />
-                <rect x="34" y="0" width="10" height="3" fill="currentColor" />
-                <rect x="41" y="0" width="3" height="10" fill="currentColor" />
-                <rect x="41" y="7" width="10" height="3" fill="currentColor" />
-                <rect x="48" y="0" width="3" height="10" fill="currentColor" />
-                <rect x="51" y="0" width="9" height="3" fill="currentColor" />
-              </pattern>
-              
-              {/* Egg-and-Dart Pattern from version 3 - Most detailed version */}
-              <pattern id="detailedEggDart" x="0" y="0" width="60" height="18" patternUnits="userSpaceOnUse">
-                {/* Background band */}
-                <rect x="0" y="0" width="60" height="18" fill="currentColor" opacity="0.1" />
-                
-                {/* Eggs */}
-                <ellipse cx="10" cy="9" rx="6" ry="8" fill="none" stroke="currentColor" strokeWidth="0.8" />
-                <ellipse cx="30" cy="9" rx="6" ry="8" fill="none" stroke="currentColor" strokeWidth="0.8" />
-                <ellipse cx="50" cy="9" rx="6" ry="8" fill="none" stroke="currentColor" strokeWidth="0.8" />
-                
-                {/* Darts/arrows between eggs */}
+              {/* Proper Greek Meander (Key) Pattern - Continuous Pattern */}
+              <pattern 
+                id="greekMeander" 
+                x="0" 
+                y="0" 
+                width="120" 
+                height="24" 
+                patternUnits="userSpaceOnUse"
+              >
+                {/* Main horizontal line */}
                 <path 
-                  d="M20 3L20 15L23 9L20 3Z" 
-                  fill="none" 
+                  d="M0,8 H120" 
                   stroke="currentColor" 
-                  strokeWidth="0.8"
-                />
-                <path 
-                  d="M40 3L40 15L43 9L40 3Z" 
-                  fill="none" 
-                  stroke="currentColor" 
-                  strokeWidth="0.8"
-                />
-                <path 
-                  d="M0 3L0 15L3 9L0 3Z" 
-                  fill="none" 
-                  stroke="currentColor" 
-                  strokeWidth="0.8"
-                />
-                <path 
-                  d="M60 3L60 15L57 9L60 3Z" 
-                  fill="none" 
-                  stroke="currentColor" 
-                  strokeWidth="0.8"
+                  strokeWidth="2" 
+                  fill="none"
                 />
                 
-                {/* Borders */}
-                <rect x="0" y="0" width="60" height="1" fill="currentColor" opacity="0.3" />
-                <rect x="0" y="17" width="60" height="1" fill="currentColor" opacity="0.3" />
+                {/* Meander elements - Connected properly for continuous pattern */}
+                <path 
+                  d="M10,8 V16 H30 V8" 
+                  stroke="currentColor" 
+                  strokeWidth="2" 
+                  fill="none" 
+                />
+                <path 
+                  d="M40,8 V16 H60 V8" 
+                  stroke="currentColor" 
+                  strokeWidth="2" 
+                  fill="none" 
+                />
+                <path 
+                  d="M70,8 V16 H90 V8" 
+                  stroke="currentColor" 
+                  strokeWidth="2" 
+                  fill="none" 
+                />
+                <path 
+                  d="M100,8 V16 H120 V8" 
+                  stroke="currentColor" 
+                  strokeWidth="2" 
+                  fill="none" 
+                />
+                
+                {/* Vertical connecting lines - Optional, for more ornate version */}
+                <path 
+                  d="M10,16 V24" 
+                  stroke="currentColor" 
+                  strokeWidth="2" 
+                  fill="none" 
+                />
+                <path 
+                  d="M30,16 V24" 
+                  stroke="currentColor" 
+                  strokeWidth="2" 
+                  fill="none" 
+                />
+                <path 
+                  d="M40,16 V24" 
+                  stroke="currentColor" 
+                  strokeWidth="2" 
+                  fill="none" 
+                />
+                <path 
+                  d="M60,16 V24" 
+                  stroke="currentColor" 
+                  strokeWidth="2" 
+                  fill="none" 
+                />
+                <path 
+                  d="M70,16 V24" 
+                  stroke="currentColor" 
+                  strokeWidth="2" 
+                  fill="none" 
+                />
+                <path 
+                  d="M90,16 V24" 
+                  stroke="currentColor" 
+                  strokeWidth="2" 
+                  fill="none" 
+                />
+                <path 
+                  d="M100,16 V24" 
+                  stroke="currentColor" 
+                  strokeWidth="2" 
+                  fill="none" 
+                />
+                <path 
+                  d="M120,16 V24" 
+                  stroke="currentColor" 
+                  strokeWidth="2" 
+                  fill="none" 
+                />
+                
+                {/* Bottom horizontal connecting line for complete pattern */}
+                <path 
+                  d="M0,24 H120" 
+                  stroke="currentColor" 
+                  strokeWidth="2" 
+                  fill="none" 
+                />
+                
+                {/* Optional - Small decorative elements */}
+                <circle cx="20" cy="12" r="1" fill="currentColor" />
+                <circle cx="50" cy="12" r="1" fill="currentColor" />
+                <circle cx="80" cy="12" r="1" fill="currentColor" />
+                <circle cx="110" cy="12" r="1" fill="currentColor" />
               </pattern>
             </defs>
             
-            {/* Upper Greek Key Section - from version 2 */}
-            <rect y="0" width="100%" height="16" fill="url(#enhancedGreekKey)" />
-            
-            {/* Lower Egg-and-Dart Section - from version 3 */}
-            <rect y="16" width="100%" height="18" fill="url(#detailedEggDart)" />
+            {/* Apply the pattern to a full-width rectangle */}
+            <rect 
+              x="0" 
+              y="0" 
+              width="100%" 
+              height="24" 
+              fill="url(#greekMeander)" 
+            />
           </svg>
         </div>
       </div>

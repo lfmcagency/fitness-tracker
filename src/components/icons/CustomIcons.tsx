@@ -1,5 +1,8 @@
 // src/components/icons/CustomIcons.tsx
+import { cn } from '@/lib/utils';
 import React from 'react';
+
+interface IconProps extends React.SVGProps<SVGSVGElement> {}
 
 // ARETE OPTIONS - Excellence, Achievement, Virtuous Growth
 
@@ -486,3 +489,65 @@ export const FourElementsMenuIcon = () => (
     />
   </svg>
 );
+
+export const PhiIcon: React.FC<IconProps & { isOpen?: boolean }> = ({ 
+  className, 
+  isOpen = false, 
+  ...props 
+}) => {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      width="24"
+      height="24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={cn(
+        "transition-transform duration-300 ease-in-out",
+        isOpen ? "rotate-90" : "rotate-0",
+        className
+      )}
+      {...props}
+    >
+      {/* Outer circle */}
+      <circle cx="12" cy="12" r="8" />
+      {/* Vertical line */}
+      <line x1="12" y1="4" x2="12" y2="20" />
+    </svg>
+  );
+};
+
+export const StylisedPhiIcon: React.FC<IconProps & { isOpen?: boolean }> = ({ 
+  className, 
+  isOpen = false, 
+  ...props 
+}) => {
+  return (
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  {/* Slightly oval circle */}
+  <ellipse cx="12" cy="12" rx="7" ry="8" />
+  {/* Vertical line */}
+  <line x1="12" y1="4" x2="12" y2="20" />
+</svg>
+  );
+};
+
+export const SimplePhiIcon: React.FC<IconProps & { isOpen?: boolean }> = ({ 
+  className, 
+  isOpen = false, 
+  ...props 
+}) => {
+  return (
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  {/* Two half circles connected by a line */}
+  <path d="M12,4 C7.582,4 4,7.582 4,12 C4,16.418 7.582,20 12,20" />
+  <path d="M12,4 C16.418,4 20,7.582 20,12 C20,16.418 16.418,20 12,20" />
+  {/* Vertical line */}
+  <line x1="12" y1="4" x2="12" y2="20" />
+</svg>
+  );
+};
