@@ -1,6 +1,7 @@
 import React, { JSX } from 'react';
 import { Flame } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { colors } from '@/lib/colors';
 
 export interface StreakIndicatorProps {
   /** Current streak count */
@@ -47,20 +48,20 @@ export function StreakIndicator({
   // Determine variant classes
   const variantClasses = {
     default: 'flex items-center',
-    minimal: 'flex items-center text-[#6B6B6B]',
-    badge: 'flex items-center bg-[#F7F3F0] border border-[#E5E0DC] rounded-full px-2 py-0.5',
+    minimal: `flex items-center text-${colors.kalosMuted}`,
+    badge: `flex items-center bg-${colors.kalosBg} border border-${colors.kalosBorder} rounded-full px-2 py-0.5`,
   };
 
   // Determine flame color based on streak length
   const getFlameColor = () => {
-    if (!dynamicColor) return '#B85C38';
+    if (!dynamicColor) return colors.streakBase;
 
     // Colors transition from orange to red as the streak gets longer
-    if (count < 3) return '#B85C38'; // Base orange
-    if (count < 7) return '#A74A2A'; // Darker orange
-    if (count < 14) return '#963B1D'; // Deep orange
-    if (count < 30) return '#852C10'; // Very dark orange
-    return '#731D03'; // Almost red
+    if (count < 3) return colors.streakBase;  // Base orange
+    if (count < 7) return colors.streakLv1;   // Darker orange
+    if (count < 14) return colors.streakLv2;  // Deep orange
+    if (count < 30) return colors.streakLv3;  // Very dark orange
+    return colors.streakLv4;                  // Almost red
   };
 
   // Calculate the number of flames to display based on streak length
@@ -93,7 +94,7 @@ export function StreakIndicator({
       <span className={cn(count >= 7 && 'font-medium')}>{count}</span>
       
       {maxStreak !== undefined && maxStreak > 0 && (
-        <span className="text-[#6B6B6B] ml-1">
+        <span style={{ color: colors.kalosMuted }} className="ml-1">
           {/* Show record for impressive streaks */}
           {count >= 7 && count === maxStreak && '(Record!)'}
           {/* Show max for comparison if not at max */}

@@ -1,5 +1,6 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
+import { colors } from '@/lib/colors';
 
 export interface ProgressRingProps {
   /** Current progress value (0-100) */
@@ -56,15 +57,15 @@ export function ProgressRing({
 
   // Determine color based on variant
   const variantColors = {
-    default: '#1A1A1A',
-    success: '#7D8F69',
-    warning: '#A4907C',
-    danger: '#B85C38',
-    neutral: '#6B6B6B',
+    default: colors.kalosText,
+    success: colors.statusSuccess,
+    warning: colors.statusWarning,
+    danger: colors.statusDanger,
+    neutral: colors.kalosMuted,
   };
 
   const progressColor = color || variantColors[variant];
-  const ringTrackColor = trackColor || '#E5E0DC';
+  const ringTrackColor = trackColor || colors.kalosBorder;
   
   // Determine label size
   const labelSizeClasses = {

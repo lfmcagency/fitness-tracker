@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Filter as FilterIcon, X as ClearIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { colors } from '@/lib/colors';
 
 export interface FilterOption {
   /** Unique identifier for the filter option */
@@ -95,9 +96,9 @@ export function FilterBar({
 
   // Determine variant styling
   const variantClasses = {
-    default: 'bg-[#F7F3F0] border border-[#E5E0DC] text-[#1A1A1A]',
-    outline: 'bg-transparent border border-[#1A1A1A] text-[#1A1A1A]',
-    minimal: 'bg-transparent text-[#6B6B6B]',
+    default: `bg-${colors.kalosBg} border border-${colors.kalosBorder} text-${colors.kalosText}`,
+    outline: `bg-transparent border border-${colors.kalosText} text-${colors.kalosText}`,
+    minimal: `bg-transparent text-${colors.kalosMuted}`,
   };
 
   // Get active filter objects
@@ -120,19 +121,19 @@ export function FilterBar({
               <span>{label}</span>
               <FilterIcon className="ml-1.5 w-3.5 h-3.5" />
               {activeFilters.length > 0 && (
-                <span className="ml-1.5 bg-[#1A1A1A] text-white rounded-full w-5 h-5 flex items-center justify-center text-xs">
+                <span className={`ml-1.5 bg-${colors.kalosText} text-white rounded-full w-5 h-5 flex items-center justify-center text-xs`}>
                   {activeFilters.length}
                 </span>
               )}
             </button>
           </PopoverTrigger>
-          <PopoverContent className="w-56 p-3 bg-[#F7F3F0] border-[#E5E0DC]">
+          <PopoverContent className={`w-56 p-3 bg-${colors.kalosBg} border-${colors.kalosBorder}`}>
             <div className="flex justify-between items-center mb-2">
               <h3 className="text-sm font-medium">Filter by:</h3>
               {activeFilters.length > 0 && (
                 <button 
                   onClick={clearAllFilters}
-                  className="text-xs text-[#6B6B6B] hover:text-[#1A1A1A] transition-colors"
+                  className={`text-xs text-${colors.kalosMuted} hover:text-${colors.kalosText} transition-colors`}
                 >
                   Clear all
                 </button>
@@ -143,7 +144,7 @@ export function FilterBar({
               {Object.entries(groupedOptions).map(([group, groupOptions]) => (
                 <div key={group} className="space-y-1">
                   {group !== 'default' && (
-                    <h4 className="text-xs text-[#6B6B6B] uppercase">{group}</h4>
+                    <h4 className={`text-xs text-${colors.kalosMuted} uppercase`}>{group}</h4>
                   )}
                   <div className="space-y-2">
                     {groupOptions.map((option) => (
@@ -153,8 +154,8 @@ export function FilterBar({
                           className={cn(
                             "w-4 h-4 rounded-sm mr-2 border transition-colors flex items-center justify-center",
                             activeFilters.includes(option.id) 
-                              ? "bg-[#1A1A1A] border-[#1A1A1A]" 
-                              : "border-[#6B6B6B]"
+                              ? `bg-${colors.kalosText} border-${colors.kalosText}` 
+                              : `border-${colors.kalosMuted}`
                           )}
                         >
                           {activeFilters.includes(option.id) && (
@@ -183,7 +184,7 @@ export function FilterBar({
           {activeFilterObjects.map(filter => (
             <div 
               key={filter.id}
-              className="bg-[#E5E0DC] text-[#1A1A1A] px-2 py-1 rounded-full text-xs flex items-center"
+              className={`bg-${colors.kalosBorder} text-${colors.kalosText} px-2 py-1 rounded-full text-xs flex items-center`}
             >
               {filter.icon && (
                 <span className="mr-1">{filter.icon}</span>
@@ -191,7 +192,7 @@ export function FilterBar({
               <span>{filter.label}</span>
               <button 
                 onClick={() => clearFilter(filter.id)}
-                className="ml-1 text-[#6B6B6B] hover:text-[#1A1A1A]"
+                className={`ml-1 text-${colors.kalosMuted} hover:text-${colors.kalosText}`}
               >
                 <ClearIcon className="w-3 h-3" />
               </button>

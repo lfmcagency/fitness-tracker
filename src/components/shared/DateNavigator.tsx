@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-reac
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
+import { colors } from '@/lib/colors';
 
 export interface DateNavigatorProps {
   /** Current selected date */
@@ -59,7 +60,7 @@ export function DateNavigator({
   return (
     <div className={cn('flex items-center justify-between', className)}>
       <button 
-        className="p-2 text-[#6B6B6B] hover:text-[#1A1A1A] transition-colors"
+        className={`p-2 text-${colors.kalosMuted} hover:text-${colors.kalosText} transition-colors`}
         onClick={goToPreviousDay}
         aria-label="Previous day"
       >
@@ -72,21 +73,21 @@ export function DateNavigator({
             <PopoverTrigger asChild>
               <button className="text-base font-medium hover:opacity-80 transition-opacity flex items-center">
                 {getDisplayDate()}
-                <CalendarIcon className="ml-2 w-4 h-4 text-[#6B6B6B]" />
+                <CalendarIcon className={`ml-2 w-4 h-4 text-${colors.kalosMuted}`} />
               </button>
             </PopoverTrigger>
-            <PopoverContent className="w-auto p-0 bg-[#F7F3F0] border-[#E5E0DC]">
+            <PopoverContent className={`w-auto p-0 bg-${colors.kalosBg} border-${colors.kalosBorder}`}>
               <Calendar
                 mode="single"
                 selected={date}
                 onSelect={(newDate) => newDate && onDateChange(newDate)}
-                className="rounded-md bg-[#F7F3F0]"
+                className={`rounded-md bg-${colors.kalosBg}`}
               />
               {showToday && !isToday(date) && (
-                <div className="border-t border-[#E5E0DC] p-2">
+                <div className={`border-t border-${colors.kalosBorder} p-2`}>
                   <button 
                     onClick={goToToday}
-                    className="w-full text-sm text-center py-1 text-[#1A1A1A] hover:bg-[#E5E0DC] rounded transition-colors"
+                    className={`w-full text-sm text-center py-1 text-${colors.kalosText} hover:bg-${colors.kalosBorder} rounded transition-colors`}
                   >
                     Go to today
                   </button>
@@ -102,7 +103,7 @@ export function DateNavigator({
       </div>
       
       <button 
-        className="p-2 text-[#6B6B6B] hover:text-[#1A1A1A] transition-colors"
+        className={`p-2 text-${colors.kalosMuted} hover:text-${colors.kalosText} transition-colors`}
         onClick={goToNextDay}
         aria-label="Next day"
       >

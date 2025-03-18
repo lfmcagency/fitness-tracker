@@ -1,5 +1,6 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
+import { colors } from '@/lib/colors';
 
 export interface ProgressBarProps {
   /** Current progress value (0-100) */
@@ -54,16 +55,16 @@ export function ProgressBar({
   };
 
   // Determine color based on variant
-  const variantClasses = {
-    default: 'bg-[#1A1A1A]',
-    success: 'bg-[#7D8F69]',
-    warning: 'bg-[#A4907C]',
-    danger: 'bg-[#B85C38]',
-    neutral: 'bg-[#6B6B6B]',
+  const variantColors = {
+    default: colors.kalosText,
+    success: colors.statusSuccess,
+    warning: colors.statusWarning,
+    danger: colors.statusDanger,
+    neutral: colors.kalosMuted,
   };
 
   // Determine track color
-  const defaultTrackColor = 'bg-[#E5E0DC]';
+  const defaultTrackColor = colors.kalosBorder;
 
   // Determine text classes
   const textSize = size === 'lg' ? 'text-xs' : 'text-xs';
@@ -72,19 +73,21 @@ export function ProgressBar({
     <div className={cn('w-full space-y-1', className)}>
       {showPercentage && !labelInside && (
         <div className="flex justify-between items-center mb-1">
-          <span className="text-sm text-[#6B6B6B]">{label || 'Progress'}</span>
+          <span className={`text-sm text-${colors.kalosMuted}`}>{label || 'Progress'}</span>
           <span className="text-sm font-medium">{displayValue}%</span>
         </div>
       )}
 
-      <div className={cn('w-full rounded-full overflow-hidden', trackColor || defaultTrackColor)}>
+      <div className={cn('w-full rounded-full overflow-hidden')} style={{ backgroundColor: trackColor || defaultTrackColor }}>
         <div
           className={cn(
             'rounded-full transition-all duration-500 ease-in-out',
-            sizeClasses[size],
-            color || variantClasses[variant]
+            sizeClasses[size]
           )}
-          style={{ width: `${percentage}%` }}
+          style={{ 
+            width: `${percentage}%`,
+            backgroundColor: color || variantColors[variant]
+          }}
         >
           {labelInside && size !== 'sm' && (
             <span

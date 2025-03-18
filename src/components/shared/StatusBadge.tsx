@@ -1,6 +1,7 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
 import { CheckIcon, XIcon, AlertTriangleIcon, ClockIcon, ActivityIcon } from 'lucide-react';
+import { colors } from '@/lib/colors';
 
 export type StatusType = 'success' | 'error' | 'warning' | 'pending' | 'neutral' | 'active';
 
@@ -36,35 +37,35 @@ export function StatusBadge({
   className,
   pulse = false,
 }: StatusBadgeProps) {
-  // Define status colors
+  // Define status configs using imported colors
   const statusConfig = {
     success: {
-      color: '#7D8F69',
+      color: colors.statusSuccess,
       icon: CheckIcon,
       defaultText: 'Success',
     },
     error: {
-      color: '#B85C38',
+      color: colors.statusDanger,
       icon: XIcon,
       defaultText: 'Error',
     },
     warning: {
-      color: '#A4907C',
+      color: colors.statusWarning,
       icon: AlertTriangleIcon,
       defaultText: 'Warning',
     },
     pending: {
-      color: '#6B6B6B',
+      color: colors.kalosMuted,
       icon: ClockIcon,
       defaultText: 'Pending',
     },
     neutral: {
-      color: '#6B6B6B',
+      color: colors.kalosMuted,
       icon: null,
       defaultText: 'Neutral',
     },
     active: {
-      color: '#1A1A1A',
+      color: colors.statusPrimary,
       icon: ActivityIcon,
       defaultText: 'Active',
     },
@@ -87,7 +88,7 @@ export function StatusBadge({
     lg: 'w-5 h-5',
   };
 
-  // Determine variant classes
+  // Determine variant styles
   let variantStyle = {};
   if (variant === 'filled') {
     variantStyle = {

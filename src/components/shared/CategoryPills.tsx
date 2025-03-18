@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { colors } from '@/lib/colors';
 
 export interface CategoryOption {
   /** Unique identifier for the category */
@@ -106,16 +107,16 @@ export function CategoryPills({
     switch (variant) {
       case 'filled':
         return isActive
-          ? 'bg-[#1A1A1A] text-white border-transparent'
-          : 'bg-[#F7F3F0] border-[#E5E0DC] hover:bg-[#E5E0DC] text-[#1A1A1A]';
+          ? `bg-${colors.kalosText} text-white border-transparent`
+          : `bg-${colors.kalosBg} border-${colors.kalosBorder} hover:bg-${colors.kalosHighlight} text-${colors.kalosText}`;
       case 'outline':
         return isActive
-          ? 'bg-transparent border-[#1A1A1A] text-[#1A1A1A]'
-          : 'bg-transparent border-[#E5E0DC] text-[#6B6B6B] hover:border-[#1A1A1A] hover:text-[#1A1A1A]';
+          ? `bg-transparent border-${colors.kalosText} text-${colors.kalosText}`
+          : `bg-transparent border-${colors.kalosBorder} text-${colors.kalosMuted} hover:border-${colors.kalosText} hover:text-${colors.kalosText}`;
       case 'minimal':
         return isActive
-          ? 'bg-transparent border-b-2 border-[#1A1A1A] text-[#1A1A1A] rounded-none px-3'
-          : 'bg-transparent border-b-2 border-transparent text-[#6B6B6B] hover:text-[#1A1A1A] rounded-none px-3';
+          ? `bg-transparent border-b-2 border-${colors.kalosText} text-${colors.kalosText} rounded-none px-3`
+          : `bg-transparent border-b-2 border-transparent text-${colors.kalosMuted} hover:text-${colors.kalosText} rounded-none px-3`;
       default:
         return '';
     }
@@ -128,10 +129,10 @@ export function CategoryPills({
         {showScrollButtons && showLeftScroll && (
           <button
             onClick={scrollLeft}
-            className="absolute left-0 z-10 flex items-center justify-center w-6 h-6 bg-[#F7F3F0]/90 rounded-full border border-[#E5E0DC]"
+            className={`absolute left-0 z-10 flex items-center justify-center w-6 h-6 bg-${colors.kalosBg}/90 rounded-full border border-${colors.kalosBorder}`}
             aria-label="Scroll left"
           >
-            <ChevronLeft className="w-4 h-4 text-[#1A1A1A]" />
+            <ChevronLeft className={`w-4 h-4 text-${colors.kalosText}`} />
           </button>
         )}
 
@@ -158,6 +159,7 @@ export function CategoryPills({
                     variant !== 'minimal' && 'rounded-full',
                     category.color && isActive && variant === 'filled' && `bg-[${category.color}]`
                   )}
+                  style={isActive && category.color && variant === 'filled' ? { backgroundColor: category.color } : {}}
                 >
                   {category.icon && (
                     <span className="mr-1.5">{category.icon}</span>
@@ -167,8 +169,8 @@ export function CategoryPills({
                     <span className={cn(
                       'ml-1.5 px-1.5 py-0.5 text-xs rounded-full',
                       isActive 
-                        ? variant === 'filled' ? 'bg-white/20 text-white' : 'bg-[#1A1A1A] text-white'
-                        : 'bg-[#E5E0DC] text-[#6B6B6B]'
+                        ? variant === 'filled' ? 'bg-white/20 text-white' : `bg-${colors.kalosText} text-white`
+                        : `bg-${colors.kalosBorder} text-${colors.kalosMuted}`
                     )}>
                       {category.badgeCount}
                     </span>
@@ -183,10 +185,10 @@ export function CategoryPills({
         {showScrollButtons && showRightScroll && (
           <button
             onClick={scrollRight}
-            className="absolute right-0 z-10 flex items-center justify-center w-6 h-6 bg-[#F7F3F0]/90 rounded-full border border-[#E5E0DC]"
+            className={`absolute right-0 z-10 flex items-center justify-center w-6 h-6 bg-${colors.kalosBg}/90 rounded-full border border-${colors.kalosBorder}`}
             aria-label="Scroll right"
           >
-            <ChevronRight className="w-4 h-4 text-[#1A1A1A]" />
+            <ChevronRight className={`w-4 h-4 text-${colors.kalosText}`} />
           </button>
         )}
       </div>

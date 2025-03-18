@@ -1,6 +1,7 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
 import { ArrowUpIcon, ArrowDownIcon, Minus } from 'lucide-react';
+import { colors } from '@/lib/colors';
 
 export interface StatCardProps {
   /** Title of the stat card */
@@ -82,16 +83,16 @@ export function StatCard({
   
   // Determine variant classes
   const variantClasses = {
-    default: 'bg-[#F7F3F0] border border-[#E5E0DC]',
-    outline: 'border border-[#1A1A1A] bg-transparent',
-    filled: 'bg-[#1A1A1A] text-white',
+    default: `bg-${colors.kalosBg} border border-${colors.kalosBorder}`,
+    outline: `border border-${colors.kalosText} bg-transparent`,
+    filled: `bg-${colors.kalosText} text-white`,
   };
 
   // Determine change indicator color
   const changeColors = {
-    positive: 'text-[#7D8F69]',
-    negative: 'text-[#B85C38]',
-    neutral: 'text-[#6B6B6B]',
+    positive: colors.statusSuccess,
+    negative: colors.statusDanger,
+    neutral: colors.kalosMuted,
   };
 
   return (
@@ -107,7 +108,7 @@ export function StatCard({
     >
       <div className="flex justify-between items-start mb-2">
         <h3 className={cn('font-medium', size === 'sm' ? 'text-xs' : 'text-sm')}>{title}</h3>
-        {icon && <div className="text-[#6B6B6B]">{icon}</div>}
+        {icon && <div style={{ color: colors.kalosMuted }}>{icon}</div>}
       </div>
       
       <div className="flex items-baseline">
@@ -118,24 +119,34 @@ export function StatCard({
         })}>
           {value}
         </span>
-        {unit && <span className="ml-1 text-[#6B6B6B] text-sm">{unit}</span>}
+        {unit && <span style={{ color: colors.kalosMuted }} className="ml-1 text-sm">{unit}</span>}
       </div>
       
       {hasChange && changeFormat !== 'none' && (
         <div className="flex items-center mt-2">
           {isChangePositive && !isChangeNeutral ? (
-            <ArrowUpIcon className={cn('w-3 h-3 mr-1', changeColors.positive)} />
+            <ArrowUpIcon 
+              className={cn('w-3 h-3 mr-1')} 
+              style={{ color: changeColors.positive }}
+            />
           ) : isChangeNeutral ? (
-            <Minus className={cn('w-3 h-3 mr-1', changeColors.neutral)} />
+            <Minus 
+              className={cn('w-3 h-3 mr-1')} 
+              style={{ color: changeColors.neutral }} 
+            />
           ) : (
-            <ArrowDownIcon className={cn('w-3 h-3 mr-1', changeColors.negative)} />
+            <ArrowDownIcon 
+              className={cn('w-3 h-3 mr-1')} 
+              style={{ color: changeColors.negative }}
+            />
           )}
           <span 
-            className={cn('text-xs', {
-              [changeColors.positive]: isChangePositive && !isChangeNeutral,
-              [changeColors.negative]: !isChangePositive && !isChangeNeutral,
-              [changeColors.neutral]: isChangeNeutral,
-            })}
+            className={cn('text-xs')}
+            style={{ 
+              color: isChangePositive && !isChangeNeutral ? changeColors.positive : 
+                    isChangeNeutral ? changeColors.neutral : 
+                    changeColors.negative 
+            }}
           >
             {changeString}
           </span>

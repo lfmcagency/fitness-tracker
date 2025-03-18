@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { colors } from '@/lib/colors';
 
 export interface DetailExpanderProps {
   /** The title shown in the header */
@@ -84,11 +85,11 @@ export function DetailExpander({
   const getVariantClasses = () => {
     switch (variant) {
       case 'outline':
-        return 'border border-[#E5E0DC] rounded-lg hover:border-[#BDBDBD]';
+        return `border border-${colors.kalosBorder} rounded-lg hover:border-[#BDBDBD]`;
       case 'filled':
-        return 'bg-[#F7F3F0] border border-[#E5E0DC] rounded-lg';
+        return `bg-${colors.kalosBg} border border-${colors.kalosBorder} rounded-lg`;
       case 'minimal':
-        return 'border-b border-[#E5E0DC]';
+        return `border-b border-${colors.kalosBorder}`;
       default:
         return '';
     }
@@ -137,13 +138,13 @@ export function DetailExpander({
           <div>
             <div className="font-medium">{title}</div>
             {description && (
-              <div className="text-sm text-[#6B6B6B] mt-0.5">{description}</div>
+              <div className={`text-sm text-${colors.kalosMuted} mt-0.5`}>{description}</div>
             )}
           </div>
         </div>
         
         {!disabled && (
-          <div className="ml-4 flex-shrink-0 text-[#6B6B6B]">
+          <div className={`ml-4 flex-shrink-0 text-${colors.kalosMuted}`}>
             {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           </div>
         )}

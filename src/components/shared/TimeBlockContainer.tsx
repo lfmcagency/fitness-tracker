@@ -1,6 +1,7 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
 import { Plus } from 'lucide-react';
+import { colors } from '@/lib/colors';
 
 export interface TimeBlockContainerProps {
   /** Title of the time block */
@@ -52,12 +53,22 @@ export function TimeBlockContainer({
     }
   };
 
-  // Default accent color
-  const defaultAccentColor = {
-    'Morning': '#F9CF93', // Soft orange/yellow for morning
-    'Afternoon': '#B5DEFF', // Light blue for afternoon
-    'Evening': '#D0A5C0', // Muted purple for evening
-  }[title] || '#E5E0DC'; // Default color
+  // Default accent color based on time block title
+  let defaultAccentColor;
+  
+  switch (title) {
+    case 'Morning':
+      defaultAccentColor = colors.timeBlockMorning;
+      break;
+    case 'Afternoon':
+      defaultAccentColor = colors.timeBlockAfternoon;
+      break;
+    case 'Evening':
+      defaultAccentColor = colors.timeBlockEvening;
+      break;
+    default:
+      defaultAccentColor = colors.kalosBorder;
+  }
   
   const headerBorderColor = accentColor || defaultAccentColor;
 
@@ -72,7 +83,7 @@ export function TimeBlockContainer({
           onClick={toggleCollapse}
         >
           <h3 
-            className="text-[#6B6B6B] text-sm font-medium"
+            className={`text-${colors.kalosMuted} text-sm font-medium`}
             style={{ 
               borderBottom: `2px solid ${headerBorderColor}`,
               paddingBottom: '2px' 
@@ -81,7 +92,7 @@ export function TimeBlockContainer({
             {title}
           </h3>
           {timeRange && (
-            <span className="ml-2 text-xs text-[#6B6B6B]">
+            <span className={`ml-2 text-xs text-${colors.kalosMuted}`}>
               {timeRange}
             </span>
           )}
@@ -91,7 +102,7 @@ export function TimeBlockContainer({
           <button
             type="button"
             onClick={onAdd}
-            className="flex items-center justify-center w-6 h-6 rounded-full text-[#6B6B6B] hover:text-[#1A1A1A] transition-colors bg-[#E5E0DC] hover:bg-[#D0CCC7]"
+            className={`flex items-center justify-center w-6 h-6 rounded-full text-${colors.kalosMuted} hover:text-${colors.kalosText} transition-colors bg-${colors.kalosBorder} hover:bg-${colors.kalosHighlight}`}
           >
             <Plus className="w-4 h-4" />
           </button>
@@ -103,12 +114,12 @@ export function TimeBlockContainer({
           {isEmpty ? (
             <div className="flex flex-col items-center justify-center py-6 text-center">
               {emptyContent || (
-                <div className="text-sm text-[#6B6B6B]">
+                <div className={`text-sm text-${colors.kalosMuted}`}>
                   <p>No items for this time block</p>
                   {showAddButton && onAdd && (
                     <button
                       onClick={onAdd}
-                      className="mt-2 text-[#1A1A1A] underline hover:no-underline"
+                      className={`mt-2 text-${colors.kalosText} underline hover:no-underline`}
                     >
                       Add an item
                     </button>
