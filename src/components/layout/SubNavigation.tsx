@@ -24,16 +24,16 @@ export default function SubNavigation({
 }: SubNavigationProps) {
   return (
     <>
-      {/* Greek Meander Pattern - Full Width */}
-      <div className="fixed top-[53px] left-0 right-0 z-40 w-full h-[24px] bg-[#F7F3F0]">
-        <div className="w-full h-full overflow-hidden">
+      {/* Greek Meander Pattern - Full Width - Reduced Height */}
+      <div className="fixed top-[53px] left-0 right-0 z-40 w-full h-[18px] bg-[#F7F3F0]">
+        <div className="w-full h-full overflow-hidden max-w-none">
           <svg 
             width="100%" 
-            height="24" 
-            viewBox="0 0 1200 24" 
+            height="18" 
+            viewBox="0 0 1200 18" 
             preserveAspectRatio="xRepeat meet"
             xmlns="http://www.w3.org/2000/svg"
-            className="text-[#1A1A1A]"
+            className="text-[#1A1A1A] w-full"
           >
             <defs>
               <pattern 
@@ -41,127 +41,127 @@ export default function SubNavigation({
                 x="0" 
                 y="0" 
                 width="120" 
-                height="24" 
+                height="18" 
                 patternUnits="userSpaceOnUse"
               >
                 {/* Main horizontal line */}
                 <path 
-                  d="M0,8 H120" 
+                  d="M0,6 H120" 
                   stroke="currentColor" 
-                  strokeWidth="2" 
+                  strokeWidth="1.5" 
                   fill="none"
                 />
                 
                 {/* Meander elements */}
                 <path 
-                  d="M10,8 V16 H30 V8" 
+                  d="M10,6 V12 H30 V6" 
                   stroke="currentColor" 
-                  strokeWidth="2" 
+                  strokeWidth="1.5" 
                   fill="none" 
                 />
                 <path 
-                  d="M40,8 V16 H60 V8" 
+                  d="M40,6 V12 H60 V6" 
                   stroke="currentColor" 
-                  strokeWidth="2" 
+                  strokeWidth="1.5" 
                   fill="none" 
                 />
                 <path 
-                  d="M70,8 V16 H90 V8" 
+                  d="M70,6 V12 H90 V6" 
                   stroke="currentColor" 
-                  strokeWidth="2" 
+                  strokeWidth="1.5" 
                   fill="none" 
                 />
                 <path 
-                  d="M100,8 V16 H120 V8" 
+                  d="M100,6 V12 H120 V6" 
                   stroke="currentColor" 
-                  strokeWidth="2" 
+                  strokeWidth="1.5" 
                   fill="none" 
                 />
                 
                 {/* Vertical connecting lines */}
                 <path 
-                  d="M10,16 V24" 
+                  d="M10,12 V18" 
                   stroke="currentColor" 
-                  strokeWidth="2" 
+                  strokeWidth="1.5" 
                   fill="none" 
                 />
                 <path 
-                  d="M30,16 V24" 
+                  d="M30,12 V18" 
                   stroke="currentColor" 
-                  strokeWidth="2" 
+                  strokeWidth="1.5" 
                   fill="none" 
                 />
                 <path 
-                  d="M40,16 V24" 
+                  d="M40,12 V18" 
                   stroke="currentColor" 
-                  strokeWidth="2" 
+                  strokeWidth="1.5" 
                   fill="none" 
                 />
                 <path 
-                  d="M60,16 V24" 
+                  d="M60,12 V18" 
                   stroke="currentColor" 
-                  strokeWidth="2" 
+                  strokeWidth="1.5" 
                   fill="none" 
                 />
                 <path 
-                  d="M70,16 V24" 
+                  d="M70,12 V18" 
                   stroke="currentColor" 
-                  strokeWidth="2" 
+                  strokeWidth="1.5" 
                   fill="none" 
                 />
                 <path 
-                  d="M90,16 V24" 
+                  d="M90,12 V18" 
                   stroke="currentColor" 
-                  strokeWidth="2" 
+                  strokeWidth="1.5" 
                   fill="none" 
                 />
                 <path 
-                  d="M100,16 V24" 
+                  d="M100,12 V18" 
                   stroke="currentColor" 
-                  strokeWidth="2" 
+                  strokeWidth="1.5" 
                   fill="none" 
                 />
                 <path 
-                  d="M120,16 V24" 
+                  d="M120,12 V18" 
                   stroke="currentColor" 
-                  strokeWidth="2" 
+                  strokeWidth="1.5" 
                   fill="none" 
                 />
                 
                 {/* Bottom horizontal line */}
                 <path 
-                  d="M0,24 H120" 
+                  d="M0,18 H120" 
                   stroke="currentColor" 
-                  strokeWidth="2" 
+                  strokeWidth="1.5" 
                   fill="none" 
                 />
                 
                 {/* Decorative dots */}
-                <circle cx="20" cy="12" r="1" fill="currentColor" />
-                <circle cx="50" cy="12" r="1" fill="currentColor" />
-                <circle cx="80" cy="12" r="1" fill="currentColor" />
-                <circle cx="110" cy="12" r="1" fill="currentColor" />
+                <circle cx="20" cy="9" r="0.8" fill="currentColor" />
+                <circle cx="50" cy="9" r="0.8" fill="currentColor" />
+                <circle cx="80" cy="9" r="0.8" fill="currentColor" />
+                <circle cx="110" cy="9" r="0.8" fill="currentColor" />
               </pattern>
             </defs>
             
             {/* Apply pattern */}
-            <rect x="0" y="0" width="100%" height="24" fill="url(#greekMeander)" />
+            <rect x="0" y="0" width="100%" height="18" fill="url(#greekMeander)" />
           </svg>
         </div>
       </div>
       
       {/* Breadcrumbs - Sticky, More Compact */}
-      <div className="fixed top-[77px] left-0 right-0 z-40 w-full bg-[#F7F3F0]/95 backdrop-blur-sm border-b border-[#E5E0DC]">
+      <div className="fixed top-[71px] left-0 right-0 z-40 w-full bg-[#F7F3F0]/95 backdrop-blur-sm border-b border-[#E5E0DC]">
         <div className="max-w-[1400px] mx-auto px-4">
-          <div className="flex items-center h-10">
+          <div className="flex items-center h-8">
             {/* Back Button */}
             {showBackButton && (
               <button 
                 onClick={onBackClick}
-                className="p-1.5 mr-2 hover:bg-[#E5E0DC] rounded-full transition-colors flex-shrink-0"
+                className="p-1 mr-1.5 hover:bg-[#E5E0DC] rounded-full transition-colors flex-shrink-0"
                 aria-label="Go back"
               >
-                <ChevronLeft className="w-4 h-4" />
+                <ChevronLeft className="w-3.5 h-3.5" />
               </button>
             )}
             
@@ -176,7 +176,7 @@ export default function SubNavigation({
                       className="text-[#6B6B6B] hover:text-[#1A1A1A] transition-colors flex-shrink-0"
                       aria-label="Home"
                     >
-                      <Home className="w-3.5 h-3.5" />
+                      <Home className="w-3 h-3" />
                     </Link>
                   </li>
                 )}
@@ -188,11 +188,11 @@ export default function SubNavigation({
                   
                   return (
                     <li key={crumb.href} className="flex items-center min-w-0">
-                      <ChevronRight className="mx-1.5 w-3 h-3 text-[#6B6B6B] flex-shrink-0" />
+                      <ChevronRight className="mx-1 w-2.5 h-2.5 text-[#6B6B6B] flex-shrink-0" />
                       <Link
                         href={crumb.href}
                         className={cn(
-                          "text-xs whitespace-nowrap overflow-hidden text-ellipsis max-w-xs",
+                          "text-[10px] whitespace-nowrap overflow-hidden text-ellipsis max-w-xs",
                           index === breadcrumbs.length - 1
                             ? "font-medium text-[#1A1A1A]"
                             : "text-[#6B6B6B] hover:text-[#1A1A1A] transition-colors"
@@ -210,7 +210,7 @@ export default function SubNavigation({
       </div>
       
       {/* Spacer to account for fixed navigation */}
-      <div className="h-[87px]"></div>
+      <div className="h-[79px]"></div>
     </>
   )
 }
