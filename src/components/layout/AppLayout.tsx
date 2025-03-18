@@ -74,25 +74,18 @@ export default function AppLayout({
     return null // Will redirect via useEffect
   }
 
-  // Calculate proper top padding based on if we have breadcrumbs or not
-  const topPadding = (showBackButton || activeBreadcrumbs.length > 0) 
-    ? "pt-[90px] sm:pt-[95px]" 
-    : "pt-[63px] sm:pt-[68px]";
-
   return (
     <div className="flex flex-col min-h-screen bg-[#F7F3F0] text-[#1A1A1A] max-w-[1400px] mx-auto">
       <Header />
       
-      {/* Always show SubNavigation for the Greek pattern, 
-          but only show breadcrumbs when needed */}
       <SubNavigation 
         breadcrumbs={activeBreadcrumbs}
         showBackButton={showBackButton}
         onBackClick={handleBackClick}
       />
       
-      {/* Main content with responsive padding */}
-      <main className={`flex-1 ${topPadding} pb-24 px-4 sm:px-6 md:px-8 overflow-auto`}>
+      {/* Main content */}
+      <main className="flex-1 pb-24 px-4 sm:px-6 md:px-8">
         <div className="max-w-screen-xl mx-auto">
           {children}
         </div>
@@ -121,11 +114,20 @@ function generateBreadcrumbs(pathname: string): BreadcrumbItem[] {
       href: '/dashboard',
       label: 'Home'
     });
+  } else {
+    // Still add dashboard but with the dashboard label
+    breadcrumbs.push({
+      href: '/dashboard',
+      label: 'Dashboard'
+    });
   }
   
   // Build the rest of the breadcrumbs
   let currentPath = '';
   paths.forEach((path, i) => {
+    // Skip duplicating dashboard in breadcrumbs
+    if (i === 0 && path === 'dashboard') return;
+    
     currentPath += `/${path}`;
     
     // Format the label (capitalize first letter, replace hyphens with spaces)

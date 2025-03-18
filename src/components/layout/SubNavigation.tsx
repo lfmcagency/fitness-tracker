@@ -3,7 +3,7 @@
 
 import React from "react"
 import Link from "next/link"
-import { ChevronLeft, ChevronRight } from "lucide-react"
+import { ChevronLeft, ChevronRight, Home } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface BreadcrumbItem {
@@ -15,61 +15,18 @@ interface SubNavigationProps {
   breadcrumbs: BreadcrumbItem[];
   showBackButton?: boolean;
   onBackClick?: () => void;
-  className?: string;
 }
 
 export default function SubNavigation({
   breadcrumbs,
-  showBackButton = true,
-  onBackClick,
-  className
+  showBackButton = false,
+  onBackClick
 }: SubNavigationProps) {
   return (
-    <div className={cn(
-      "sticky top-[53px] z-40 w-full bg-[#F7F3F0]/95 backdrop-blur-sm px-4 pb-1 pt-3",
-      className
-    )}>
-      <div className="max-w-[1400px] mx-auto">
-        {/* Breadcrumbs and back button */}
-        <div className="flex items-center mb-4">
-          {/* Back button */}
-          {showBackButton && (
-            <button 
-              onClick={onBackClick}
-              className="mr-4 p-2 hover:bg-[#E5E0DC] rounded-full transition-colors"
-              aria-label="Go back"
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-          )}
-          
-          {/* Breadcrumbs */}
-          {breadcrumbs.length > 0 && (
-            <nav className="overflow-x-auto whitespace-nowrap scrollbar-none py-2">
-              <ol className="flex items-center">
-                {breadcrumbs.map((crumb, index) => (
-                  <li key={crumb.href} className="flex items-center">
-                    {index > 0 && <ChevronRight className="mx-2 w-4 h-4 text-[#6B6B6B]" />}
-                    <Link
-                      href={crumb.href}
-                      className={cn(
-                        "text-sm py-1 px-1",
-                        index === breadcrumbs.length - 1
-                          ? "font-medium text-[#1A1A1A]"
-                          : "text-[#6B6B6B] hover:text-[#1A1A1A] transition-colors"
-                      )}
-                    >
-                      {crumb.label}
-                    </Link>
-                  </li>
-                ))}
-              </ol>
-            </nav>
-          )}
-        </div>
-        
-        {/* Greek Meander Pattern */}
-        <div className="w-full overflow-hidden h-[24px]">
+    <>
+      {/* Greek Meander Pattern - Full Width */}
+      <div className="fixed top-[53px] left-0 right-0 z-40 w-full h-[24px] bg-[#F7F3F0]">
+        <div className="w-full h-full overflow-hidden">
           <svg 
             width="100%" 
             height="24" 
@@ -79,7 +36,6 @@ export default function SubNavigation({
             className="text-[#1A1A1A]"
           >
             <defs>
-              {/* Proper Greek Meander (Key) Pattern - Continuous Pattern */}
               <pattern 
                 id="greekMeander" 
                 x="0" 
@@ -96,7 +52,7 @@ export default function SubNavigation({
                   fill="none"
                 />
                 
-                {/* Meander elements - Connected properly for continuous pattern */}
+                {/* Meander elements */}
                 <path 
                   d="M10,8 V16 H30 V8" 
                   stroke="currentColor" 
@@ -122,7 +78,7 @@ export default function SubNavigation({
                   fill="none" 
                 />
                 
-                {/* Vertical connecting lines - Optional, for more ornate version */}
+                {/* Vertical connecting lines */}
                 <path 
                   d="M10,16 V24" 
                   stroke="currentColor" 
@@ -172,7 +128,7 @@ export default function SubNavigation({
                   fill="none" 
                 />
                 
-                {/* Bottom horizontal connecting line for complete pattern */}
+                {/* Bottom horizontal line */}
                 <path 
                   d="M0,24 H120" 
                   stroke="currentColor" 
@@ -180,7 +136,7 @@ export default function SubNavigation({
                   fill="none" 
                 />
                 
-                {/* Optional - Small decorative elements */}
+                {/* Decorative dots */}
                 <circle cx="20" cy="12" r="1" fill="currentColor" />
                 <circle cx="50" cy="12" r="1" fill="currentColor" />
                 <circle cx="80" cy="12" r="1" fill="currentColor" />
@@ -188,22 +144,78 @@ export default function SubNavigation({
               </pattern>
             </defs>
             
-            {/* Apply the pattern to a full-width rectangle */}
-            <rect 
-              x="0" 
-              y="0" 
-              width="100%" 
-              height="24" 
-              fill="url(#greekMeander)" 
-            />
+            {/* Apply pattern */}
+            <rect x="0" y="0" width="100%" height="24" fill="url(#greekMeander)" />
           </svg>
         </div>
       </div>
-    </div>
+      
+      {/* Breadcrumbs - Sticky, More Compact */}
+      <div className="fixed top-[77px] left-0 right-0 z-40 w-full bg-[#F7F3F0]/95 backdrop-blur-sm border-b border-[#E5E0DC]">
+        <div className="max-w-[1400px] mx-auto px-4">
+          <div className="flex items-center h-10">
+            {/* Back Button */}
+            {showBackButton && (
+              <button 
+                onClick={onBackClick}
+                className="p-1.5 mr-2 hover:bg-[#E5E0DC] rounded-full transition-colors flex-shrink-0"
+                aria-label="Go back"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+            )}
+            
+            {/* Breadcrumbs */}
+            <nav className="overflow-x-auto scrollbar-none py-1 flex-1 min-w-0">
+              <ol className="flex items-center">
+                {/* Home icon for first crumb if it's dashboard */}
+                {breadcrumbs.length > 0 && breadcrumbs[0].href === '/dashboard' && (
+                  <li className="flex items-center">
+                    <Link 
+                      href="/dashboard" 
+                      className="text-[#6B6B6B] hover:text-[#1A1A1A] transition-colors flex-shrink-0"
+                      aria-label="Home"
+                    >
+                      <Home className="w-3.5 h-3.5" />
+                    </Link>
+                  </li>
+                )}
+                
+                {/* Other breadcrumbs */}
+                {breadcrumbs.map((crumb, index) => {
+                  // Skip the first crumb if it's dashboard (already showed as home icon)
+                  if (index === 0 && crumb.href === '/dashboard') return null;
+                  
+                  return (
+                    <li key={crumb.href} className="flex items-center min-w-0">
+                      <ChevronRight className="mx-1.5 w-3 h-3 text-[#6B6B6B] flex-shrink-0" />
+                      <Link
+                        href={crumb.href}
+                        className={cn(
+                          "text-xs whitespace-nowrap overflow-hidden text-ellipsis max-w-xs",
+                          index === breadcrumbs.length - 1
+                            ? "font-medium text-[#1A1A1A]"
+                            : "text-[#6B6B6B] hover:text-[#1A1A1A] transition-colors"
+                        )}
+                      >
+                        {crumb.label}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ol>
+            </nav>
+          </div>
+        </div>
+      </div>
+      
+      {/* Spacer to account for fixed navigation */}
+      <div className="h-[87px]"></div>
+    </>
   )
 }
 
-// Add custom CSS to hide scrollbar while maintaining functionality
+// Scrollbar hiding CSS
 const scrollbarStyle = `
   .scrollbar-none::-webkit-scrollbar {
     display: none;
@@ -215,7 +227,7 @@ const scrollbarStyle = `
   }
 `;
 
-// Add the style to the document if in browser environment
+// Add style to document if in browser environment
 if (typeof document !== 'undefined') {
   const style = document.createElement('style');
   style.textContent = scrollbarStyle;
