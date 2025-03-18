@@ -25,3 +25,8 @@ export type { TimeBlockContainerProps } from './TimeBlockContainer';
 export type { CategoryPillsProps, CategoryOption } from './CategoryPills';
 export type { DetailExpanderProps } from './metrics/DetailExpander';
 export type { MetricChartProps, MetricChartPoint, ChartType } from './metrics/MetricChart';
+
+export const fontClasses = {
+    heading: 'font-heading',
+    body: 'font-body',
+  };

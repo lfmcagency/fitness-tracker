@@ -18,6 +18,7 @@ export const colors = {
     kalosBorder: '#E5E0DC',
     kalosMuted: '#6B6B6B',
     kalosHighlight: '#E5E0DC',
+    kalosDarkText: '#333333',
     
     // Time block colors
     timeBlockMorning: '#F9CF93',  // Soft orange/yellow

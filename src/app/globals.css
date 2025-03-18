@@ -7,11 +7,33 @@
   --background-rgb: 247, 243, 240;
   --muted-foreground-rgb: 107, 107, 107;
   --border-rgb: 229, 224, 220;
+  
+  /* Status colors */
+  --status-primary: 29, 52, 97;    /* #1D3461 */
+  --status-success: 63, 69, 49;     /* #3F4531 */
+  --status-info: 115, 146, 183;     /* #7392B7 */
+  --status-warning: 205, 198, 174;  /* #CDC6AE */
+  --status-danger: 157, 105, 90;    /* #9D695A */
+
+  /* Font settings */
+  --font-heading: "Lucida Sans Typewriter", monaco, monospace;
+  --font-body: "Lucida Console", monaco, monospace;
+}
+
+@layer base {
+  html {
+    font-family: var(--font-body);
+  }
+  
+  h1, h2, h3, h4, h5, h6, .logo {
+    font-family: var(--font-heading);
+  }
 }
 
 body {
   background: rgb(var(--background-rgb));
   color: rgb(var(--foreground-rgb));
+  font-family: var(--font-body);
 }
 
 /* New Kalos theme styles */

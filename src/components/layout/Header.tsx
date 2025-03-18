@@ -4,6 +4,7 @@
 import Link from "next/link"
 import { useAuth } from '@/hooks/useAuth'
 
+
 export default function Header() {
   const { isAuthenticated } = useAuth()
   
@@ -17,7 +18,7 @@ export default function Header() {
               className="text-3xl sm:text-4xl tracking-wide font-normal text-[#1A1A1A]"
               style={{ 
                 fontFamily: "'Lucida Sans Typewriter', 'Courier New', monospace",
-                fontWeight: 400,
+                fontWeight: 600,
                 letterSpacing: '0.02em'
               }}
             >
