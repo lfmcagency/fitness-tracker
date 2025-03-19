@@ -128,6 +128,8 @@ body {
 /* Keep existing shadcn/ui theme variables */
 @layer base {
   :root {
+    --font-body: var(--font-lucida-sans);
+    --font-heading: var(--font-lucida-typewriter);
     --background: 30 33% 95%;
     --foreground: 0 0% 10%;
     --card: 0 0% 100%;
@@ -153,9 +155,21 @@ body {
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
     --radius: 0.5rem;
+
+    html {
+      font-family: var(--font-body);
+    }
+    
+    h1, h2, h3, h4, h5, h6, .logo {
+      font-family: var(--font-heading);
+    }
+  }
+   
   }
   
   .dark {
+    --font-body: var(--font-lucida-sans);
+    --font-heading: var(--font-lucida-typewriter);
     --background: 0 0% 10%;
     --foreground: 0 0% 98%;
     --card: 0 0% 15%;
@@ -176,7 +190,6 @@ body {
     --input: 0 0% 20%;
     --ring: 0 0% 80%;
   }
-}
 
 @layer base {
   * {

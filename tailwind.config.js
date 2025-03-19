@@ -16,8 +16,8 @@ module.exports = {
     },
     extend: {
       fontFamily: {
-        'heading': ['"Lucida Sans Typewriter"', 'monaco', 'monospace'],
-        'body': ['"Lucida Console"', 'monaco', 'monospace'],
+        sans: ['var(--font-lucida-sans)'],
+        mono: ['var(--font-lucida-typewriter)'],
       },
       colors: {
         // Status colors
