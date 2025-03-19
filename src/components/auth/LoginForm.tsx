@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Eye, EyeOff, AlertCircle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { colors } from '@/lib/colors';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useAuth } from '@/components/auth/AuthProvider';
 
 interface LoginFormProps {
   onSuccess?: () => void;
@@ -18,6 +18,7 @@ const LoginForm: React.FC<LoginFormProps> = ({
   redirectPath = '/dashboard',
 }) => {
   const router = useRouter();
+  const { login, error: authError, clearError } = useAuth();
   
   // Form state
   const [email, setEmail] = useState('');
@@ -28,6 +29,13 @@ const LoginForm: React.FC<LoginFormProps> = ({
   // UI state
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Update local error state when auth error changes
+  useEffect(() => {
+    if (authError) {
+      setError(authError);
+    }
+  }, [authError]);
   
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,32 +49,19 @@ const LoginForm: React.FC<LoginFormProps> = ({
     try {
       setIsLoading(true);
       setError(null);
+      clearError();
       
-      // Call the login API endpoint
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password }),
-      });
+      // Use our login function from AuthProvider
+      const success = await login(email, password, rememberMe);
       
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.message || 'Login failed');
+      if (success) {
+        // Handle successful login
+        if (onSuccess) {
+          onSuccess();
+        } else {
+          router.push(redirectPath);
+        }
       }
-      
-      // Handle successful login
-      if (onSuccess) {
-        onSuccess();
-      } else {
-        router.push(redirectPath);
-      }
-      
-    } catch (err) {
-      console.error('Login error:', err);
-      setError(err instanceof Error ? err.message : 'An error occurred during login');
     } finally {
       setIsLoading(false);
     }

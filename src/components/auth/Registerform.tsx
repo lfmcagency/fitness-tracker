@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Eye, EyeOff, AlertCircle, CheckCircle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { colors } from '@/lib/colors';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useAuth } from '@/components/auth/AuthProvider';
 
 interface RegisterFormProps {
   onSuccess?: () => void;
@@ -18,6 +19,7 @@ const RegisterForm: React.FC<RegisterFormProps> = ({
   redirectPath = '/dashboard',
 }) => {
   const router = useRouter();
+  const { register, error: authError, clearError } = useAuth();
   
   // Form state
   const [name, setName] = useState('');
@@ -35,6 +37,13 @@ const RegisterForm: React.FC<RegisterFormProps> = ({
   // Validation state
   const [passwordStrength, setPasswordStrength] = useState(0);
   const [passwordsMatch, setPasswordsMatch] = useState(true);
+  
+  // Update local error state when auth error changes
+  useEffect(() => {
+    if (authError) {
+      setError(authError);
+    }
+  }, [authError]);
   
   // Check password strength
   const checkPasswordStrength = (password: string) => {
@@ -98,37 +107,24 @@ const RegisterForm: React.FC<RegisterFormProps> = ({
     try {
       setIsLoading(true);
       setError(null);
+      clearError();
       
-      // Call the register API endpoint
-      const response = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ name, email, password }),
-      });
+      // Use our register function from AuthProvider
+      const success = await register(name, email, password);
       
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.message || 'Registration failed');
+      if (success) {
+        // Handle successful registration
+        setSuccess('Registration successful! Redirecting...');
+        
+        // Give user time to see success message before redirecting
+        setTimeout(() => {
+          if (onSuccess) {
+            onSuccess();
+          } else {
+            router.push(redirectPath);
+          }
+        }, 1500);
       }
-      
-      // Handle successful registration
-      setSuccess('Registration successful! Redirecting...');
-      
-      // Give user time to see success message before redirecting
-      setTimeout(() => {
-        if (onSuccess) {
-          onSuccess();
-        } else {
-          router.push(redirectPath);
-        }
-      }, 1500);
-      
-    } catch (err) {
-      console.error('Registration error:', err);
-      setError(err instanceof Error ? err.message : 'An error occurred during registration');
     } finally {
       setIsLoading(false);
     }

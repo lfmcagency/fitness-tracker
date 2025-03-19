@@ -1,7 +1,7 @@
 // src/app/layout.tsx
 import { lucidaSans, lucidaTypewriter } from '@/lib/fonts'
 import AuthProvider from '@/components/auth/AuthProvider'
-import { SessionProvider } from '@/components/SessionProvider'
+import SessionProvider from '@/components/SessionProvider'
 import './globals.css'
 
 export const metadata = {
