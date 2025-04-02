@@ -83,7 +83,10 @@ export async function registerUser(userData: UserRegistrationData): Promise<Regi
     return {
       ...userWithoutPassword,
       id: userObject._id.toString(), // Ensure ID is returned as a string
-      settings: { weightUnit: 'kg' } // Ensure settings match the expected type
+      settings: { weightUnit: 'kg' }, // Ensure settings match the expected type
+      name: userObject.name || '', // Ensure name is always a string
+      role: userObject.role || 'user', // Ensure role is always set
+      image: userObject.image || undefined // Convert null to undefined
     };
 
   } catch (error: any) {

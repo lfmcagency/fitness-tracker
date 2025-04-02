@@ -48,9 +48,8 @@ export type {
 } from './api/authResponses';
 
 export type {
-  BodyweightEntry,
-  UserSettings,
-  UserProfile as UserModelProfile,
+  IWeightEntry,
+  IUserSettings,
   IUser
 } from './models/user';
 

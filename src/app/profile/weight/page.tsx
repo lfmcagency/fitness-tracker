@@ -1,55 +1,57 @@
 // src/app/profile/weight/page.tsx
-"use client"
+// This page might be redundant now if WeightEntryForm is directly in ProfileOverview,
+// but let's fix the error assuming this page is still used.
+'use client'; // Needs to be a client component to use hooks/handlers
 
-import React from 'react'
-import AppLayout from '@/components/layout/AppLayout'
-import WeightEntryForm from '@/components/profile/WeightEntryForm'
-import WeightHistoryDisplay from '@/components/profile/WeightHistoryDisplay'
-import { useAuth } from '@/components/auth/AuthProvider'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import React from 'react';
+import AppLayout from '@/components/layout/AppLayout'; // Assuming layout component
+import WeightEntryForm from '@/components/profile/WeightEntryForm'; // Import the form
+import WeightHistoryDisplay from '@/components/profile/WeightHistoryDisplay'; // Import history display (if used here)
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'; // Import Card components if needed
 
-export default function WeightPage() {
-  const { user } = useAuth()
-  const [refreshHistory, setRefreshHistory] = React.useState(0)
-  
-  // Handle successful weight entry to refresh history
+const WeightTrackingPage: React.FC = () => {
+
+  // Handler for when a new weight entry is successfully added by the form
   const handleWeightAdded = () => {
-    setRefreshHistory(prev => prev + 1)
-  }
-  
+    console.log('Weight entry added successfully!');
+    // Here you might trigger a re-fetch of the weight history if needed,
+    // although the store might handle this already.
+    // Example: useUserStore.getState().fetchWeightHistory();
+  };
+
   return (
     <AppLayout title="Weight Tracking" requireAuth={true}>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Weight Entry Form */}
-        <div className="lg:col-span-1">
-          <Card>
-            <CardHeader>
-              <CardTitle>Log Weight</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <WeightEntryForm 
-                onSuccess={handleWeightAdded} 
-                withCard={false}
-              />
-            </CardContent>
-          </Card>
-        </div>
-        
-        {/* Weight History */}
-        <div className="lg:col-span-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Weight History</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <WeightHistoryDisplay 
-                key={refreshHistory}
-                showTrends={true} 
-              />
-            </CardContent>
-          </Card>
-        </div>
+      <div className="space-y-6">
+
+        {/* Section for logging new weight */}
+        <Card>
+          <CardHeader>
+             {/* Title is now within WeightEntryForm's Card, so this might be redundant */}
+            {/* <CardTitle>Log New Weight Entry</CardTitle> */}
+          </CardHeader>
+          <CardContent>
+            <WeightEntryForm
+              onSuccess={handleWeightAdded}
+              // --- FIX: Remove the withCard prop ---
+              // withCard={false} // This prop no longer exists
+            />
+          </CardContent>
+        </Card>
+
+        {/* Section for displaying weight history */}
+        {/* If WeightHistoryDisplay component is intended for Arete, remove this section */}
+        {/* <Card>
+          <CardHeader>
+            <CardTitle>Weight History</CardTitle>
+          </CardHeader>
+          <CardContent>
+             <WeightHistoryDisplay limit={15} showTrends={true} />
+          </CardContent>
+        </Card> */}
+
       </div>
     </AppLayout>
-  )
-}
+  );
+};
+
+export default WeightTrackingPage;

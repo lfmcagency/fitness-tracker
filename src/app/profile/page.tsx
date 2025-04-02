@@ -1,17 +1,20 @@
 // src/app/profile/page.tsx
-"use client"
+import React from 'react';
+import ProfileOverview from '@/components/profile/ProfileOverview';
+import AppLayout from '@/components/layout/AppLayout'; // Assuming this is your layout component
+// Removed useAuth import as ProfileOverview now uses useSession/useUserStore
 
-import React from 'react'
-import AppLayout from '@/components/layout/AppLayout'
-import ProfileOverview from '@/components/profile/ProfileOverview'
-import { useAuth } from '@/components/auth/AuthProvider'
+// Define the page component
+const ProfilePage: React.FC = () => {
+  // Removed useAuth hook call as userId is no longer passed
 
-export default function ProfilePage() {
-  const { user } = useAuth()
-  
+  // Render the layout and the ProfileOverview component without props
   return (
     <AppLayout title="Profile" requireAuth={true}>
-      <ProfileOverview userId={user?.id} />
+      {/* --- FIX: Remove the userId prop --- */}
+      <ProfileOverview />
     </AppLayout>
   )
 }
+
+export default ProfilePage;
