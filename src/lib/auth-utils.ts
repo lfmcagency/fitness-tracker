@@ -22,6 +22,7 @@ export enum AuthLevel {
   NONE = "none",
   /** Authentication is optional, handler will receive userId if available */
   OPTIONAL = "optional",
+  USER = "USER",
 }
 
 /**

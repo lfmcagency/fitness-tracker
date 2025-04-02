@@ -1,34 +1,17 @@
+// src/types/api/settingsResponses.ts
+
+import { IUserSettings } from '@/types/models/user'; // Use the clean model type
 import { ApiResponse } from './common';
 
-/**
- * User settings data structure
- */
-export interface SettingsData {
-  settings: {
-    weightUnit: 'kg' | 'lbs';
-    lengthUnit?: 'cm' | 'in';
-    theme?: string;
-    notificationPreferences?: {
-      email: boolean;
-      push: boolean;
-    };
-  };
+// Represents the data payload for GET /api/user/settings
+export interface UserSettingsPayload {
+  settings: IUserSettings;
 }
 
-/**
- * Request body for updating settings
- */
-export interface UpdateSettingsRequest {
-  settings: {
-    weightUnit?: 'kg' | 'lbs';
-    lengthUnit?: 'cm' | 'in';
-    theme?: string;
-    notificationPreferences?: {
-      email?: boolean;
-      push?: boolean;
-    };
-  };
+// Represents the request body for PUT /api/user/settings
+export interface UpdateUserSettingsRequest {
+  settings: Partial<IUserSettings>; // Allow updating parts of settings
 }
 
-// API response types
-export type SettingsResponse = ApiResponse<SettingsData>;
+// Specific response type for the settings endpoint
+export type UserSettingsApiResponse = ApiResponse<UserSettingsPayload>;

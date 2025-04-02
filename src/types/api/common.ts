@@ -1,3 +1,5 @@
+// src/types/api/common.ts
+
 /**
  * API success response with data
  */
@@ -14,23 +16,28 @@ export interface ApiSuccessResponse<T> {
 export interface ApiErrorResponse {
   success: false;
   error: {
-    code: string;
+    code: string; // Use ErrorCode enum values if available
     message: string;
-    details?: any;
+    details?: any; // For development debugging
   };
   timestamp?: string;
 }
 /**
  * Standard API response format (union of success and error)
  */
-export type ApiResponse<T = any> = ApiSuccessResponse<T> | ApiErrorResponse;
+export type ApiResponse<T = void> = ApiSuccessResponse<T> | ApiErrorResponse; // Default T to void if no data
 
 /**
- * Paginated response wrapper
+ * Paginated response wrapper (If used elsewhere)
  */
-export interface PaginatedResponse {
+export interface PaginatedMetaData {
   total: number;
   page: number;
   limit: number;
   pages: number;
+}
+
+export interface PaginatedResponse<T> {
+  items: T[];
+  meta: PaginatedMetaData;
 }

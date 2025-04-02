@@ -1,3 +1,4 @@
+// src/app/api/user/profile/route.ts
 export const dynamic = 'force-dynamic';
 
 import { NextRequest } from "next/server";
@@ -5,62 +6,46 @@ import { withAuth, AuthLevel } from '@/lib/auth-utils';
 import { dbConnect } from '@/lib/db';
 import User from "@/models/User";
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
-import { WeightEntry } from "@/types/api/userResponses";
-import { convertUserToProfile, convertWeightEntries } from '@/types/converters/userConverters';
-import { isValidObjectId } from 'mongoose';
-import { IUser } from '@/types/models/user';
+// --- FIX: Use the correct converter ---
+import { convertUserToProfileResponse } from '@/types/converters/userConverters';
+import mongoose, { isValidObjectId } from 'mongoose';
+import { IUser } from '@/types/models/user'; // Use the corrected type
 import { ErrorCode } from '@/types/validation';
+// --- FIX: Use the correct response type ---
+import { UserProfileApiResponse, UserProfilePayload } from "@/types/api/userResponses";
 
-// Define the profile data shape based on UserProfileResponse in userResponses.ts
-interface UserProfileData {
-  id: string;
-  name: string;
-  email: string;
-  image?: string | null;
-  role: 'user' | 'admin' | 'trainer';
-  settings?: {
-    weightUnit: 'kg' | 'lbs';
-    lengthUnit?: 'cm' | 'in';
-    theme?: string;
-  };
-  bodyweight?: WeightEntry[];
-  stats?: {
-    level: number;
-    xp: number;
-  };
-}
+/**
+ * GET /api/user/profile
+ * Get the full profile for the currently authenticated user.
+ */
+export const GET = withAuth<UserProfilePayload>( // Generic type is the PAYLOAD
+  async (req: NextRequest, userId: string) => {
+    try {
+      await dbConnect();
 
-export const GET = withAuth<UserProfileData>(async (req: NextRequest, userId: string) => {
-  try {
-    await dbConnect();
-    
-    // Validate userId
-    if (!isValidObjectId(userId)) {
-      return apiError('Invalid user ID', 400, ErrorCode.VALIDATION);
+      if (!isValidObjectId(userId)) {
+        console.error(`[API Profile GET] Invalid userId in token: ${userId}`);
+        return apiError('Invalid user identifier', 400, ErrorCode.VALIDATION);
+      }
+
+      // Use lean only if not calling methods/middleware on the doc later
+      const user = await User.findById(userId).select('-password').lean() as IUser | null;
+
+      if (!user) {
+        console.warn(`[API Profile GET] User not found for validated userId: ${userId}`);
+        return apiError('User not found', 404, ErrorCode.NOT_FOUND);
+      }
+
+      // --- FIX: Use the correct converter which returns UserProfilePayload ---
+      const userProfilePayload = convertUserToProfileResponse(user);
+
+      // --- FIX: Pass the payload to apiResponse ---
+      // The generic T in apiResponse is UserProfilePayload
+      return apiResponse<UserProfilePayload>(userProfilePayload, true, 'User profile retrieved successfully');
+
+    } catch (error: unknown) {
+      return handleApiError(error, 'Error fetching user profile');
     }
-    
-    // Find user by ID
-    const user = await User.findById(userId).select('-password') as IUser | null;
-    
-    if (!user) {
-      return apiError('User not found', 404, ErrorCode.NOT_FOUND);
-    }
-    
-    // Convert database user to API response format
-    const userProfile = convertUserToProfile(user);
-    
-    // Add weight history if available
-    const weightHistory = user.bodyweight && user.bodyweight.length > 0 
-      ? convertWeightEntries(user.bodyweight) 
-      : undefined;
-    
-    // Return successful response
-    return apiResponse<UserProfileData>({
-      ...userProfile,
-      bodyweight: weightHistory,
-      stats: user.stats
-    }, true, 'User profile retrieved successfully');
-  } catch (error) {
-    return handleApiError(error, 'Error fetching user profile');
-  }
-}, AuthLevel.DEV_OPTIONAL);
+  },
+  AuthLevel.USER
+);
