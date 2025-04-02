@@ -1,85 +1,97 @@
-import mongoose from 'mongoose';
+// src/models/User.ts
+import mongoose, { Schema, Document, Model } from 'mongoose';
 import bcrypt from 'bcrypt';
 import { IUser } from '@/types/models/user';
 
-const UserSchema = new mongoose.Schema<IUser>({
-  name: String,
+const UserSchema = new Schema<IUser>({
+  name: { type: String, trim: true },
   email: {
     type: String,
-    required: true,
-    unique: true
+    required: [true, 'Email is required'],
+    unique: true,
+    lowercase: true,
+    trim: true,
+    match: [/^\S+@\S+\.\S+$/, 'Please use a valid email address.'],
+    index: true // Add index for faster lookups
   },
   password: {
     type: String,
-    required: false // Optional for OAuth accounts
+    required: function(this: IUser) {
+        // Password is required only if it's a credentials-based account (not OAuth)
+        // Assuming OAuth accounts won't have a password set initially.
+        // Adjust logic if needed based on how you handle OAuth integration.
+        return !this.provider; // Example: Check for a 'provider' field added by adapter/OAuth
+    },
+    minlength: [8, 'Password must be at least 8 characters long'],
+    // select: false // Optional: Uncomment to hide password by default in queries
   },
   role: {
-    type: String, 
-    enum: ['user', 'admin', 'trainer'],
+    type: String,
+    enum: ['user', 'admin', 'trainer'], // Define allowed roles
     default: 'user'
   },
-  image: String,
-  bodyweight: [{
-    weight: Number,
-    date: { type: Date, default: Date.now }
+  image: String, // URL to profile image
+  bodyweight: [{ // Array to track bodyweight history
+    weight: { type: Number, required: true },
+    date: { type: Date, default: Date.now, required: true }
   }],
-  stats: {
+  stats: { // User stats managed by the app
     level: { type: Number, default: 1 },
     xp: { type: Number, default: 0 }
   },
-  settings: {
+  settings: { // User-specific settings
     weightUnit: { type: String, enum: ['kg', 'lbs'], default: 'kg' }
+    // Add other settings as needed (e.g., theme, notifications)
   },
-  accounts: [
-    {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Account'
-    }
-  ],
-  sessions: [
-    {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Session'
-    }
-  ]
-}, { timestamps: true });
+  // Fields for NextAuth MongoDB Adapter (managed automatically, no need to define here usually)
+  // emailVerified: Date,
+  // provider: String, // Example field if needed for password requirement logic
 
-// Disable pre-save hook for password hashing to avoid conflicts
-// We're using direct bcrypt hashing in the registerUser function instead
-UserSchema.pre('save', async function(next) {
-  console.log('🔍 PRE-SAVE HOOK: Triggered for user', this.email);
-  console.log('🔍 PRE-SAVE HOOK: Password hashing is now handled directly in the registerUser function');
-  // Pass through without hashing - we're assuming password is already hashed
-  next();
+  // Removed manual 'accounts' and 'sessions' references - handled by adapter
+  // accounts: [{ type: Schema.Types.ObjectId, ref: 'Account' }],
+  // sessions: [{ type: Schema.Types.ObjectId, ref: 'Session' }],
+
+}, { timestamps: true }); // Add createdAt and updatedAt timestamps
+
+// --- Password Hashing Middleware ---
+UserSchema.pre<IUser>('save', async function(next) {
+  // Only hash the password if it has been modified (or is new) and is not empty
+  if (!this.isModified('password') || !this.password) {
+    return next();
+  }
+
+  // Hash the password
+  try {
+    const salt = await bcrypt.genSalt(10);
+    this.password = await bcrypt.hash(this.password, salt);
+    next();
+  } catch (error: any) {
+    console.error('Error hashing password:', error);
+    next(error); // Pass error to Mongoose
+  }
 });
 
-// Method to compare password for login
+// --- Password Comparison Method ---
 UserSchema.methods.comparePassword = async function(candidatePassword: string): Promise<boolean> {
-  console.log('🔍 COMPARE PASSWORD: Method called for user', this.email);
-  
+  // Check if stored password exists
   if (!this.password) {
-    console.log('🔍 COMPARE PASSWORD: No password stored for this user');
-    return false;
+      console.warn(`User ${this.email} has no password stored for comparison.`);
+      return false;
   }
-  
-  console.log('🔍 COMPARE PASSWORD: Hash stored in DB (preview):', this.password.substring(0, 20) + '...');
-  console.log('🔍 COMPARE PASSWORD: Using bcrypt.compare with imported bcrypt');
-  
+
   try {
-    // Create a fresh bcrypt import to ensure we're using the most reliable version
-    const freshBcrypt = require('bcrypt');
-    const isMatch = await freshBcrypt.compare(candidatePassword, this.password);
-    console.log('🔍 COMPARE PASSWORD: Password match result:', isMatch);
+    // Use bcrypt to compare the candidate password with the stored hash
+    const isMatch = await bcrypt.compare(candidatePassword, this.password);
     return isMatch;
   } catch (error) {
-    console.error('🔍 COMPARE PASSWORD ERROR:', error);
-    // Don't throw the error, just return false and let the auth flow handle it
-    return false;
+    console.error('Error comparing password:', error);
+    return false; // Return false on comparison error
   }
 };
 
-// Use this pattern to avoid model recompilation errors
-const User = mongoose.models.User as mongoose.Model<IUser> || 
-  mongoose.model<IUser>('User', UserSchema);
+// --- Prevent Model Recompilation ---
+// Use existing model if it exists, otherwise create it
+const User = (mongoose.models.User as Model<IUser>) ||
+             mongoose.model<IUser>('User', UserSchema);
 
 export default User;

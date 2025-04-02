@@ -25,6 +25,7 @@ export interface UserProfile {
 }
 
 export interface IUser extends mongoose.Document {
+  provider: any;
   _id: mongoose.Types.ObjectId;
   name: string;
   email: string;

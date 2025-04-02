@@ -217,7 +217,7 @@ const ProfileCard: React.FC<ProfileCardProps> = ({
             </Link>
             
             <Link
-              href="/profile/achievements"
+              href="/profile"
               className="flex items-center text-sm text-kalos-text hover:text-kalos-darkText"
             >
               <Award className="w-4 h-4 mr-2" />

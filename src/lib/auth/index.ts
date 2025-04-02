@@ -1,391 +1,288 @@
-import { IUser } from "@/types/models/user";
-import { SessionUser } from "@/types/api/authResponses";
-import { getServerSession } from "next-auth/next";
-import type { NextAuthOptions } from "next-auth";
+// src/lib/auth/index.ts
+import mongoose from 'mongoose';
+import { getServerSession, type NextAuthOptions, type Session, type User as NextAuthUser } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { MongoDBAdapter } from "@next-auth/mongodb-adapter";
-import clientPromise from "@/lib/db";
+import clientPromise from "@/lib/db"; // Your MongoDB client promise setup
 import { dbConnect } from '@/lib/db';
-import User from "../../models/User";               // Correct relative path
-import { compare, hash } from "bcrypt";
-import { NextRequest, NextResponse } from "next/server";
-import mongoose from "mongoose";
-import bcrypt from 'bcrypt';
+import User from "@/models/User"; // Adjust path if needed
+import { IUser } from '@/types/models/user'; // Adjust path if needed
+import { SessionUser } from "@/types/api/authResponses"; // Your custom session user type
+import bcrypt from 'bcrypt'; // Keep bcrypt for comparison if not using model method
 
-// Utility function for logging authentication steps
-const logAuthStep = (step: string, message: string, data?: any) => {
-  const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] 🔑 AUTH STEP: ${step}`);
-  console.log(`[${timestamp}] ℹ️ ${message}`);
-  if (data) {
-    console.log(`[${timestamp}] 📊 DATA:`, data);
-  }
-  console.log("-----------------------------------");
+// --- NextAuth Configuration Options ---
+export const authOptions: NextAuthOptions = {
+  // Use MongoDB Adapter for session persistence, account linking, etc.
+  adapter: MongoDBAdapter(clientPromise),
+
+  // Define Authentication Providers
+  providers: [
+    CredentialsProvider({
+      name: "Credentials", // Name shown on the sign-in form
+      credentials: {
+        // Define fields expected from the login form
+        email: { label: "Email", type: "email", placeholder: "you@example.com" },
+        password: { label: "Password", type: "password" }
+      },
+      async authorize(credentials): Promise<NextAuthUser | null> {
+        const logPrefix = "🔑 [AUTH_AUTHORIZE]";
+        console.log(`${logPrefix} Starting authorization.`);
+
+        // --- Optional: Development Test User ---
+        if (process.env.NODE_ENV === 'development' && credentials?.email === 'test@example.com') {
+          if (credentials.password === 'password') {
+            console.log(`${logPrefix} Development test user authenticated.`);
+            // Return an object matching NextAuth's expected User type + your custom fields
+            return { id: "dev-user-id", name: "Test Dev User", email: "test@example.com", role: "admin" } as NextAuthUser & { role: string };
+          } else {
+            console.log(`${logPrefix} Development test user authentication FAILED (wrong password).`);
+            return null;
+          }
+        }
+        // --- End Optional ---
+
+        // Validate credentials input
+        if (!credentials?.email || !credentials?.password) {
+          console.log(`${logPrefix} Missing email or password.`);
+          return null; // Return null if credentials are missing
+        }
+
+        try {
+          await dbConnect(); // Ensure database connection
+          console.log(`${logPrefix} Database connected. Looking up user: ${credentials.email}`);
+
+          // Find user by email (ensure password field is selected if schema hides it)
+          const user = await User.findOne<IUser>({ email: credentials.email.toLowerCase() })
+                                //.select('+password'); // Uncomment if password has `select: false` in UserSchema
+
+          if (!user) {
+            console.log(`${logPrefix} User not found: ${credentials.email}`);
+            return null; // User not found
+          }
+
+          if (!user.password) {
+            console.log(`${logPrefix} User ${credentials.email} found but has no password set.`);
+            return null; // User found but no password (e.g., OAuth user trying credentials)
+          }
+
+          // Compare the provided password with the stored hash
+          console.log(`${logPrefix} User found. Comparing password for: ${credentials.email}`);
+          const isPasswordValid = await user.comparePassword(credentials.password);
+
+          // --- Alternative: Direct bcrypt compare ---
+          // const isPasswordValid = await bcrypt.compare(credentials.password, user.password);
+          // -----------------------------------------
+
+          if (!isPasswordValid) {
+            console.log(`${logPrefix} Invalid password for user: ${credentials.email}`);
+            return null; // Password mismatch
+          }
+
+          // Authentication successful!
+          console.log(`✅ ${logPrefix} Authentication successful for: ${credentials.email}`);
+
+          // Return the user object needed by NextAuth for session/token population
+          // Must include at least 'id', 'email'. Add other fields needed in token/session.
+          return {
+            id: user._id.toString(),
+            email: user.email,
+            name: user.name, // Optional: pass name
+            image: user.image, // Optional: pass image
+            role: user.role || 'user' // Pass role or default
+          } as NextAuthUser & { role?: string }; // Assert type for custom fields
+
+        } catch (error) {
+          console.error(`❌ ${logPrefix} Error during authorization:`, error);
+          return null; // Return null on any error during the process
+        }
+      }
+    }),
+    // Add other providers here (e.g., GoogleProvider, GithubProvider) if needed
+  ],
+
+  // Session Configuration
+  session: {
+    strategy: "jwt", // Use JSON Web Tokens for session management
+    maxAge: 30 * 24 * 60 * 60, // Session expiry: 30 days
+    // updateAge: 24 * 60 * 60, // Optional: How often to update the session database entry (24 hours)
+  },
+
+  // JWT Configuration
+  jwt: {
+    // secret: process.env.NEXTAUTH_SECRET, // Deprecated - use top-level secret
+    // maxAge: 60 * 60 * 24 * 30, // Optional: Can be set here too
+  },
+
+  // Specify Custom Pages
+  pages: {
+    signIn: '/auth/signin', // Redirect users to this page for sign-in
+    // signOut: '/auth/signout', // Optional: Custom sign-out page
+    // error: '/auth/error', // Optional: Error page (e.g., for auth errors)
+    // verifyRequest: '/auth/verify-request', // Optional: Email verification page
+    // newUser: '/auth/new-user' // Optional: Page for first-time OAuth users
+  },
+
+  // Callbacks for customizing behavior
+  callbacks: {
+    /**
+     * Called when a JWT is created (on sign in) or updated (session accessed).
+     * The returned value will be encrypted and stored in a cookie.
+     */
+    async jwt({ token, user, account, profile, isNewUser }) {
+      const logPrefix = "🔑 [AUTH_JWT_CALLBACK]";
+      // `user` object is available on initial sign-in
+      if (user) {
+         console.log(`${logPrefix} JWT callback triggered on sign-in for user: ${user.email}`);
+        // Persist the necessary user fields from the 'user' object (returned by authorize) into the token
+        token.id = user.id;
+        token.email = user.email; // Email should already be in token, but good to be explicit
+        // Add custom properties like 'role' to the token
+        // Ensure the 'user' object passed here actually has the 'role' property
+        token.role = (user as any).role || 'user'; // Use type assertion or check existence
+        console.log(`${logPrefix} Added id (${token.id}) and role (${token.role}) to JWT.`);
+      } else {
+        // console.log(`${logPrefix} JWT callback triggered for existing session.`);
+      }
+      return token; // The token is now { id, email, role, iat, exp, jti, ... }
+    },
+
+    /**
+     * Called whenever a session is checked (e.g., via useSession, getSession).
+     * The returned value is passed to the client.
+     */
+    async session({ session, token, user }) {
+       const logPrefix = "🔑 [AUTH_SESSION_CALLBACK]";
+      // `token` contains the data persisted in the JWT callback
+      // `user` object might be available depending on adapter/strategy? Usually rely on token.
+      if (session.user && token.id) {
+        // Add the properties from the token (like id and role) to the session.user object
+        session.user.id = token.id as string;
+        session.user.role = token.role as string;
+        // console.log(`${logPrefix} Added id (${session.user.id}) and role (${session.user.role}) to session object.`);
+      } else {
+        // console.log(`${logPrefix} Session callback triggered, but no token ID found or session.user missing.`);
+      }
+      return session; // The session object now includes { user: { id, name, email, image, role }, expires }
+    },
+  },
+
+  // Secret for signing/encrypting tokens and cookies
+  // Ensure this is set in your .env.local file
+  secret: process.env.NEXTAUTH_SECRET,
+
+  // Enable debug messages in development
+  debug: process.env.NODE_ENV === "development",
+
+  // Optional: Custom logger for more control
+  logger: {
+    error(code, metadata) {
+       console.error(`❌ [NextAuth Error] Code: ${code}`, metadata);
+    },
+    warn(code) {
+      console.warn(`⚠️ [NextAuth Warn] Code: ${code}`);
+    },
+    // debug(code, metadata) {
+    //   console.log(`⚙️ [NextAuth Debug] Code: ${code}`, metadata);
+    // },
+  },
+
+  // Optional: Event listeners
+  events: {
+    async signIn(message) { /* User signed in */ console.log("✅ NextAuth Event: signIn", message.user.email); },
+    async signOut(message) { /* User signed out */ console.log("👋 NextAuth Event: signOut", message.session.user?.email); },
+    // async createUser(message) { /* User created */ },
+    // async updateUser(message) { /* User updated - e.g., profile */ },
+    // async linkAccount(message) { /* Account (e.g., OAuth) linked */ },
+    // async session(message) { /* Session active */ },
+  },
 };
 
-// Utility function for logging authentication errors
-const logAuthError = (step: string, error: any) => {
-  const timestamp = new Date().toISOString();
-  console.error(`[${timestamp}] ❌ AUTH ERROR in ${step}:`, error);
-  console.log("-----------------------------------");
+/**
+ * Helper function to get the server-side session.
+ * Use this in API routes or server components.
+ * @returns The session object or null if not authenticated.
+ */
+export const getAuth = async (): Promise<Session | null> => {
+  // Ensure authOptions are passed correctly
+  return await getServerSession(authOptions);
 };
 
-// Utility function for logging authentication success
-const logAuthSuccess = (step: string, message: string) => {
-  const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] ✅ AUTH SUCCESS: ${step} - ${message}`);
-  console.log("-----------------------------------");
-};
-
-export interface UserRegistrationData {
+export async function registerUser(userData: {
   name: string;
   email: string;
   password: string;
   image?: string;
-  role?: string;
-}
-
-/**
- * Register a new user with email and password
- */
-export async function registerUser(userData: UserRegistrationData) {
-  logAuthStep("REGISTER_INIT", "Starting user registration process", {
-    email: userData.email,
-    name: userData.name,
-  });
-
+}) {
+  const logPrefix = "🔑 [REGISTER_USER]";
+  
   try {
     await dbConnect();
-    logAuthStep("REGISTER_DB_CONNECT", "Database connection established");
-    
+
     // Check if user already exists
-    const existingUser = await User.findOne({ email: userData.email });
+    const existingUser = await User.findOne({ email: userData.email.toLowerCase() });
     if (existingUser) {
-      logAuthStep("REGISTER_USER_EXISTS", "User with this email already exists", {
-        email: userData.email,
-      });
-      throw new Error("User already exists");
+      throw new Error('User already exists');
     }
-    
-    // Hash password directly to ensure it works properly
-    logAuthStep("REGISTER_PASSWORD_HASH", "Directly hashing password with bcrypt", {
-      passwordLength: userData.password.length,
-      saltRounds: 10
-    });
-    
-    // Use direct bcrypt hashing instead of relying on the pre-save hook
+
+    // Hash password
     const hashedPassword = await bcrypt.hash(userData.password, 10);
-    logAuthStep("REGISTER_PASSWORD_HASH_RESULT", "Password hashed successfully", {
-      hashPreview: hashedPassword.substring(0, 15) + "..."
-    });
-    
-    // Determine if this is the first user (admin)
-    const userCount = await User.countDocuments({});
-    const isFirstUser = userCount === 0;
-    const role = isFirstUser ? 'admin' : (userData.role || 'user');
-    
-    logAuthStep("REGISTER_USER_CREATE", "Creating new user in database", {
-      email: userData.email,
-      role: role,
-      isFirstUser: isFirstUser,
-      usingPreHashedPassword: true
-    });
-    
-    // Create new user with pre-hashed password
+
+    // Create new user
     const user = await User.create({
       name: userData.name,
-      email: userData.email,
-      password: hashedPassword, // Using pre-hashed password to bypass pre-save hook
-      image: userData.image || null,
-      role: role
-    }) as IUser;
-    
-    logAuthSuccess("REGISTER_COMPLETE", "User registered successfully");
-    
+      email: userData.email.toLowerCase(),
+      password: hashedPassword,
+      image: userData.image,
+      role: 'user'
+    });
+
     // Return user without password
-    const userObject = user.toObject();
-    const { password: _, ...userWithoutPassword } = userObject;
-    
     return {
-      ...userWithoutPassword,
-      id: userObject._id.toString(),
+      id: user._id.toString(),
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      image: user.image
     };
+
   } catch (error) {
-    logAuthError("REGISTER", error);
+    console.error(`${logPrefix} Error registering user:`, error);
     throw error;
   }
 }
 
 /**
- * Check if a user has required role
- */
-export async function checkUserRole(userId: string, requiredRoles: string[]): Promise<boolean> {
-  try {
-    await dbConnect();
-    const user = await User.findById(userId) as IUser | null;
-    
-    if (!user) return false;
-    
-    // If the user has any of the required roles
-    return requiredRoles.includes(user.role || 'user');
-  } catch (error) {
-    console.error("Error checking user role:", error);
-    return false;
-  }
-}
-
-/**
- * Middleware to protect routes based on roles
- */
-export function withRoleProtection(requiredRoles: string[] = ['admin']) {
-  return async (req: NextRequest, handler: Function) => {
-    const session = await getAuth();
-    
-    // No session or no user ID
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    
-    // Check if user has required role
-    const hasRole = await checkUserRole(session.user.id, requiredRoles);
-    if (!hasRole) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-    
-    // User has required role, proceed to handler
-    return handler(req, session);
-  };
-}
-
-export const authOptions: NextAuthOptions = {
-  adapter: MongoDBAdapter(clientPromise),
-  providers: [
-    CredentialsProvider({
-      name: "Credentials",
-      credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" }
-      },
-      async authorize(credentials) {
-        // Start of authorization process
-        logAuthStep("AUTH_INIT", "Starting authentication process", {
-          receivedCredentials: credentials ? "Yes" : "No",
-          email: credentials?.email ? `${credentials.email.substring(0, 3)}...${credentials.email.split('@')[1]}` : "Not provided",
-          passwordProvided: credentials?.password ? "Yes" : "No",
-        });
-        
-        // For development - accept test user credentials
-        if (credentials?.email === "test@example.com") {
-          logAuthStep("AUTH_TEST_USER", "Detected test@example.com login attempt", {
-            providedEmail: credentials.email,
-            providedPassword: credentials.password === "password" ? "Matches expected" : "Does not match expected",
-            isTestPassword: credentials.password === "password",
-          });
-          
-          if (credentials.password === "password") {
-            logAuthSuccess("AUTH_TEST_USER", "Test user authentication successful");
-            return {
-              id: "1",
-              name: "Test User",
-              email: "test@example.com",
-              role: "admin" // Set test user as admin for development
-            } as SessionUser;
-          } else {
-            logAuthStep("AUTH_TEST_USER_FAIL", "Test user provided incorrect password", {
-              expectedPassword: "password",
-              passwordLengthProvided: credentials.password?.length,
-            });
-            return null;
-          }
-        }
-        
-        try {
-          await dbConnect();
-          
-          // Check MongoDB connection status
-          const mongoStatus = mongoose.connection.readyState;
-          const statusText = mongoStatus === 1 ? "Connected" :
-                            mongoStatus === 2 ? "Connecting" :
-                            mongoStatus === 3 ? "Disconnecting" : "Disconnected";
-          
-          logAuthStep("AUTH_DB_STATUS", `MongoDB connection status: ${statusText}`, { 
-            readyState: mongoStatus,
-            statusText: statusText,
-            host: mongoose.connection.host,
-            name: mongoose.connection.name
-          });
-          
-          if (!credentials?.email || !credentials?.password) {
-            logAuthStep("AUTH_CREDENTIALS_MISSING", "Missing credentials", {
-              emailProvided: Boolean(credentials?.email),
-              passwordProvided: Boolean(credentials?.password)
-            });
-            return null;
-          }
-          
-          logAuthStep("AUTH_USER_LOOKUP", `Looking up user by email: ${credentials.email.substring(0, 3)}...`);
-          
-          // Find user by email
-          const user = await User.findOne({ email: credentials.email });
-          logAuthStep("AUTH_USER_FOUND", user ? "User found in database" : "User not found in database", {
-            userFound: Boolean(user),
-            email: credentials.email.substring(0, 3) + "..." + credentials.email.split('@')[1],
-            userId: user?._id?.toString(),
-            userHasPassword: Boolean(user?.password),
-          });
-          
-          if (!user) {
-            logAuthStep("AUTH_USER_NOT_FOUND", "User not found for provided email");
-            return null;
-          }
-          
-          // If user exists but doesn't have a password (like OAuth accounts)
-          if (!user.password) {
-            logAuthStep("AUTH_PASSWORD_MISSING", "User exists but has no password (possibly OAuth account)");
-            return null;
-          }
-          
-          // Direct bcrypt password validation
-          logAuthStep("AUTH_PASSWORD_DIRECT_COMPARE", "Directly comparing password with bcrypt", {
-            passwordLength: credentials.password.length,
-            hashLength: user.password.length,
-            hashFirstChars: user.password.substring(0, 10) + "..."
-          });
-          
-          let isPasswordValid = false;
-          
-          // Use direct bcrypt compare which is most reliable
-          try {
-            isPasswordValid = await bcrypt.compare(credentials.password, user.password);
-            logAuthStep("AUTH_PASSWORD_DIRECT_RESULT", `Direct bcrypt comparison ${isPasswordValid ? "succeeded" : "failed"}`, {
-              result: isPasswordValid
-            });
-          } catch (directError) {
-            logAuthError("AUTH_PASSWORD_DIRECT", directError);
-            
-            // If all else fails, try a custom string comparison (last resort)
-            logAuthStep("AUTH_PASSWORD_EMERGENCY", "All methods failed, trying emergency validation");
-            
-            try {
-              // Simply trying with a different approach as last resort
-              await new Promise(resolve => setTimeout(resolve, 100)); // Small delay
-              isPasswordValid = await bcrypt.compare(credentials.password.toString(), user.password.toString());
-              
-              logAuthStep("AUTH_PASSWORD_EMERGENCY_RESULT", `Emergency validation ${isPasswordValid ? "succeeded" : "failed"}`, {
-                result: isPasswordValid
-              });
-            } catch (emergencyError) {
-              logAuthError("AUTH_PASSWORD_EMERGENCY", emergencyError);
-            }
-          }
-          
-          // Final validation result
-          if (!isPasswordValid) {
-            logAuthStep("AUTH_PASSWORD_VALIDATION_FAILED", "All password validation methods failed");
-            
-            // Force success for the first login attempt to fix account
-            // Check if this is a newly registered user (within last 10 minutes)
-            const userCreatedRecently = user.createdAt && 
-                                       ((new Date().getTime() - new Date(user.createdAt).getTime()) < 10 * 60 * 1000);
-            
-            if (userCreatedRecently) {
-              logAuthStep("AUTH_FIRST_LOGIN_OVERRIDE", "First login for newly created user - allowing access to fix account");
-              isPasswordValid = true;
-              
-              // Update the user's password to ensure future logins work
-              const newHashedPassword = await bcrypt.hash(credentials.password, 10);
-              await User.updateOne(
-                { _id: user._id },
-                { $set: { password: newHashedPassword } }
-              );
-              
-              logAuthStep("AUTH_PASSWORD_FIXED", "Updated password hash for user to fix authentication");
-            } else {
-              return null;
-            }
-          }
-          
-          // Authentication successful
-          logAuthSuccess("AUTH_SUCCESSFUL", `User ${user.email} authenticated successfully`);
-          return {
-            id: user._id.toString(),
-            email: user.email,
-            name: user.name || "User",
-            image: user.image || null,
-            role: user.role || 'user'
-          } as SessionUser;
-        } catch (error) {
-          logAuthError("AUTH_GENERAL", error);
-          return null;
-        }
-      }
-    }),
-  ],
-  session: {
-    strategy: "jwt",
-    maxAge: 30 * 24 * 60 * 60, // 30 days
-  },
-  pages: {
-    signIn: "/auth/signin",
-  },
-  callbacks: {
-    async jwt({ token, user }) {
-      if (user) {
-        token.id = user.id;
-        token.email = user.email;
-        // Add type cast for role
-        token.role = (user as any).role || 'user';
-        // ...
-      }
-      return token;
-    },
-    async session({ session, token }) {
-      if (session.user) {
-        // The following lines work now with our extended next-auth types
-        session.user.id = token.id as string;
-        session.user.role = token.role as string;
-        logAuthStep("SESSION_CALLBACK", "Adding user data to session", {
-          sessionUserId: session.user.id,
-          sessionUserRole: session.user.role
-        });
-      }
-      return session;
-    },
-  },
-  secret: process.env.NEXTAUTH_SECRET || "development-secret-key",
-  debug: process.env.NODE_ENV === "development",
-  logger: {
-    error(code, metadata) {
-      logAuthError("NEXTAUTH_ERROR", { code, metadata });
-    },
-    warn(code) {
-      console.warn(`[NextAuth] Warning: ${code}`);
-    },
-    debug(code, metadata) {
-      logAuthStep("NEXTAUTH_DEBUG", code, metadata);
-    },
-  },
-};
-
-export const getAuth = () => getServerSession(authOptions);
-
-/**
- * Get user by ID
+ * Fetches user details by ID from the database.
+ * Excludes the password field.
+ * Use this when you need more user details than available in the session.
+ * @param id - The user's MongoDB ObjectId as a string.
+ * @returns The user object (without password) or null if not found.
  */
 export async function getUserById(id: string) {
-  await dbConnect();
-  
-  const user = await User.findById(id) as IUser | null;
-  if (!user) {
+  const logPrefix = "🔑 [GET_USER_BY_ID]";
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+      console.error(`${logPrefix} Invalid user ID format: ${id}`);
+      return null;
+  }
+
+  try {
+    await dbConnect();
+    // Find user by ID, explicitly excluding the password
+    const user = await User.findById(id).select('-password').lean() as Omit<IUser, 'password' | 'comparePassword'> | null;
+
+    if (!user) {
+      console.log(`${logPrefix} User not found for ID: ${id}`);
+      return null;
+    }
+
+    // Transform _id to id if using lean()
+    return {
+        ...user,
+        id: user._id.toString(),
+    };
+
+  } catch (error) {
+    console.error(`${logPrefix} Error fetching user by ID ${id}:`, error);
     return null;
   }
-  
-  // Return user without password
-  const userObject = user.toObject();
-  const { password: _, ...userWithoutPassword } = userObject;
-  
-  return {
-    ...userWithoutPassword,
-    id: userObject._id.toString(),
-  };
 }
