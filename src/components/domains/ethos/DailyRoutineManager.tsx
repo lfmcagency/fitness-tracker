@@ -1,122 +1,151 @@
-"use client"
+'use client'
 
 import { useState, useEffect } from 'react'
-import { format } from 'date-fns'
-import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
-import TaskList from './TaskList'
-import CreateTaskModal from './CreateTaskModal' 
-import TaskFilters from './TaskFilters'
+import { useTaskStore } from '@/store/tasks'
+
+interface TaskResult {
+  xpAward?: {
+    xpAwarded: number
+  }
+}
 import DateSelector from './DateSelector'
 import ProgressIndicator from './ProgressIndicator'
-import { useTaskStore } from '@/store/tasks'
-import { useAuth } from '@/hooks/useAuth'
+import TaskList from './TaskList'
+import TaskFilters from './TaskFilters'
+import CreateTaskModal from './CreateTaskModal'
+import { Plus } from 'lucide-react'
+import { format } from 'date-fns'
 
 export default function DailyRoutineManager() {
-  const { isAuthenticated } = useAuth()
-  const [date, setDate] = useState<Date>(new Date())
-  const [createTaskOpen, setCreateTaskOpen] = useState(false)
+  const [selectedDate, setSelectedDate] = useState(new Date())
+  const [showFilters, setShowFilters] = useState(false)
+  const [showCreateModal, setShowCreateModal] = useState(false)
   const [activeFilters, setActiveFilters] = useState<string[]>([])
   
   const { 
     tasks, 
     fetchTasks, 
     isLoading, 
-    error, 
-    completedTasks, 
-    totalTasks
+    error,
+    completeTask,
+    updateTask,
+    deleteTask 
   } = useTaskStore()
 
-  // Calculate completion percentage
-  const completionPercentage = totalTasks > 0 
-    ? Math.round((completedTasks / totalTasks) * 100) 
-    : 0
-
-  // Replace the fetch auth check with the hook
+  // Fetch tasks when date changes
   useEffect(() => {
-    if (isAuthenticated) {
-  const dateString = format(date, 'yyyy-MM-dd')
-      fetchTasks({ date: dateString })
+    const dateStr = format(selectedDate, 'yyyy-MM-dd')
+    fetchTasks({ date: dateStr })
+  }, [selectedDate, fetchTasks])
+
+  const handleDateChange = (date: Date) => {
+    setSelectedDate(date)
+  }
+
+  const handleTaskComplete = async (taskId: string, completed: boolean) => {
+    if (completed) {
+      const result = await completeTask(taskId, format(selectedDate, 'yyyy-MM-dd')) as TaskResult
+      if (result && result.xpAward) {
+        // Show XP notification (will be implemented with toast later)
+        console.log(`XP Awarded: ${result.xpAward?.xpAwarded}`)
+      }
+    } else {
+      await updateTask(taskId, { completed: false })
     }
-  }, [date, fetchTasks, isAuthenticated])
-
-  const handlePreviousDay = () => {
-    const prevDay = new Date(date)
-    prevDay.setDate(prevDay.getDate() - 1)
-    setDate(prevDay)
   }
 
-  const handleNextDay = () => {
-    const nextDay = new Date(date)
-    nextDay.setDate(nextDay.getDate() + 1)
-    setDate(nextDay)
+  const handleTaskUpdate = async (taskId: string, updates: any) => {
+    await updateTask(taskId, updates)
   }
 
-  const toggleFilter = (filterId: string) => {
-    setActiveFilters(activeFilters.includes(filterId)
-      ? activeFilters.filter(id => id !== filterId)
-      : [...activeFilters, filterId]
+  const handleTaskDelete = async (taskId: string) => {
+    await deleteTask(taskId)
+  }
+
+  const handleTaskCreated = () => {
+    setShowCreateModal(false)
+    // Refresh tasks
+    const dateStr = format(selectedDate, 'yyyy-MM-dd')
+    fetchTasks({ date: dateStr })
+  }
+
+  // Filter tasks based on active filters
+  const filteredTasks = tasks.filter(task => {
+    if (activeFilters.length === 0) return true
+    
+    return activeFilters.some(filter => {
+      switch (filter) {
+        case 'completed':
+          return task.completed
+        case 'incomplete':
+          return !task.completed
+        case 'high':
+          return task.priority === 'high'
+        case 'medium':
+          return task.priority === 'medium'
+        case 'low':
+          return task.priority === 'low'
+        case 'nous':
+        case 'soma':
+        case 'trophe':
+          return task.category?.toLowerCase() === filter
+        default:
+          return true
+      }
+    })
+  })
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-red-500">Error: {error}</p>
+      </div>
     )
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-kalos-background text-kalos-text max-w-md mx-auto">
-      {/* Header */}
-      <header className="px-6 pt-12 pb-4">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-light tracking-wide">Kalos</h1>
-          <button
-            className="w-10 h-10 rounded-full bg-kalos-text text-white flex items-center justify-center"
-            onClick={() => setCreateTaskOpen(true)}
-          >
-            <Plus className="w-5 h-5" />
-          </button>
-        </div>
+    <div className="space-y-6">
+      {/* Header with date selector */}
+      <div className="flex justify-between items-center">
+        <DateSelector 
+          selectedDate={selectedDate}
+          onDateChange={handleDateChange}
+        />
+        
+        <button
+          onClick={() => setShowCreateModal(true)}
+          className="w-10 h-10 rounded-full bg-kalos-dark text-white flex items-center justify-center hover:bg-opacity-90 transition-opacity"
+        >
+          <Plus className="w-5 h-5" />
+        </button>
+      </div>
 
-        <div className="flex items-center justify-between mb-6">
-          <button className="p-2" onClick={handlePreviousDay}>
-            <ChevronLeft className="w-5 h-5 text-kalos-secondary" />
-          </button>
-          <DateSelector date={date} onDateChange={setDate} />
-          <button className="p-2" onClick={handleNextDay}>
-            <ChevronRight className="w-5 h-5 text-kalos-secondary" />
-          </button>
-        </div>
+      {/* Progress indicator */}
+      <ProgressIndicator tasks={filteredTasks} />
 
-        <ProgressIndicator percentage={completionPercentage} />
-      </header>
+      {/* Filters */}
+      <TaskFilters 
+        showFilters={showFilters}
+        onToggleFilters={() => setShowFilters(!showFilters)}
+        activeFilters={activeFilters}
+        onFilterChange={setActiveFilters}
+      />
 
-      {/* Main content */}
-      <main className="flex-1 px-6 pb-20">
-        <div className="flex justify-between items-center mb-8">
-          <h2 className="text-xl font-medium">Tasks</h2>
-          <TaskFilters 
-            activeFilters={activeFilters} 
-            toggleFilter={toggleFilter} 
-          />
-        </div>
+      {/* Task list */}
+      <TaskList 
+        tasks={filteredTasks}
+        isLoading={isLoading}
+        onTaskComplete={handleTaskComplete}
+        onTaskUpdate={handleTaskUpdate}
+        onTaskDelete={handleTaskDelete}
+      />
 
-        {isLoading ? (
-          <div className="text-center py-8">
-            <p className="text-kalos-secondary">Loading tasks...</p>
-          </div>
-        ) : error ? (
-          <div className="text-center py-8">
-            <p className="text-kalos-high">Error: {error}</p>
-          </div>
-        ) : (
-          <TaskList 
-            tasks={tasks} 
-            activeFilters={activeFilters} 
-            date={date}
-          />
-        )}
-      </main>
-
-      {/* Create Task Dialog */}
+      {/* Create task modal */}
       <CreateTaskModal 
-        open={createTaskOpen} 
-        onOpenChange={setCreateTaskOpen}
-        date={date}
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onTaskCreated={handleTaskCreated}
+        defaultDate={selectedDate}
       />
     </div>
   )

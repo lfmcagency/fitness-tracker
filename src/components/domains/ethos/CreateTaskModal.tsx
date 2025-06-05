@@ -1,91 +1,134 @@
-// src/components/routine/CreateTaskModal.tsx
+'use client'
+
 import { useState } from 'react'
-import { format } from 'date-fns'
+import { useTaskStore } from '@/store/tasks'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { useTaskStore, CreateTaskParams } from '@/store/tasks'
-import { RecurrencePattern, TaskPriority } from '@/types'
+import { format } from 'date-fns'
+import { RecurrencePattern, TaskPriority } from '@/types/models/tasks'
 
 interface CreateTaskModalProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  date: Date
+  isOpen: boolean
+  onClose: () => void
+  onTaskCreated: () => void
+  defaultDate?: Date
 }
 
-export default function CreateTaskModal({ open, onOpenChange, date }: CreateTaskModalProps) {
+export default function CreateTaskModal({ 
+  isOpen, 
+  onClose, 
+  onTaskCreated,
+  defaultDate = new Date()
+}: CreateTaskModalProps) {
   const { addTask } = useTaskStore()
   
-  const [newTask, setNewTask] = useState<CreateTaskParams>({
+  const [formData, setFormData] = useState({
     name: '',
+    description: '',
     scheduledTime: '',
-    recurrencePattern: 'daily',
-    category: 'Nous',
-    priority: 'medium',
-    date: format(date, 'yyyy-MM-dd')
+    recurrencePattern: 'daily' as RecurrencePattern,
+    customRecurrenceDays: [] as number[],
+    category: 'general',
+    priority: 'medium' as TaskPriority,
   })
   
-  const timeBlocks = ["Morning", "Afternoon", "Evening"]
-  const categories = ["Nous", "Soma", "Trophe"]
-  const priorities: TaskPriority[] = ["high", "medium", "low"]
-  const recurrences: RecurrencePattern[] = ["daily", "weekdays", "weekends", "weekly", "custom"]
-  
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target
-    setNewTask({ ...newTask, [name]: value })
-  }
-  
-  const handleSelectChange = (name: string, value: string) => {
-    setNewTask({ ...newTask, [name]: value })
-  }
-  
-  const handleCreateTask = async () => {
-    if (!newTask.name) return
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
     
-    // Update date based on the current selected date
-    const taskWithDate = {
-      ...newTask,
-      date: format(date, 'yyyy-MM-dd')
+    // Validate required fields
+    if (!formData.name.trim()) {
+      setError('Task name is required')
+      return
     }
     
-    // Add task using store method
-    const result = await addTask(taskWithDate)
+    if (!formData.scheduledTime) {
+      setError('Scheduled time is required')
+      return
+    }
     
-    if (result) {
-      // Reset form
-      setNewTask({
-        name: '',
-        scheduledTime: '',
-        recurrencePattern: 'daily',
-        category: 'Nous',
-        priority: 'medium',
-        date: format(date, 'yyyy-MM-dd')
+    if (formData.recurrencePattern === 'custom' && formData.customRecurrenceDays.length === 0) {
+      setError('Please select at least one day for custom recurrence')
+      return
+    }
+    
+    setIsSubmitting(true)
+    
+    try {
+      const result = await addTask({
+        name: formData.name.trim(),
+        description: formData.description.trim(),
+        scheduledTime: formData.scheduledTime,
+        recurrencePattern: formData.recurrencePattern,
+        customRecurrenceDays: formData.recurrencePattern === 'custom' ? formData.customRecurrenceDays : undefined,
+        category: formData.category,
+        priority: formData.priority,
+        date: format(defaultDate, 'yyyy-MM-dd'),
       })
       
-      // Close modal
-      onOpenChange(false)
+      if (result) {
+        // Reset form
+        setFormData({
+          name: '',
+          description: '',
+          scheduledTime: '',
+          recurrencePattern: 'daily',
+          customRecurrenceDays: [],
+          category: 'general',
+          priority: 'medium',
+        })
+        onTaskCreated()
+      }
+    } catch (err) {
+      setError('Failed to create task')
+    } finally {
+      setIsSubmitting(false)
     }
   }
-  
+
+  const handleCustomDayToggle = (day: number) => {
+    setFormData(prev => ({
+      ...prev,
+      customRecurrenceDays: prev.customRecurrenceDays.includes(day)
+        ? prev.customRecurrenceDays.filter(d => d !== day)
+        : [...prev.customRecurrenceDays, day].sort()
+    }))
+  }
+
+  const categories = ['general', 'nous', 'soma', 'trophe']
+  const priorities: TaskPriority[] = ['low', 'medium', 'high']
+  const recurrencePatterns: RecurrencePattern[] = ['daily', 'weekdays', 'weekends', 'weekly', 'custom']
+  const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-kalos-background border-[#E5E0DC] p-6 max-w-[350px] rounded-lg">
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="bg-kalos-bg border-kalos-border p-6 max-w-md">
         <DialogHeader>
           <DialogTitle className="text-xl font-medium">Create New Task</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4 mt-4">
+        <form onSubmit={handleSubmit} className="space-y-4 mt-4">
+          {error && (
+            <div className="text-sm text-red-600 bg-red-50 p-2 rounded-md">
+              {error}
+            </div>
+          )}
+
           <div className="space-y-2">
             <label className="text-sm font-medium" htmlFor="name">
-              Task Name
+              Task Name *
             </label>
             <Input
               id="name"
-              name="name"
-              value={newTask.name}
-              onChange={handleInputChange}
-              className="bg-transparent border-[#E5E0DC] focus-visible:ring-kalos-text"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              className="bg-transparent border-kalos-border focus-visible:ring-kalos-dark"
+              placeholder="e.g. Morning meditation"
             />
           </div>
 
@@ -95,41 +138,41 @@ export default function CreateTaskModal({ open, onOpenChange, date }: CreateTask
             </label>
             <Textarea
               id="description"
-              name="description"
-              value={newTask.description || ''}
-              onChange={handleInputChange}
-              className="bg-transparent border-[#E5E0DC] focus-visible:ring-kalos-text"
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              className="bg-transparent border-kalos-border focus-visible:ring-kalos-dark"
+              placeholder="Optional description..."
+              rows={3}
             />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium" htmlFor="scheduledTime">
-                Time
+              <label className="text-sm font-medium" htmlFor="time">
+                Time *
               </label>
               <Input
-                id="scheduledTime"
-                name="scheduledTime"
+                id="time"
                 type="time"
-                value={newTask.scheduledTime}
-                onChange={handleInputChange}
-                className="bg-transparent border-[#E5E0DC] focus-visible:ring-kalos-text"
+                value={formData.scheduledTime}
+                onChange={(e) => setFormData({ ...formData, scheduledTime: e.target.value })}
+                className="bg-transparent border-kalos-border focus-visible:ring-kalos-dark"
               />
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Time Block</label>
+              <label className="text-sm font-medium">Category</label>
               <Select 
-                value={newTask.timeBlock || 'Morning'} 
-                onValueChange={(value: string) => handleSelectChange("timeBlock", value)}
+                value={formData.category} 
+                onValueChange={(value) => setFormData({ ...formData, category: value })}
               >
-                <SelectTrigger className="bg-transparent border-[#E5E0DC] focus:ring-kalos-text">
-                  <SelectValue placeholder="Select time block" />
+                <SelectTrigger className="bg-transparent border-kalos-border focus:ring-kalos-dark">
+                  <SelectValue placeholder="Select category" />
                 </SelectTrigger>
-                <SelectContent className="bg-kalos-background border-[#E5E0DC]">
-                  {timeBlocks.map((block) => (
-                    <SelectItem key={block} value={block}>
-                      {block}
+                <SelectContent className="bg-kalos-bg border-kalos-border">
+                  {categories.map((category) => (
+                    <SelectItem key={category} value={category}>
+                      {category.charAt(0).toUpperCase() + category.slice(1)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -139,18 +182,18 @@ export default function CreateTaskModal({ open, onOpenChange, date }: CreateTask
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Category</label>
+              <label className="text-sm font-medium">Priority</label>
               <Select 
-                value={newTask.category} 
-                onValueChange={(value: string) => handleSelectChange("category", value)}
+                value={formData.priority} 
+                onValueChange={(value) => setFormData({ ...formData, priority: value as TaskPriority })}
               >
-                <SelectTrigger className="bg-transparent border-[#E5E0DC] focus:ring-kalos-text">
-                  <SelectValue placeholder="Select category" />
+                <SelectTrigger className="bg-transparent border-kalos-border focus:ring-kalos-dark">
+                  <SelectValue placeholder="Select priority" />
                 </SelectTrigger>
-                <SelectContent className="bg-kalos-background border-[#E5E0DC]">
-                  {categories.map((category) => (
-                    <SelectItem key={category} value={category}>
-                      {category}
+                <SelectContent className="bg-kalos-bg border-kalos-border">
+                  {priorities.map((priority) => (
+                    <SelectItem key={priority} value={priority}>
+                      {priority.charAt(0).toUpperCase() + priority.slice(1)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -158,18 +201,18 @@ export default function CreateTaskModal({ open, onOpenChange, date }: CreateTask
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Priority</label>
+              <label className="text-sm font-medium">Recurrence</label>
               <Select 
-                value={newTask.priority} 
-                onValueChange={(value: string) => handleSelectChange("priority", value as TaskPriority)}
+                value={formData.recurrencePattern} 
+                onValueChange={(value) => setFormData({ ...formData, recurrencePattern: value as RecurrencePattern })}
               >
-                <SelectTrigger className="bg-transparent border-[#E5E0DC] focus:ring-kalos-text">
-                  <SelectValue placeholder="Select priority" />
+                <SelectTrigger className="bg-transparent border-kalos-border focus:ring-kalos-dark">
+                  <SelectValue placeholder="Select recurrence" />
                 </SelectTrigger>
-                <SelectContent className="bg-kalos-background border-[#E5E0DC]">
-                  {priorities.map((priority) => (
-                    <SelectItem key={priority} value={priority}>
-                      {priority}
+                <SelectContent className="bg-kalos-bg border-kalos-border">
+                  {recurrencePatterns.map((pattern) => (
+                    <SelectItem key={pattern} value={pattern}>
+                      {pattern.charAt(0).toUpperCase() + pattern.slice(1)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -177,42 +220,52 @@ export default function CreateTaskModal({ open, onOpenChange, date }: CreateTask
             </div>
           </div>
 
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Recurrence</label>
-            <Select 
-              value={newTask.recurrencePattern} 
-              onValueChange={(value: string) => handleSelectChange("recurrencePattern", value as RecurrencePattern)}
-            >
-              <SelectTrigger className="bg-transparent border-[#E5E0DC] focus:ring-kalos-text">
-                <SelectValue placeholder="Select recurrence" />
-              </SelectTrigger>
-              <SelectContent className="bg-kalos-background border-[#E5E0DC]">
-                {recurrences.map((recurrence) => (
-                  <SelectItem key={recurrence} value={recurrence}>
-                    {recurrence}
-                  </SelectItem>
+          {formData.recurrencePattern === 'custom' && (
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Select Days</label>
+              <div className="grid grid-cols-7 gap-2">
+                {weekDays.map((day, index) => (
+                  <button
+                    key={index}
+                    type="button"
+                    onClick={() => handleCustomDayToggle(index)}
+                    className={cn(
+                      "p-2 text-xs rounded-md border transition-colors",
+                      formData.customRecurrenceDays.includes(index)
+                        ? "bg-kalos-dark text-white border-kalos-dark"
+                        : "border-kalos-border hover:border-kalos-dark"
+                    )}
+                  >
+                    {day}
+                  </button>
                 ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
+              </div>
+            </div>
+          )}
 
-        <DialogFooter className="mt-6">
-          <button 
-            onClick={() => onOpenChange(false)} 
-            className="px-4 py-2 text-kalos-secondary text-sm font-medium"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleCreateTask}
-            className="px-4 py-2 bg-kalos-text text-white rounded-md text-sm font-medium"
-            disabled={!newTask.name}
-          >
-            Create Task
-          </button>
-        </DialogFooter>
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-kalos-muted text-sm font-medium hover:text-kalos-text"
+              disabled={isSubmitting}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-kalos-dark text-white rounded-md text-sm font-medium hover:bg-opacity-90 disabled:opacity-50"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? 'Creating...' : 'Create Task'}
+            </button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   )
+}
+
+function cn(...classes: string[]) {
+  return classes.filter(Boolean).join(' ')
 }

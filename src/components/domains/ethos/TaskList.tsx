@@ -1,100 +1,96 @@
-// src/components/routine/TaskList.tsx
-import { useMemo } from 'react'
+'use client'
+
 import { EnhancedTask } from '@/types'
 import TaskItem from './TaskItem'
 
 interface TaskListProps {
-  tasks: EnhancedTask[];
-  activeFilters: string[];
-  date: Date;
+  tasks: EnhancedTask[]
+  isLoading: boolean
+  onTaskComplete: (taskId: string, completed: boolean) => void
+  onTaskUpdate: (taskId: string, updates: any) => void
+  onTaskDelete: (taskId: string) => void
 }
 
-// Define time blocks
-type TimeBlock = 'Morning' | 'Afternoon' | 'Evening';
-const timeBlocks: TimeBlock[] = ['Morning', 'Afternoon', 'Evening'];
-
-export default function TaskList({ tasks, activeFilters, date }: TaskListProps) {
-  // Apply filters to tasks
-  const filteredTasks = useMemo(() => {
-    if (activeFilters.length === 0) return tasks;
-    
-    return tasks.filter(task => {
-      return activeFilters.some(filter => {
-        switch (filter) {
-          case 'completed':
-            return task.completed;
-          case 'incomplete':
-            return !task.completed;
-          case 'high':
-            return task.priority === 'high';
-          case 'medium':
-            return task.priority === 'medium';
-          case 'low':
-            return task.priority === 'low';
-          case 'nous':
-            return task.category === 'Nous';
-          case 'soma':
-            return task.category === 'Soma';
-          case 'trophe':
-            return task.category === 'Trophe';
-          default:
-            return true;
-        }
-      });
-    });
-  }, [tasks, activeFilters]);
-  
+export default function TaskList({ 
+  tasks, 
+  isLoading, 
+  onTaskComplete,
+  onTaskUpdate,
+  onTaskDelete 
+}: TaskListProps) {
   // Group tasks by time block
-  const tasksByTimeBlock = useMemo(() => {
-    const grouped: Record<TimeBlock, EnhancedTask[]> = {
-      'Morning': [],
-      'Afternoon': [],
-      'Evening': []
-    };
-    
-    filteredTasks.forEach(task => {
-      const time = task.scheduledTime;
-      const hour = parseInt(time.split(':')[0]);
-      
-      let timeBlock: TimeBlock;
-      if (hour < 12) {
-        timeBlock = 'Morning';
-      } else if (hour < 18) {
-        timeBlock = 'Afternoon';
-      } else {
-        timeBlock = 'Evening';
-      }
-      
-      grouped[timeBlock].push(task);
-    });
-    
-    return grouped;
-  }, [filteredTasks]);
-  
-  return (
-    <div className="space-y-8">
-      {timeBlocks.map(timeBlock => {
-        const blockTasks = tasksByTimeBlock[timeBlock];
-        
-        if (blockTasks.length === 0) return null;
-        
-        return (
-          <div key={timeBlock}>
-            <h3 className="text-kalos-secondary text-sm font-medium mb-4">{timeBlock}</h3>
-            <div className="space-y-6">
-              {blockTasks.map(task => (
-                <TaskItem key={task.id} task={task} />
+  const getTimeBlock = (time: string) => {
+    const hour = parseInt(time.split(':')[0])
+    if (hour < 12) return 'Morning'
+    if (hour < 17) return 'Afternoon'
+    return 'Evening'
+  }
+
+  const tasksByTimeBlock = tasks.reduce((acc, task) => {
+    const block = getTimeBlock(task.scheduledTime)
+    if (!acc[block]) acc[block] = []
+    acc[block].push(task)
+    return acc
+  }, {} as Record<string, EnhancedTask[]>)
+
+  // Sort tasks within each time block by scheduled time
+  Object.keys(tasksByTimeBlock).forEach(block => {
+    tasksByTimeBlock[block].sort((a, b) => 
+      a.scheduledTime.localeCompare(b.scheduledTime)
+    )
+  })
+
+  const timeBlocks = ['Morning', 'Afternoon', 'Evening'] as const
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        {timeBlocks.map(block => (
+          <div key={block}>
+            <h3 className="text-sm font-medium text-kalos-muted mb-4">{block}</h3>
+            <div className="space-y-3">
+              {[1, 2].map(i => (
+                <div key={i} className="h-20 bg-kalos-border animate-pulse rounded-lg" />
               ))}
             </div>
           </div>
-        );
+        ))}
+      </div>
+    )
+  }
+
+  if (tasks.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-kalos-muted">No tasks scheduled for this day</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-8">
+      {timeBlocks.map(block => {
+        const blockTasks = tasksByTimeBlock[block] || []
+        
+        if (blockTasks.length === 0) return null
+        
+        return (
+          <div key={block}>
+            <h3 className="text-sm font-medium text-kalos-muted mb-4">{block}</h3>
+            <div className="space-y-3">
+              {blockTasks.map(task => (
+                <TaskItem
+                  key={task.id}
+                  task={task}
+                  onComplete={(completed) => onTaskComplete(String(task.id), completed)}
+                  onUpdate={(updates) => onTaskUpdate(String(task.id), updates)}
+                  onDelete={() => onTaskDelete(String(task.id))}
+                />
+              ))}
+            </div>
+          </div>
+        )
       })}
-      
-      {filteredTasks.length === 0 && (
-        <div className="text-center py-8">
-          <p className="text-kalos-secondary">No tasks found for this day</p>
-        </div>
-      )}
     </div>
-  );
+  )
 }
