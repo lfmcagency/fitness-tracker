@@ -28,7 +28,7 @@ export default function CreateTaskModal({
     name: '',
     description: '',
     scheduledTime: '',
-    recurrencePattern: 'daily' as RecurrencePattern,
+    recurrencePattern: 'once' as RecurrencePattern,
     customRecurrenceDays: [] as number[],
     category: 'general',
     priority: 'medium' as TaskPriority,
@@ -77,7 +77,7 @@ export default function CreateTaskModal({
           name: '',
           description: '',
           scheduledTime: '',
-          recurrencePattern: 'daily',
+          recurrencePattern: 'once',
           customRecurrenceDays: [],
           category: 'general',
           priority: 'medium',
@@ -102,7 +102,7 @@ export default function CreateTaskModal({
 
   const categories = ['general', 'nous', 'soma', 'trophe']
   const priorities: TaskPriority[] = ['low', 'medium', 'high']
-  const recurrencePatterns: RecurrencePattern[] = ['daily', 'weekdays', 'weekends', 'weekly', 'custom']
+  const recurrencePatterns: RecurrencePattern[] = ['once', 'daily', 'weekdays', 'weekends', 'weekly', 'custom']
   const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
   return (

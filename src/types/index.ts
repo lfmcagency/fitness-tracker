@@ -54,7 +54,7 @@ export type {
 } from './models/user';
 
 // Legacy Daily Routine Types
-export type RecurrencePattern = 'daily' | 'weekdays' | 'weekends' | 'weekly' | 'custom';
+export type RecurrencePattern = 'once' | 'daily' | 'weekdays' | 'weekends' | 'weekly' | 'custom';
 export type TaskPriority = 'low' | 'medium' | 'high';
 
 // Legacy Task interface for backward compatibility

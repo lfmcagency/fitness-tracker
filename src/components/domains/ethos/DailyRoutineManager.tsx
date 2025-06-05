@@ -2,12 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { useTaskStore } from '@/store/tasks'
-
-interface TaskResult {
-  xpAward?: {
-    xpAwarded: number
-  }
-}
 import DateSelector from './DateSelector'
 import ProgressIndicator from './ProgressIndicator'
 import TaskList from './TaskList'
@@ -24,7 +18,6 @@ export default function DailyRoutineManager() {
   
   const { 
     tasks, 
-    fetchTasks, 
     isLoading, 
     error,
     completeTask,
@@ -32,11 +25,20 @@ export default function DailyRoutineManager() {
     deleteTask 
   } = useTaskStore()
 
-  // Fetch tasks when date changes
+  // Fetch tasks due on selected date
   useEffect(() => {
-    const dateStr = format(selectedDate, 'yyyy-MM-dd')
-    fetchTasks({ date: dateStr })
-  }, [selectedDate, fetchTasks])
+    const fetchDueTasks = async () => {
+      const dateStr = format(selectedDate, 'yyyy-MM-dd')
+      const response = await fetch(`/api/tasks/due?date=${dateStr}`)
+      if (response.ok) {
+        const data = await response.json()
+        // Update the store's tasks with the due tasks
+        useTaskStore.setState({ tasks: data.data || [] })
+      }
+    }
+    
+    fetchDueTasks()
+  }, [selectedDate])
 
   const handleDateChange = (date: Date) => {
     setSelectedDate(date)
@@ -44,10 +46,10 @@ export default function DailyRoutineManager() {
 
   const handleTaskComplete = async (taskId: string, completed: boolean) => {
     if (completed) {
-      const result = await completeTask(taskId, format(selectedDate, 'yyyy-MM-dd')) as TaskResult
-      if (result && result.xpAward) {
+      const result = await completeTask(taskId, format(selectedDate, 'yyyy-MM-dd'))
+      if (result && 'xpAward' in result && result.xpAward && typeof result.xpAward === 'object' && 'xpAwarded' in result.xpAward) {
         // Show XP notification (will be implemented with toast later)
-        console.log(`XP Awarded: ${result.xpAward?.xpAwarded}`)
+        console.log(`XP Awarded: ${result.xpAward.xpAwarded}`)
       }
     } else {
       await updateTask(taskId, { completed: false })
@@ -62,11 +64,15 @@ export default function DailyRoutineManager() {
     await deleteTask(taskId)
   }
 
-  const handleTaskCreated = () => {
+  const handleTaskCreated = async () => {
     setShowCreateModal(false)
-    // Refresh tasks
+    // Refresh tasks for the selected date
     const dateStr = format(selectedDate, 'yyyy-MM-dd')
-    fetchTasks({ date: dateStr })
+    const response = await fetch(`/api/tasks/due?date=${dateStr}`)
+    if (response.ok) {
+      const data = await response.json()
+      useTaskStore.setState({ tasks: data.data || [] })
+    }
   }
 
   // Filter tasks based on active filters
