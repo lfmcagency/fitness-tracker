@@ -108,7 +108,7 @@ export const GET = withAuth<{ data: EnhancedTask[]; pagination: PaginationInfo }
       }
       
       if (patternParam && typeof patternParam === 'string' && 
-          ['daily', 'weekdays', 'weekends', 'weekly', 'custom'].includes(patternParam)) {
+          ['once','daily', 'weekdays', 'weekends', 'weekly', 'custom'].includes(patternParam)) {
         query.recurrencePattern = patternParam;
       }
       
@@ -165,7 +165,7 @@ export const GET = withAuth<{ data: EnhancedTask[]; pagination: PaginationInfo }
             name: task.name || 'Unknown task',
             completed: !!task.completed,
             date: task.date?.toISOString() || new Date().toISOString(),
-            recurrencePattern: task.recurrencePattern || 'daily',
+            recurrencePattern: task.recurrencePattern || 'once',
             currentStreak: task.currentStreak || 0,
             bestStreak: task.bestStreak || 0,
             category: task.category || 'general',
@@ -234,7 +234,7 @@ export const POST = withAuth<EnhancedTask>(
       // Validate recurrence pattern if provided
       if (taskData.recurrencePattern) {
         if (typeof taskData.recurrencePattern !== 'string' ||
-            !['daily', 'weekdays', 'weekends', 'weekly', 'custom'].includes(taskData.recurrencePattern)) {
+            !['once','daily', 'weekdays', 'weekends', 'weekly', 'custom'].includes(taskData.recurrencePattern)) {
           return apiError('Invalid recurrence pattern', 400, 'ERR_VALIDATION');
         }
         

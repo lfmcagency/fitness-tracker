@@ -106,12 +106,23 @@ export default function TaskItem({ task, onComplete, onUpdate, onDelete }: TaskI
             </button>
           </div>
         ) : (
-          <h4 className={cn(
-            "text-base font-normal mb-1",
-            task.completed && "line-through text-kalos-muted"
-          )}>
-            {task.name}
-          </h4>
+          <>
+            <h4 className={cn(
+              "text-base font-normal mb-1",
+              task.completed && "line-through text-kalos-muted"
+            )}>
+              {task.name}
+            </h4>
+            {/* Add description below the task name */}
+            {task.description && (
+              <p className={cn(
+                "text-sm text-kalos-muted mb-2",
+                task.completed && "line-through"
+              )}>
+                {task.description}
+              </p>
+            )}
+          </>
         )}
 
         {/* Task metadata */}
