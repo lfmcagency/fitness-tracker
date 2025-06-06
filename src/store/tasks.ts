@@ -70,8 +70,16 @@ interface TaskState {
 }
 
 // Helper functions
-function isTaskDataResponse(data: any): data is TaskData {
-  return data && typeof data.id !== 'undefined' && typeof data.name === 'string';
+function isValidTaskResponse(data: any): data is TaskData | { task: TaskData } {
+  // Check if it's TaskData directly
+  if (data && typeof data.id !== 'undefined' && typeof data.name === 'string') {
+    return true;
+  }
+  // Check if it has a task property with TaskData
+  if (data && data.task && typeof data.task.id !== 'undefined' && typeof data.task.name === 'string') {
+    return true;
+  }
+  return false;
 }
 
 const getTaskId = (taskId: string | number): string => {
@@ -399,10 +407,11 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       
       const data = await response.json() as TaskResponse;
       
-      if (data.success && isTaskDataResponse(data.data)) {
-      const taskData = 'task' in data.data ? data.data.task : data.data;
-      get().updateLocalTask(id, taskData);
-      return taskData;
+      if (data.success) {
+      const successResponse = data as ApiSuccessResponse<TaskData | { task: TaskData }>;
+      const taskData = 'task' in successResponse.data ? successResponse.data.task : successResponse.data;
+      get().updateLocalTask(id, taskData as Partial<TaskData>);
+      return taskData as TaskData;
       } else {
         // Handle API error
         const errorData = data as ApiErrorResponse;
@@ -460,10 +469,11 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       
       const data = await response.json() as TaskResponse;
       
-      if (data.success && isTaskDataResponse(data.data)) {
-      const taskData = 'task' in data.data ? data.data.task : data.data;
-      get().updateLocalTask(id, taskData);
-      return taskData;
+      if (data.success) {
+      const successResponse = data as ApiSuccessResponse<TaskData | { task: TaskData }>;
+      const taskData = 'task' in successResponse.data ? successResponse.data.task : successResponse.data;
+      get().updateLocalTask(id, taskData as Partial<TaskData>);
+      return taskData as TaskData;
       } else {
         // Handle API error
         const errorData = data as ApiErrorResponse;
