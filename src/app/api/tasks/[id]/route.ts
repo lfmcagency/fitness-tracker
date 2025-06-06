@@ -22,10 +22,10 @@ export const GET = withAuth<EnhancedTask, { id: string }>(
       await dbConnect();
       
       // Validate taskId parameter
-const taskId = context?.params?.id;
-if (!taskId || typeof taskId !== 'string' || taskId.trim() === '') {
-  return apiError('Invalid task ID', 400, 'ERR_INVALID_ID');
-}
+      const taskId = context?.params?.id;
+      if (!taskId || typeof taskId !== 'string' || taskId.trim() === '') {
+        return apiError('Invalid task ID', 400, 'ERR_INVALID_ID');
+      }
       
       // Additional validation for ObjectId format
       if (!isValidObjectId(taskId)) {
@@ -35,6 +35,7 @@ if (!taskId || typeof taskId !== 'string' || taskId.trim() === '') {
       // Get query parameters with defensive checks
       const url = new URL(req.url);
       const includeHistoryParam = url.searchParams.get('includeHistory') === 'true';
+      const dateParam = url.searchParams.get('date'); // For checking completion on specific date
       
       // Find task by ID with defensive error handling
       const task = await Task.findOne({ _id: taskId, user: userId }) as ITask | null;
@@ -43,8 +44,17 @@ if (!taskId || typeof taskId !== 'string' || taskId.trim() === '') {
         return apiError('Task not found', 404, 'ERR_NOT_FOUND');
       }
       
-      // Convert to enhanced task format
-      const enhancedTask = convertTaskToEnhancedTask(task);
+      // Parse date parameter for date-specific completion checking
+      let checkDate = new Date();
+      if (dateParam) {
+        const parsedDate = new Date(dateParam);
+        if (!isNaN(parsedDate.getTime())) {
+          checkDate = parsedDate;
+        }
+      }
+      
+      // Convert to enhanced task format with date-specific completion
+      const enhancedTask = convertTaskToEnhancedTask(task, checkDate);
       
       // If includeHistory is not true, remove the completion history
       if (!includeHistoryParam && enhancedTask && 'completionHistory' in enhancedTask) {
@@ -70,10 +80,10 @@ export const PATCH = withAuth<EnhancedTask | { task: EnhancedTask; xpAward: any 
       await dbConnect();
       
       // Validate taskId parameter
-const taskId = context?.params?.id;
-if (!taskId || typeof taskId !== 'string' || taskId.trim() === '') {
-  return apiError('Invalid task ID', 400, 'ERR_INVALID_ID');
-}
+      const taskId = context?.params?.id;
+      if (!taskId || typeof taskId !== 'string' || taskId.trim() === '') {
+        return apiError('Invalid task ID', 400, 'ERR_INVALID_ID');
+      }
       
       // Additional validation for ObjectId format
       if (!isValidObjectId(taskId)) {
@@ -81,7 +91,7 @@ if (!taskId || typeof taskId !== 'string' || taskId.trim() === '') {
       }
       
       // Parse request body with defensive error handling
-      let updates: UpdateTaskRequest;
+      let updates: UpdateTaskRequest & { completionDate?: string };
       try {
         updates = await req.json();
       } catch (error) {
@@ -108,42 +118,39 @@ if (!taskId || typeof taskId !== 'string' || taskId.trim() === '') {
         return apiError('Task not found or you do not have permission to update it', 404, 'ERR_NOT_FOUND');
       }
       
-      // Special handling for task completion with defensive checks
+      // Special handling for task completion with date-specific logic
       if (updates.hasOwnProperty('completed')) {
-        // If marking as completed
-        if (updates.completed === true && !existingTask.completed) {
-          try {
-            // Use the model method to properly update streak with current date
-            const completionDate = updates.completionDate 
-              ? new Date(updates.completionDate) 
-              : new Date();
-              
-            if (isNaN(completionDate.getTime())) {
-              return apiError('Invalid completion date', 400, 'ERR_INVALID_DATE');
-            }
+        try {
+          // Parse completion date, default to today
+          const completionDate = updates.completionDate 
+            ? new Date(updates.completionDate) 
+            : new Date();
             
+          if (isNaN(completionDate.getTime())) {
+            return apiError('Invalid completion date', 400, 'ERR_INVALID_DATE');
+          }
+          
+          // If marking as completed
+          if (updates.completed === true) {
+            // Use the model method to add completion date
             existingTask.completeTask(completionDate);
             
-            // Remove the completionDate from updates as it's been handled
-            delete updates.completionDate;
-            
-            // We'll handle 'completed' flag through the completeTask method
-            delete updates.completed;
-            
-            // Apply any other updates safely
-            if (updates && typeof updates === 'object') {
-              Object.assign(existingTask, updates);
-            }
-            
-            // Save the task with error handling
-            await existingTask.save();
-            
-            // Award XP for completing the task with defensive error handling
+            // Award XP for completing the task
             try {
               const xpResult = await handleTaskXpAward(userId, existingTask);
               
+              // Apply any other updates safely
+              delete updates.completed;
+              delete updates.completionDate;
+              if (updates && typeof updates === 'object') {
+                Object.assign(existingTask, updates);
+              }
+              
+              // Save the task with error handling
+              await existingTask.save();
+              
               // Return the updated task with XP info
-              const enhancedTask = convertTaskToEnhancedTask(existingTask);
+              const enhancedTask = convertTaskToEnhancedTask(existingTask, completionDate);
               
               return apiResponse({
                 task: enhancedTask,
@@ -155,23 +162,29 @@ if (!taskId || typeof taskId !== 'string' || taskId.trim() === '') {
               console.error('Error awarding XP:', error);
               // Continue without XP award rather than failing the request
               
+              // Apply any other updates safely
+              delete updates.completed;
+              delete updates.completionDate;
+              if (updates && typeof updates === 'object') {
+                Object.assign(existingTask, updates);
+              }
+              
+              await existingTask.save();
+              
               // Return the updated task without XP info
-              const enhancedTask = convertTaskToEnhancedTask(existingTask);
+              const enhancedTask = convertTaskToEnhancedTask(existingTask, completionDate);
               return apiResponse(enhancedTask, true, 'Task marked as completed, but XP could not be awarded');
             }
-          } catch (error) {
-            return handleApiError(error, 'Error completing task');
           }
-        }
-        
-        // If marking as incomplete and it was previously completed
-        if (updates.completed === false && existingTask.completed) {
-          try {
-            // This will trigger the pre-save middleware to handle streak reset if needed
-            existingTask.completed = false;
+          
+          // If marking as incomplete (uncompleting)
+          if (updates.completed === false) {
+            // Use the model method to remove completion date
+            existingTask.uncompleteTask(completionDate);
             
             // Apply any other updates
-            delete updates.completed; // Already handled
+            delete updates.completed;
+            delete updates.completionDate;
             
             if (updates && typeof updates === 'object') {
               Object.assign(existingTask, updates);
@@ -181,11 +194,11 @@ if (!taskId || typeof taskId !== 'string' || taskId.trim() === '') {
             await existingTask.save();
             
             // Return the updated task
-            const enhancedTask = convertTaskToEnhancedTask(existingTask);
+            const enhancedTask = convertTaskToEnhancedTask(existingTask, completionDate);
             return apiResponse(enhancedTask, true, 'Task marked as incomplete');
-          } catch (error) {
-            return handleApiError(error, 'Error marking task as incomplete');
           }
+        } catch (error) {
+          return handleApiError(error, 'Error updating task completion');
         }
       }
       
@@ -227,10 +240,10 @@ export const DELETE = withAuth<{ id: string }, { id: string }>(
       await dbConnect();
       
       // Validate taskId parameter
-const taskId = context?.params?.id;
-if (!taskId || typeof taskId !== 'string' || taskId.trim() === '') {
-  return apiError('Invalid task ID', 400, 'ERR_INVALID_ID');
-}
+      const taskId = context?.params?.id;
+      if (!taskId || typeof taskId !== 'string' || taskId.trim() === '') {
+        return apiError('Invalid task ID', 400, 'ERR_INVALID_ID');
+      }
       
       // Additional validation for ObjectId format
       if (!isValidObjectId(taskId)) {

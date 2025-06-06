@@ -9,6 +9,7 @@ interface TaskListProps {
   onTaskComplete: (taskId: string, completed: boolean) => void
   onTaskUpdate: (taskId: string, updates: any) => void
   onTaskDelete: (taskId: string) => void
+  selectedDate?: Date // Add selectedDate prop
 }
 
 export default function TaskList({ 
@@ -16,7 +17,8 @@ export default function TaskList({
   isLoading, 
   onTaskComplete,
   onTaskUpdate,
-  onTaskDelete 
+  onTaskDelete,
+  selectedDate = new Date() // Default to today if not provided
 }: TaskListProps) {
   // Group tasks by time block
   const getTimeBlock = (time: string) => {
@@ -85,6 +87,7 @@ export default function TaskList({
                   onComplete={(completed) => onTaskComplete(String(task.id), completed)}
                   onUpdate={(updates) => onTaskUpdate(String(task.id), updates)}
                   onDelete={() => onTaskDelete(String(task.id))}
+                  selectedDate={selectedDate} // Pass selectedDate to TaskItem
                 />
               ))}
             </div>

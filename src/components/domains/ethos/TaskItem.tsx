@@ -14,9 +14,16 @@ interface TaskItemProps {
   onComplete: (completed: boolean) => void
   onUpdate: (updates: any) => void
   onDelete: () => void
+  selectedDate?: Date // New prop for date-specific completion
 }
 
-export default function TaskItem({ task, onComplete, onUpdate, onDelete }: TaskItemProps) {
+export default function TaskItem({ 
+  task, 
+  onComplete, 
+  onUpdate, 
+  onDelete, 
+  selectedDate = new Date() 
+}: TaskItemProps) {
   const { saveBlankTask, cancelBlankTask } = useTaskStore()
   
   // Auto-edit mode for new tasks
@@ -43,6 +50,8 @@ export default function TaskItem({ task, onComplete, onUpdate, onDelete }: TaskI
 
   const handleComplete = () => {
     if (!task.isNew) {
+      // The completion status is now date-specific
+      // task.completed represents whether it's completed on the selected date
       onComplete(!task.completed)
     }
   }
@@ -62,7 +71,7 @@ export default function TaskItem({ task, onComplete, onUpdate, onDelete }: TaskI
         customRecurrenceDays: formData.recurrencePattern === 'custom' ? formData.customRecurrenceDays : undefined,
         category: formData.category,
         priority: formData.priority,
-        date: format(new Date(), 'yyyy-MM-dd'),
+        date: format(selectedDate, 'yyyy-MM-dd'),
       }
       
       await saveBlankTask(String(task.id!), taskData)
@@ -149,7 +158,40 @@ export default function TaskItem({ task, onComplete, onUpdate, onDelete }: TaskI
     }
   }
 
+  // Check if task is due on selected date
+  const isTaskDueOnSelectedDate = () => {
+    if (!task.recurrencePattern) return true
+    
+    const dayOfWeek = selectedDate.getDay()
+    
+    switch (task.recurrencePattern) {
+      case 'once':
+        const taskDate = new Date(task.date || task.createdAt || '')
+        taskDate.setHours(0, 0, 0, 0)
+        selectedDate.setHours(0, 0, 0, 0)
+        return taskDate.getTime() === selectedDate.getTime()
+      case 'daily':
+        return true
+      case 'weekdays':
+        return dayOfWeek >= 1 && dayOfWeek <= 5
+      case 'weekends':
+        return dayOfWeek === 0 || dayOfWeek === 6
+      case 'weekly':
+        const originalDate = new Date(task.date || task.createdAt || '')
+        return dayOfWeek === originalDate.getDay()
+      case 'custom':
+        return task.customRecurrenceDays?.includes(dayOfWeek) || false
+      default:
+        return true
+    }
+  }
+
   const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+  // Don't render tasks that aren't due on the selected date (except when editing new tasks)
+  if (!task.isNew && !isTaskDueOnSelectedDate()) {
+    return null
+  }
 
   return (
     <div className={cn(
@@ -169,6 +211,10 @@ export default function TaskItem({ task, onComplete, onUpdate, onDelete }: TaskI
               : "border-kalos-muted hover:border-kalos-dark",
             task.isNew && "opacity-50 cursor-not-allowed"
           )}
+          title={task.completed 
+            ? `Completed on ${format(selectedDate, 'MMM d, yyyy')}` 
+            : `Complete for ${format(selectedDate, 'MMM d, yyyy')}`
+          }
         >
           {task.completed && (
             <div className="w-2 h-2 bg-white rounded-full" />

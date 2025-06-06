@@ -19,6 +19,8 @@ export interface ITaskDocument extends mongoose.Document {
   completionHistory: Array<Date>;
   calculateStreak(): number;
   completeTask(date: Date): void;
+  uncompleteTask(date: Date): void;
+  isCompletedOnDate(date: Date): boolean;
   isTaskDueToday(date: Date): boolean;
   resetStreak(): void;
 }
@@ -101,45 +103,67 @@ const TaskSchema = new mongoose.Schema({
   }
 }, { timestamps: true });
 
-// Calculate current streak based on completion history
+// Check if task is completed on a specific date
+TaskSchema.methods.isCompletedOnDate = function(date: Date): boolean {
+  const checkDate = new Date(date);
+  checkDate.setHours(0, 0, 0, 0);
+  
+  return this.completionHistory.some((completionDate: Date) => {
+    const historyDate = new Date(completionDate);
+    historyDate.setHours(0, 0, 0, 0);
+    return historyDate.getTime() === checkDate.getTime();
+  });
+};
+
+// Calculate current streak based on completion history and recurrence pattern
 TaskSchema.methods.calculateStreak = function(): number {
   if (!this.completionHistory.length) return 0;
   
-  // Sort dates in descending order
-  const sortedDates = [...this.completionHistory].sort((a, b) => b.getTime() - a.getTime());
+  // Sort dates in descending order (most recent first)
+  const sortedDates = [...this.completionHistory]
+    .map(date => {
+      const d = new Date(date);
+      d.setHours(0, 0, 0, 0);
+      return d;
+    })
+    .sort((a, b) => b.getTime() - a.getTime());
   
-  let streak = 1;
-  const MILLISECONDS_IN_DAY = 86400000;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   
-  // If the most recent completion is not from today or yesterday, streak is broken
-  const mostRecentDate = new Date(sortedDates[0]);
-  mostRecentDate.setHours(0, 0, 0, 0);
+  // Check if task is due today and if it's completed
+  const isDueToday = this.isTaskDueToday(today);
+  const isCompletedToday = this.isCompletedOnDate(today);
   
-  const dayDifference = Math.floor((today.getTime() - mostRecentDate.getTime()) / MILLISECONDS_IN_DAY);
+  // If task is due today but not completed, streak is broken
+  if (isDueToday && !isCompletedToday) {
+    return 0;
+  }
   
-  // If the most recent completion is older than yesterday, streak is broken
-  if (dayDifference > 1) return 0;
+  let streak = 0;
+  let checkDate = new Date(today);
   
-  // Calculate consecutive days
-  for (let i = 0; i < sortedDates.length - 1; i++) {
-    const currentDate = new Date(sortedDates[i]);
-    const nextDate = new Date(sortedDates[i + 1]);
+  // Start from today and go backwards
+  while (true) {
+    const isDue = this.isTaskDueToday(checkDate);
+    const isCompleted = this.isCompletedOnDate(checkDate);
     
-    // Set to beginning of day for comparison
-    currentDate.setHours(0, 0, 0, 0);
-    nextDate.setHours(0, 0, 0, 0);
-    
-    // Calculate difference in days
-    const diffDays = Math.floor((currentDate.getTime() - nextDate.getTime()) / MILLISECONDS_IN_DAY);
-    
-    // If days are consecutive, increment streak
-    if (diffDays === 1) {
-      streak++;
-    } else {
-      break; // Break the streak chain if not consecutive
+    if (isDue) {
+      if (isCompleted) {
+        streak++;
+      } else {
+        // Task was due but not completed, streak ends
+        break;
+      }
     }
+    // If task is not due on this date, continue to previous day
+    
+    // Move to previous day
+    checkDate.setDate(checkDate.getDate() - 1);
+    
+    // Stop if we've gone too far back (e.g., 365 days)
+    const daysDiff = Math.floor((today.getTime() - checkDate.getTime()) / (1000 * 60 * 60 * 24));
+    if (daysDiff > 365) break;
   }
   
   return streak;
@@ -159,8 +183,7 @@ TaskSchema.methods.completeTask = function(date: Date): void {
   
   if (!dateExists) {
     this.completionHistory.push(completionDate);
-    this.lastCompletedDate = date;
-    this.completed = true;
+    this.lastCompletedDate = completionDate;
     
     // Update streak
     const newStreak = this.calculateStreak();
@@ -171,6 +194,37 @@ TaskSchema.methods.completeTask = function(date: Date): void {
       this.bestStreak = newStreak;
     }
   }
+  
+  // Update global completed flag for the most recent completion
+  this.completed = this.completionHistory.length > 0;
+};
+
+// Mark task as uncompleted for a specific date
+TaskSchema.methods.uncompleteTask = function(date: Date): void {
+  const targetDate = new Date(date);
+  targetDate.setHours(0, 0, 0, 0);
+  
+  // Remove the date from completion history
+  this.completionHistory = this.completionHistory.filter((d: Date) => {
+    const existingDate = new Date(d);
+    existingDate.setHours(0, 0, 0, 0);
+    return existingDate.getTime() !== targetDate.getTime();
+  });
+  
+  // Update lastCompletedDate to the most recent completion
+  if (this.completionHistory.length > 0) {
+    const sortedDates = [...this.completionHistory].sort((a, b) => b.getTime() - a.getTime());
+    this.lastCompletedDate = sortedDates[0];
+  } else {
+    this.lastCompletedDate = null;
+  }
+  
+  // Update streak
+  const newStreak = this.calculateStreak();
+  this.currentStreak = newStreak;
+  
+  // Update global completed flag
+  this.completed = this.completionHistory.length > 0;
 };
 
 // Check if task is due today based on recurrence pattern
@@ -207,20 +261,16 @@ TaskSchema.methods.resetStreak = function(): void {
   this.currentStreak = 0;
 };
 
-// Pre-save middleware to maintain streak integrity
+// Pre-save middleware to maintain data integrity
 TaskSchema.pre('save', function(this: any, next) {
-  const task = this;
+  // Ensure completionHistory dates are unique and sorted
+  const uniqueDates = [...new Set(this.completionHistory.map((d: Date) => {
+    const date = new Date(d);
+    date.setHours(0, 0, 0, 0);
+    return date.getTime();
+  }))];
   
-  // Check if completion status changed to false
-  if (task.isModified('completed') && !task.completed) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    // If the task was due today and marked incomplete, reset streak
-    if (task.isTaskDueToday(today)) {
-      task.resetStreak();
-    }
-  }
+  this.completionHistory = uniqueDates.map(timestamp => new Date(timestamp as number));
   
   next();
 });

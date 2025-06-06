@@ -50,11 +50,13 @@ interface TaskState {
   fetchTasks: (filter?: TaskFilter) => Promise<void>;
   fetchTaskById: (taskId: string | number) => Promise<EnhancedTask | null>;
   addTask: (task: CreateTaskParams) => Promise<EnhancedTask | null>;
-  addBlankTask: (timeBlock?: string) => string; // NEW: Returns temp ID
-  saveBlankTask: (tempId: string, taskData: CreateTaskParams) => Promise<EnhancedTask | null>; // NEW
-  cancelBlankTask: (tempId: string) => void; // NEW
+  addBlankTask: (timeBlock?: string) => string;
+  saveBlankTask: (tempId: string, taskData: CreateTaskParams) => Promise<EnhancedTask | null>;
+  cancelBlankTask: (tempId: string) => void;
   updateTask: (taskId: string | number, updates: Partial<EnhancedTask>) => Promise<EnhancedTask | null>;
   completeTask: (taskId: string | number, date?: string) => Promise<EnhancedTask | null>;
+  completeTaskOnDate: (taskId: string | number, date: string) => Promise<any>;
+  fetchTasksForDate: (date: string) => Promise<void>;
   deleteTask: (taskId: string | number, skipConfirmation?: boolean) => Promise<boolean>;
   fetchStatistics: (filter?: TaskFilter) => Promise<TaskStatistics | null>;
   
@@ -152,6 +154,40 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       const queryString = buildQueryString(get().currentFilter);
       console.log("Fetching tasks with URL:", `/api/tasks${queryString}`);
       console.error('Error fetching tasks:', error);
+      set({ 
+        error: error instanceof Error ? error.message : 'Failed to fetch tasks', 
+        isLoading: false 
+      });
+    }
+  },
+
+  /**
+   * Fetch tasks for specific date
+   */
+  fetchTasksForDate: async (date: string) => {
+    set({ isLoading: true, error: null });
+    try {
+      const response = await fetch(`/api/tasks/due?date=${date}`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch tasks: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        const tasks = data.data || [];
+        set({ 
+          tasks: tasks,
+          filteredTasks: tasks,
+          completedTasks: tasks.filter((task: EnhancedTask) => task.completed).length,
+          isLoading: false
+        });
+      } else {
+        throw new Error(data.error?.message || 'Failed to fetch tasks');
+      }
+    } catch (error) {
+      console.error('Error fetching tasks for date:', error);
       set({ 
         error: error instanceof Error ? error.message : 'Failed to fetch tasks', 
         isLoading: false 
@@ -359,8 +395,9 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       
       if (data.success) {
         // Update with server data to ensure consistency
-        get().updateLocalTask(id, data.data);
-        return data.data;
+        const taskData = 'task' in data.data ? data.data.task : data.data;
+        get().updateLocalTask(id, taskData);
+        return taskData;
       } else {
         // Handle API error
         const errorData = data as ApiErrorResponse;
@@ -420,8 +457,9 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       
       if (data.success) {
         // Update with server data to ensure streak is calculated correctly
-        get().updateLocalTask(id, data.data);
-        return data.data;
+        const taskData = 'task' in data.data ? data.data.task : data.data;
+        get().updateLocalTask(id, taskData);
+        return taskData;
       } else {
         // Handle API error
         const errorData = data as ApiErrorResponse;
@@ -440,6 +478,13 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       set({ error: error instanceof Error ? error.message : `Failed to complete task ${id}` });
       return null;
     }
+  },
+
+  /**
+   * Complete task on specific date
+   */
+  completeTaskOnDate: async (taskId: string | number, date: string) => {
+    return await get().completeTask(taskId, date);
   },
 
   /**
@@ -617,4 +662,5 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     get().fetchTasks();
   }
 }));
+
 export type { Task };

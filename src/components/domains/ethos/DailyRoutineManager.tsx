@@ -18,26 +18,37 @@ export default function DailyRoutineManager() {
     tasks, 
     isLoading, 
     error,
-    addBlankTask, // NEW
-    completeTask,
+    addBlankTask,
+    completeTaskOnDate, // Updated method name for date-specific completion
     updateTask,
-    deleteTask 
+    deleteTask,
+    fetchTasksForDate // New method to fetch tasks for specific date
   } = useTaskStore()
 
   // Fetch tasks due on selected date
   useEffect(() => {
     const fetchDueTasks = async () => {
       const dateStr = format(selectedDate, 'yyyy-MM-dd')
-      const response = await fetch(`/api/tasks/due?date=${dateStr}`)
-      if (response.ok) {
-        const data = await response.json()
-        // Update the store's tasks with the due tasks
-        useTaskStore.setState({ tasks: data.data || [] })
+      
+      // Use the store method if available, otherwise direct API call
+      if (fetchTasksForDate) {
+        await fetchTasksForDate(dateStr)
+      } else {
+        const response = await fetch(`/api/tasks/due?date=${dateStr}`)
+        if (response.ok) {
+          const data = await response.json()
+          // Update the store's tasks with the due tasks, including date-specific completion status
+          const tasksWithCompletion = data.data?.map((task: any) => ({
+            ...task,
+            // The API should already return the correct completion status for the selected date
+          })) || []
+          useTaskStore.setState({ tasks: tasksWithCompletion })
+        }
       }
     }
     
     fetchDueTasks()
-  }, [selectedDate])
+  }, [selectedDate, fetchTasksForDate])
 
   const handleDateChange = (date: Date) => {
     setSelectedDate(date)
@@ -59,14 +70,21 @@ export default function DailyRoutineManager() {
   }
 
   const handleTaskComplete = async (taskId: string, completed: boolean) => {
+    const dateStr = format(selectedDate, 'yyyy-MM-dd')
+    
     if (completed) {
-      const result = await completeTask(taskId, format(selectedDate, 'yyyy-MM-dd'))
+      // Use date-specific completion method
+      const result = await completeTaskOnDate(taskId, dateStr)
       if (result && 'xpAward' in result && result.xpAward && typeof result.xpAward === 'object' && 'xpAwarded' in result.xpAward) {
         // Show XP notification (will be implemented with toast later)
         console.log(`XP Awarded: ${result.xpAward.xpAwarded}`)
       }
     } else {
-      await updateTask(taskId, { completed: false })
+      // Use date-specific uncompletion - update the task to uncomplete for this specific date
+      await updateTask(taskId, { 
+        completed: false, 
+        completionDate: dateStr 
+      })
     }
   }
 
@@ -85,9 +103,9 @@ export default function DailyRoutineManager() {
     return activeFilters.some(filter => {
       switch (filter) {
         case 'completed':
-          return task.completed
+          return task.completed // This will now be date-specific
         case 'incomplete':
-          return !task.completed
+          return !task.completed // This will now be date-specific
         case 'high':
           return task.priority === 'high'
         case 'medium':
@@ -147,6 +165,7 @@ export default function DailyRoutineManager() {
         onTaskComplete={handleTaskComplete}
         onTaskUpdate={handleTaskUpdate}
         onTaskDelete={handleTaskDelete}
+        selectedDate={selectedDate} // Pass selected date to TaskList
       />
     </div>
   )

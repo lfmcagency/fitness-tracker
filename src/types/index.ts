@@ -85,12 +85,14 @@ export interface EnhancedTask {
   user?: string;
   createdAt?: string;
   updatedAt?: string;
+  completionHistory?: string[];
   isNew?: boolean;        // Flag for new tasks being created inline
   timeBlock?: string;     // Time block: 'morning' | 'afternoon' | 'evening'
+  completionDate?: string;
 }
 
 export interface TaskWithHistory extends EnhancedTask {
-  completionHistory: Array<Date | string>;
+  completionHistory: string[];
 }
 
 export interface StreakInfo {

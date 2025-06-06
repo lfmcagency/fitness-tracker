@@ -9,6 +9,8 @@ export type TaskPriority = 'low' | 'medium' | 'high';
 export interface ITaskMethods {
   calculateStreak(): number;
   completeTask(date: Date): void;
+  uncompleteTask(date: Date): void;
+  isCompletedOnDate(date: Date): boolean;
   isTaskDueToday(date: Date): boolean;
   resetStreak(): void;
 }
@@ -36,6 +38,8 @@ export interface ITask extends mongoose.Document {
   // Include methods from ITaskMethods
   calculateStreak: () => number;
   completeTask: (date: Date) => void;
+  uncompleteTask: (date: Date) => void;
+  isCompletedOnDate: (date: Date) => boolean;
   isTaskDueToday: (date: Date) => boolean;
   resetStreak: () => void;
 }
