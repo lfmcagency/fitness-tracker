@@ -6,20 +6,19 @@ import DateSelector from './DateSelector'
 import ProgressIndicator from './ProgressIndicator'
 import TaskList from './TaskList'
 import TaskFilters from './TaskFilters'
-import CreateTaskModal from './CreateTaskModal'
 import { Plus } from 'lucide-react'
 import { format } from 'date-fns'
 
 export default function DailyRoutineManager() {
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [showFilters, setShowFilters] = useState(false)
-  const [showCreateModal, setShowCreateModal] = useState(false)
   const [activeFilters, setActiveFilters] = useState<string[]>([])
   
   const { 
     tasks, 
     isLoading, 
     error,
+    addBlankTask, // NEW
     completeTask,
     updateTask,
     deleteTask 
@@ -44,6 +43,21 @@ export default function DailyRoutineManager() {
     setSelectedDate(date)
   }
 
+  const handleAddTask = () => {
+    // Determine time block based on current time or default to morning
+    const currentHour = new Date().getHours()
+    let timeBlock = 'morning'
+    
+    if (currentHour >= 12 && currentHour < 18) {
+      timeBlock = 'afternoon'
+    } else if (currentHour >= 18) {
+      timeBlock = 'evening'
+    }
+    
+    // Add blank task and put it in edit mode
+    addBlankTask(timeBlock)
+  }
+
   const handleTaskComplete = async (taskId: string, completed: boolean) => {
     if (completed) {
       const result = await completeTask(taskId, format(selectedDate, 'yyyy-MM-dd'))
@@ -62,17 +76,6 @@ export default function DailyRoutineManager() {
 
   const handleTaskDelete = async (taskId: string) => {
     await deleteTask(taskId)
-  }
-
-  const handleTaskCreated = async () => {
-    setShowCreateModal(false)
-    // Refresh tasks for the selected date
-    const dateStr = format(selectedDate, 'yyyy-MM-dd')
-    const response = await fetch(`/api/tasks/due?date=${dateStr}`)
-    if (response.ok) {
-      const data = await response.json()
-      useTaskStore.setState({ tasks: data.data || [] })
-    }
   }
 
   // Filter tasks based on active filters
@@ -119,7 +122,7 @@ export default function DailyRoutineManager() {
         />
         
         <button
-          onClick={() => setShowCreateModal(true)}
+          onClick={handleAddTask}
           className="w-10 h-10 rounded-full bg-kalos-dark text-white flex items-center justify-center hover:bg-opacity-90 transition-opacity"
         >
           <Plus className="w-5 h-5" />
@@ -144,14 +147,6 @@ export default function DailyRoutineManager() {
         onTaskComplete={handleTaskComplete}
         onTaskUpdate={handleTaskUpdate}
         onTaskDelete={handleTaskDelete}
-      />
-
-      {/* Create task modal */}
-      <CreateTaskModal 
-        isOpen={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
-        onTaskCreated={handleTaskCreated}
-        defaultDate={selectedDate}
       />
     </div>
   )

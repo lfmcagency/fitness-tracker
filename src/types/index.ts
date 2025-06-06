@@ -85,6 +85,8 @@ export interface EnhancedTask {
   user?: string;
   createdAt?: string;
   updatedAt?: string;
+  isNew?: boolean;        // Flag for new tasks being created inline
+  timeBlock?: string;     // Time block: 'morning' | 'afternoon' | 'evening'
 }
 
 export interface TaskWithHistory extends EnhancedTask {

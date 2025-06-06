@@ -50,6 +50,9 @@ interface TaskState {
   fetchTasks: (filter?: TaskFilter) => Promise<void>;
   fetchTaskById: (taskId: string | number) => Promise<EnhancedTask | null>;
   addTask: (task: CreateTaskParams) => Promise<EnhancedTask | null>;
+  addBlankTask: (timeBlock?: string) => string; // NEW: Returns temp ID
+  saveBlankTask: (tempId: string, taskData: CreateTaskParams) => Promise<EnhancedTask | null>; // NEW
+  cancelBlankTask: (tempId: string) => void; // NEW
   updateTask: (taskId: string | number, updates: Partial<EnhancedTask>) => Promise<EnhancedTask | null>;
   completeTask: (taskId: string | number, date?: string) => Promise<EnhancedTask | null>;
   deleteTask: (taskId: string | number, skipConfirmation?: boolean) => Promise<boolean>;
@@ -198,6 +201,63 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   },
 
   /**
+   * Add a blank task for inline editing
+   */
+  addBlankTask: (timeBlock = 'morning') => {
+    const tempId = `blank-${Date.now()}`;
+    const blankTask: EnhancedTask = {
+      id: tempId,
+      name: '',
+      description: '',
+      scheduledTime: '09:00', // Default based on time block
+      completed: false,
+      recurrencePattern: 'once',
+      customRecurrenceDays: [],
+      currentStreak: 0,
+      bestStreak: 0,
+      category: 'general',
+      priority: 'medium',
+      date: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      timeBlock,
+      isNew: true // Flag to indicate this is a new task being created
+    };
+    
+    // Add to top of the list for the selected time block
+    set((state) => ({
+      tasks: [blankTask, ...state.tasks],
+      filteredTasks: [blankTask, ...state.filteredTasks],
+      error: null
+    }));
+    
+    return tempId;
+  },
+
+  /**
+   * Save a blank task (convert to real task)
+   */
+  saveBlankTask: async (tempId: string, taskData: CreateTaskParams) => {
+    // Remove the blank task first
+    set((state) => ({
+      tasks: state.tasks.filter(t => getTaskId(t.id!) !== tempId),
+      filteredTasks: state.filteredTasks.filter(t => getTaskId(t.id!) !== tempId)
+    }));
+    
+    // Create the real task using existing addTask method
+    return await get().addTask(taskData);
+  },
+
+  /**
+   * Cancel blank task creation
+   */
+  cancelBlankTask: (tempId: string) => {
+    set((state) => ({
+      tasks: state.tasks.filter(t => getTaskId(t.id!) !== tempId),
+      filteredTasks: state.filteredTasks.filter(t => getTaskId(t.id!) !== tempId)
+    }));
+  },
+
+  /**
    * Add a new task
    */
   addTask: async (taskData: CreateTaskParams) => {
@@ -216,7 +276,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       priority: taskData.priority || 'medium',
       date: taskData.date || new Date().toISOString(),
       createdAt: new Date().toISOString(),
-      description: undefined
+      description: taskData.description
     };
     
     // Optimistic update
