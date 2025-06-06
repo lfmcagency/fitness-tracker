@@ -6,7 +6,7 @@ import TaskItem from './TaskItem'
 interface TaskListProps {
   tasks: TaskData[]
   isLoading: boolean
-  onTaskComplete: (taskId: string, completed: boolean) => void
+  onTaskComplete: (taskId: string, completed: boolean, date?: string) => void
   onTaskUpdate: (taskId: string, updates: any) => void
   onTaskDelete: (taskId: string) => void
   selectedDate?: Date
@@ -84,7 +84,7 @@ export default function TaskList({
                 <TaskItem
                   key={task.id}
                   task={task}
-                  onComplete={(completed) => onTaskComplete(String(task.id), completed)}
+                  onComplete={(completed, date) => onTaskComplete(String(task.id), completed, date)}
                   onUpdate={(updates) => onTaskUpdate(String(task.id), updates)}
                   onDelete={() => onTaskDelete(String(task.id))}
                   selectedDate={selectedDate} // Pass selectedDate to TaskItem

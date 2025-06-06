@@ -74,7 +74,7 @@ export const GET = withAuth<TaskData[]>(
         try {
           if (task && typeof task.isTaskDueToday === 'function' && task.isTaskDueToday(checkDate)) {
             // Convert task with defensive error handling
-            const taskData = convertTaskToTaskData(task);
+            const taskData = convertTaskToTaskData(task, checkDate);
             dueTasks.push(taskData);
           }
         } catch (error) {

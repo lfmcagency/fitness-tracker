@@ -69,8 +69,9 @@ export default function DailyRoutineManager() {
     addBlankTask(timeBlock)
   }
 
-  const handleTaskComplete = async (taskId: string, completed: boolean) => {
-    const dateStr = format(selectedDate, 'yyyy-MM-dd')
+  const handleTaskComplete = async (taskId: string, completed: boolean, date?: string) => {
+    // Use passed date if provided, otherwise use selectedDate
+    const dateStr = date || format(selectedDate, 'yyyy-MM-dd')
     
     if (completed) {
       // Use date-specific completion method

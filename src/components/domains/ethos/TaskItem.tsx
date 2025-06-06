@@ -11,7 +11,7 @@ import { format } from 'date-fns'
 
 interface TaskItemProps {
   task: TaskData
-  onComplete: (completed: boolean) => void
+  onComplete: (completed: boolean, date?: string) => void
   onUpdate: (updates: any) => void
   onDelete: () => void
   selectedDate?: Date
@@ -50,11 +50,10 @@ export default function TaskItem({
 
   const handleComplete = () => {
     if (!task.isNew) {
-      // The completion status is now date-specific
-      // task.completed represents whether it's completed on the selected date
-      onComplete(!task.completed)
-    }
+    // Pass the selectedDate when completing
+    onComplete(!task.completed, format(selectedDate, 'yyyy-MM-dd'))
   }
+}
 
   const handleSave = async () => {
     if (!formData.name.trim()) {
