@@ -5,6 +5,7 @@ import { ITask, ITaskMethods, RecurrencePattern, TaskPriority, ITaskModel } from
 export interface ITaskDocument extends mongoose.Document {
   user: mongoose.Types.ObjectId;
   name: string;
+  description?: string;
   scheduledTime: string;
   completed: boolean;
   date: Date;
@@ -31,6 +32,11 @@ const TaskSchema = new mongoose.Schema({
   name: {
     type: String,
     required: true,
+    trim: true
+  },
+  description: {
+    type: String,
+    default: '',
     trim: true
   },
   scheduledTime: {

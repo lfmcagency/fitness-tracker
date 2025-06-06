@@ -18,6 +18,7 @@ export interface ITask extends mongoose.Document {
   _id: mongoose.Types.ObjectId;
   user: mongoose.Types.ObjectId;
   name: string;
+  description?: string;
   scheduledTime: string;
   completed: boolean;
   date: Date;

@@ -27,7 +27,7 @@ export function convertTaskToEnhancedTask(task: any): EnhancedTask {
   user: task.user ? task.user.toString() : undefined,
   createdAt: task.createdAt ? new Date(task.createdAt).toISOString() : undefined,
   updatedAt: task.updatedAt ? new Date(task.updatedAt).toISOString() : undefined,
-  description: undefined
+  description: task.description
 };
 }
 
