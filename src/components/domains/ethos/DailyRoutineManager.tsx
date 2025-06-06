@@ -24,31 +24,23 @@ export default function DailyRoutineManager() {
     deleteTask,
     fetchTasksForDate // New method to fetch tasks for specific date
   } = useTaskStore()
+console.log('Store tasks:', tasks);
 
   // Fetch tasks due on selected date
   useEffect(() => {
-    const fetchDueTasks = async () => {
-      const dateStr = format(selectedDate, 'yyyy-MM-dd')
-      
-      // Use the store method if available, otherwise direct API call
-      if (fetchTasksForDate) {
-        await fetchTasksForDate(dateStr)
-      } else {
-        const response = await fetch(`/api/tasks/due?date=${dateStr}`)
-        if (response.ok) {
-          const data = await response.json()
-          // Update the store's tasks with the due tasks, including date-specific completion status
-          const tasksWithCompletion = data.data?.map((task: any) => ({
-            ...task,
-            // The API should already return the correct completion status for the selected date
-          })) || []
-          useTaskStore.setState({ tasks: tasksWithCompletion })
-        }
-      }
-    }
+  const fetchDueTasks = async () => {
+    const dateStr = format(selectedDate, 'yyyy-MM-dd')
+    console.log('Selected date changed to:', dateStr)
     
-    fetchDueTasks()
-  }, [selectedDate, fetchTasksForDate])
+    // Always use the store method
+    if (fetchTasksForDate) {
+      await fetchTasksForDate(dateStr)
+      console.log('Store tasks after fetch:', useTaskStore.getState().tasks)
+    }
+  }
+  
+  fetchDueTasks()
+}, [selectedDate, fetchTasksForDate])
 
   const handleDateChange = (date: Date) => {
     setSelectedDate(date)

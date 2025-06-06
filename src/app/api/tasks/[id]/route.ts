@@ -148,6 +148,8 @@ export const PATCH = withAuth<TaskData | { task: TaskData; xpAward: any }, { id:
               
               // Save the task with error handling
               await existingTask.save();
+              await existingTask.save();
+              console.log('Task saved. Completion history:', existingTask.completionHistory);
               
               // Return the updated task with XP info
               const taskData = convertTaskToTaskData(existingTask, completionDate);
