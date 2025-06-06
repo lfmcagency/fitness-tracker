@@ -1,19 +1,19 @@
 // src/types/api/taskResponses.ts
 import { ApiResponse } from './common';
 import { PaginationInfo } from './pagination';
-import { EnhancedTask, StreakInfo } from '../index';
+import { TaskData, StreakInfo } from '../index';
 import { TaskStatistics } from '@/lib/task-statistics';
 
 /**
  * Response for a single task
  */
-export type TaskResponse = ApiResponse<EnhancedTask>;
+export type TaskResponse = ApiResponse<TaskData>;
 
 /**
  * Response for a list of tasks with pagination
  */
 export type TaskListResponse = ApiResponse<{
-  data: EnhancedTask[];
+  data: TaskData[];
   pagination: PaginationInfo;
 }>;
 
@@ -26,17 +26,18 @@ export type TaskStreakResponse = ApiResponse<StreakInfo>;
  * Response for batch operations on tasks
  * Can return either a list of updated tasks or a count of affected tasks
  */
-export type TaskBatchResponse = ApiResponse
-  | EnhancedTask[]
+export type TaskBatchResponse = ApiResponse<
+  | TaskData[]
   | {
       count: number;
       taskIds: string[];
-    };
+    }
+>;
 
 /**
  * Response for tasks due on a specific date
  */
-export type TaskDueResponse = ApiResponse<EnhancedTask[]>;
+export type TaskDueResponse = ApiResponse<TaskData[]>;
 
 /**
  * Response for task completion statistics
@@ -47,7 +48,7 @@ export type TaskStatisticsResponse = ApiResponse<TaskStatistics>;
  * Response for XP award after task completion
  */
 export type TaskCompletionXpResponse = ApiResponse<{
-  task: EnhancedTask;
+  task: TaskData;
   xpAward: {
     xpAwarded: number;
     newLevel: number;

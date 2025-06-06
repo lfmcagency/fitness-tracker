@@ -1,15 +1,15 @@
 'use client'
 
-import { EnhancedTask } from '@/types'
+import { TaskData } from '@/types'
 import TaskItem from './TaskItem'
 
 interface TaskListProps {
-  tasks: EnhancedTask[]
+  tasks: TaskData[]
   isLoading: boolean
   onTaskComplete: (taskId: string, completed: boolean) => void
   onTaskUpdate: (taskId: string, updates: any) => void
   onTaskDelete: (taskId: string) => void
-  selectedDate?: Date // Add selectedDate prop
+  selectedDate?: Date
 }
 
 export default function TaskList({ 
@@ -29,11 +29,11 @@ export default function TaskList({
   }
 
   const tasksByTimeBlock = tasks.reduce((acc, task) => {
-    const block = getTimeBlock(task.scheduledTime)
-    if (!acc[block]) acc[block] = []
-    acc[block].push(task)
-    return acc
-  }, {} as Record<string, EnhancedTask[]>)
+  const block = getTimeBlock(task.scheduledTime)
+  if (!acc[block]) acc[block] = []
+  acc[block].push(task)
+  return acc
+}, {} as Record<string, TaskData[]>)
 
   // Sort tasks within each time block by scheduled time
   Object.keys(tasksByTimeBlock).forEach(block => {

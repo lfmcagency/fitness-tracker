@@ -6,8 +6,8 @@ import Task from '@/models/Task';
 import { ITask } from '@/types/models/tasks';
 import { withAuth, AuthLevel } from '@/lib/auth-utils';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
-import { convertTaskToEnhancedTask, handleTaskXpAward } from '@/lib/task-utils';
-import { EnhancedTask } from '@/types';
+import { convertTaskToTaskData, handleTaskXpAward } from '@/lib/task-utils';
+import { TaskData } from '@/types';
 import { UpdateTaskRequest } from '@/types/api/taskRequests';
 import { isValidObjectId } from 'mongoose';
 
@@ -16,7 +16,7 @@ import { isValidObjectId } from 'mongoose';
  * 
  * Retrieves a specific task by ID
  */
-export const GET = withAuth<EnhancedTask, { id: string }>(
+export const GET = withAuth<TaskData, { id: string }>(
   async (req: NextRequest, userId: string, context) => {
     try {
       await dbConnect();
@@ -53,15 +53,15 @@ export const GET = withAuth<EnhancedTask, { id: string }>(
         }
       }
       
-      // Convert to enhanced task format with date-specific completion
-      const enhancedTask = convertTaskToEnhancedTask(task, checkDate);
+      // Convert to TaskData format with date-specific completion
+      const taskData = convertTaskToTaskData(task, checkDate);
       
       // If includeHistory is not true, remove the completion history
-      if (!includeHistoryParam && enhancedTask && 'completionHistory' in enhancedTask) {
-        delete enhancedTask.completionHistory;
+      if (!includeHistoryParam && taskData && 'completionHistory' in taskData) {
+        delete taskData.completionHistory;
       }
       
-      return apiResponse(enhancedTask);
+      return apiResponse(taskData);
     } catch (error) {
       return handleApiError(error, 'Error fetching task details');
     }
@@ -74,7 +74,7 @@ export const GET = withAuth<EnhancedTask, { id: string }>(
  * 
  * Updates a task with validation and proper streak handling
  */
-export const PATCH = withAuth<EnhancedTask | { task: EnhancedTask; xpAward: any }, { id: string }>(
+export const PATCH = withAuth<TaskData | { task: TaskData; xpAward: any }, { id: string }>(
   async (req: NextRequest, userId: string, context) => {
     try {
       await dbConnect();
@@ -150,10 +150,10 @@ export const PATCH = withAuth<EnhancedTask | { task: EnhancedTask; xpAward: any 
               await existingTask.save();
               
               // Return the updated task with XP info
-              const enhancedTask = convertTaskToEnhancedTask(existingTask, completionDate);
+              const taskData = convertTaskToTaskData(existingTask, completionDate);
               
               return apiResponse({
-                task: enhancedTask,
+                task: taskData,
                 xpAward: xpResult
               }, true, xpResult.leveledUp 
                 ? `Task completed! Level up to ${xpResult.newLevel}!` 
@@ -172,8 +172,8 @@ export const PATCH = withAuth<EnhancedTask | { task: EnhancedTask; xpAward: any 
               await existingTask.save();
               
               // Return the updated task without XP info
-              const enhancedTask = convertTaskToEnhancedTask(existingTask, completionDate);
-              return apiResponse(enhancedTask, true, 'Task marked as completed, but XP could not be awarded');
+              const taskData = convertTaskToTaskData(existingTask, completionDate);
+              return apiResponse(taskData, true, 'Task marked as completed, but XP could not be awarded');
             }
           }
           
@@ -194,8 +194,8 @@ export const PATCH = withAuth<EnhancedTask | { task: EnhancedTask; xpAward: any 
             await existingTask.save();
             
             // Return the updated task
-            const enhancedTask = convertTaskToEnhancedTask(existingTask, completionDate);
-            return apiResponse(enhancedTask, true, 'Task marked as incomplete');
+            const taskData = convertTaskToTaskData(existingTask, completionDate);
+            return apiResponse(taskData, true, 'Task marked as incomplete');
           }
         } catch (error) {
           return handleApiError(error, 'Error updating task completion');
@@ -215,10 +215,10 @@ export const PATCH = withAuth<EnhancedTask | { task: EnhancedTask; xpAward: any 
           return apiError('Task not found or could not be updated', 404, 'ERR_UPDATE_FAILED');
         }
         
-        // Convert to enhanced task format
-        const enhancedTask = convertTaskToEnhancedTask(updatedTask);
+        // Convert to TaskData format
+        const taskData = convertTaskToTaskData(updatedTask);
         
-        return apiResponse(enhancedTask, true, 'Task updated successfully');
+        return apiResponse(taskData, true, 'Task updated successfully');
       } catch (error) {
         return handleApiError(error, 'Error updating task');
       }

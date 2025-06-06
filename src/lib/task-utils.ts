@@ -3,15 +3,15 @@ import { ITask } from '@/types/models/tasks';
 import { awardTaskCompletionXp } from '@/lib/xp-manager-improved';
 import { NextRequest } from 'next/server';
 import { apiError } from '@/lib/api-utils';
-import { EnhancedTask, RecurrencePattern, TaskPriority } from '@/types';
+import { TaskData, RecurrencePattern, TaskPriority } from '@/types';
 
 /**
- * Convert a Task document to an EnhancedTask object with date-specific completion status
+ * Convert a Task document to a TaskData object with date-specific completion status
  * @param task Task document from MongoDB
  * @param checkDate Date to check completion for (defaults to today)
- * @returns EnhancedTask object with formatted fields
+ * @returns TaskData object with formatted fields
  */
-export function convertTaskToEnhancedTask(task: any, checkDate?: Date): EnhancedTask {
+export function convertTaskToTaskData(task: any, checkDate?: Date): TaskData {
   const targetDate = checkDate || new Date();
   
   // Check if task is completed on the target date

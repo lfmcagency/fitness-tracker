@@ -6,14 +6,14 @@ import Task from '@/models/Task';
 import { ITask } from '@/types/models/tasks';
 import { withAuth, AuthLevel } from '@/lib/auth-utils';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
-import { EnhancedTask } from '@/types';
-import { convertTaskToEnhancedTask } from '@/lib/task-utils';
+import { TaskData } from '@/types';
+import { convertTaskToTaskData } from '@/lib/task-utils';
 
 /**
  * GET /api/tasks/due
  * Get all tasks due for the specified date
  */
-export const GET = withAuth<EnhancedTask[]>(
+export const GET = withAuth<TaskData[]>(
   async (req: NextRequest, userId: string) => {
     try {
       await dbConnect();
@@ -68,14 +68,14 @@ export const GET = withAuth<EnhancedTask[]>(
       
       // Filter tasks that are due on the check date based on their recurrence pattern
       // with defensive error handling
-      const dueTasks: EnhancedTask[] = [];
+      const dueTasks: TaskData[] = [];
       
       for (const task of allTasks) {
         try {
           if (task && typeof task.isTaskDueToday === 'function' && task.isTaskDueToday(checkDate)) {
             // Convert task with defensive error handling
-            const enhancedTask = convertTaskToEnhancedTask(task);
-            dueTasks.push(enhancedTask);
+            const taskData = convertTaskToTaskData(task);
+            dueTasks.push(taskData);
           }
         } catch (error) {
           console.error(`Error checking if task ${task._id} is due:`, error);

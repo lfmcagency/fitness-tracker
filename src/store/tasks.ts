@@ -1,9 +1,11 @@
 import { create } from 'zustand';
-import { EnhancedTask as Task } from '@/types';
-import type { EnhancedTask, RecurrencePattern, TaskPriority, TaskWithHistory } from '@/types';
+import type { TaskData, RecurrencePattern, TaskPriority, TaskWithHistory } from '@/types';
 import { TaskStatistics } from '@/lib/task-statistics';
 import { TaskListResponse, TaskResponse, TaskStatisticsResponse } from '@/types/api/taskResponses';
 import { ApiSuccessResponse, ApiErrorResponse } from '@/types/api/common';
+
+// Export Task type for use in handlers
+export type Task = TaskData;
 
 // Task filter parameters interface
 export interface TaskFilter {
@@ -34,8 +36,8 @@ export interface CreateTaskParams {
 }
 
 interface TaskState {
-  tasks: EnhancedTask[];
-  filteredTasks: EnhancedTask[];
+  tasks: TaskData[];
+  filteredTasks: TaskData[];
   isLoading: boolean;
   error: string | null;
   completedTasks: number;
@@ -48,26 +50,30 @@ interface TaskState {
   
   // API methods
   fetchTasks: (filter?: TaskFilter) => Promise<void>;
-  fetchTaskById: (taskId: string | number) => Promise<EnhancedTask | null>;
-  addTask: (task: CreateTaskParams) => Promise<EnhancedTask | null>;
+  fetchTaskById: (taskId: string | number) => Promise<TaskData | null>;
+  addTask: (task: CreateTaskParams) => Promise<TaskData | null>;
   addBlankTask: (timeBlock?: string) => string;
-  saveBlankTask: (tempId: string, taskData: CreateTaskParams) => Promise<EnhancedTask | null>;
+  saveBlankTask: (tempId: string, taskData: CreateTaskParams) => Promise<TaskData | null>;
   cancelBlankTask: (tempId: string) => void;
-  updateTask: (taskId: string | number, updates: Partial<EnhancedTask>) => Promise<EnhancedTask | null>;
-  completeTask: (taskId: string | number, date?: string) => Promise<EnhancedTask | null>;
+  updateTask: (taskId: string | number, updates: Partial<TaskData>) => Promise<TaskData | null>;
+  completeTask: (taskId: string | number, date?: string) => Promise<TaskData | null>;
   completeTaskOnDate: (taskId: string | number, date: string) => Promise<any>;
   fetchTasksForDate: (date: string) => Promise<void>;
   deleteTask: (taskId: string | number, skipConfirmation?: boolean) => Promise<boolean>;
   fetchStatistics: (filter?: TaskFilter) => Promise<TaskStatistics | null>;
   
   // Cache and state helpers
-  updateLocalTask: (taskId: string | number, updates: Partial<EnhancedTask>) => void;
+  updateLocalTask: (taskId: string | number, updates: Partial<TaskData>) => void;
   removeLocalTask: (taskId: string | number) => void;
   updateTaskFilters: (filter: TaskFilter) => void;
   clearTaskFilters: () => void;
 }
 
 // Helper functions
+function isTaskDataResponse(data: any): data is TaskData {
+  return data && typeof data.id !== 'undefined' && typeof data.name === 'string';
+}
+
 const getTaskId = (taskId: string | number): string => {
   return typeof taskId === 'number' ? taskId.toString() : taskId;
 };
@@ -139,7 +145,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         set({ 
           tasks: tasks,
           filteredTasks: tasks,
-          completedTasks: tasks.filter((task: EnhancedTask) => task.completed).length,
+          completedTasks: tasks.filter((task: TaskData) => task.completed).length,
           currentPage: pagination.page,
           totalPages: pagination.pages,
           totalTasks: pagination.total,
@@ -180,7 +186,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         set({ 
           tasks: tasks,
           filteredTasks: tasks,
-          completedTasks: tasks.filter((task: EnhancedTask) => task.completed).length,
+          completedTasks: tasks.filter((task: TaskData) => task.completed).length,
           isLoading: false
         });
       } else {
@@ -241,7 +247,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
    */
   addBlankTask: (timeBlock = 'morning') => {
     const tempId = `blank-${Date.now()}`;
-    const blankTask: EnhancedTask = {
+    const blankTask: TaskData = {
       id: tempId,
       name: '',
       description: '',
@@ -299,7 +305,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   addTask: async (taskData: CreateTaskParams) => {
     // Generate temporary ID for optimistic updates
     const tempId = `temp-${Date.now()}`;
-    const tempTask: EnhancedTask = {
+    const tempTask: TaskData = {
       id: tempId,
       name: taskData.name,
       scheduledTime: taskData.scheduledTime,
@@ -366,7 +372,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   /**
    * Update a task
    */
-  updateTask: async (taskId: string | number, updates: Partial<EnhancedTask>) => {
+  updateTask: async (taskId: string | number, updates: Partial<TaskData>): Promise<TaskData | null> => {
     const id = getTaskId(taskId);
     
     // Store original task for rollback
@@ -393,11 +399,10 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       
       const data = await response.json() as TaskResponse;
       
-      if (data.success) {
-        // Update with server data to ensure consistency
-        const taskData = 'task' in data.data ? data.data.task : data.data;
-        get().updateLocalTask(id, taskData);
-        return taskData;
+      if (data.success && isTaskDataResponse(data.data)) {
+      const taskData = 'task' in data.data ? data.data.task : data.data;
+      get().updateLocalTask(id, taskData);
+      return taskData;
       } else {
         // Handle API error
         const errorData = data as ApiErrorResponse;
@@ -419,7 +424,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   /**
    * Mark a task as completed
    */
-  completeTask: async (taskId: string | number, date?: string) => {
+  completeTask: async (taskId: string | number, date?: string): Promise<TaskData | null> => {
     const id = getTaskId(taskId);
     
     // Find task in state
@@ -455,11 +460,10 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       
       const data = await response.json() as TaskResponse;
       
-      if (data.success) {
-        // Update with server data to ensure streak is calculated correctly
-        const taskData = 'task' in data.data ? data.data.task : data.data;
-        get().updateLocalTask(id, taskData);
-        return taskData;
+      if (data.success && isTaskDataResponse(data.data)) {
+      const taskData = 'task' in data.data ? data.data.task : data.data;
+      get().updateLocalTask(id, taskData);
+      return taskData;
       } else {
         // Handle API error
         const errorData = data as ApiErrorResponse;
@@ -483,8 +487,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   /**
    * Complete task on specific date
    */
-  completeTaskOnDate: async (taskId: string | number, date: string) => {
-    return await get().completeTask(taskId, date);
+  completeTaskOnDate: async (taskId: string | number, date: string): Promise<TaskData | null> => {
+  return await get().completeTask(taskId, date);
   },
 
   /**
@@ -587,7 +591,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   /**
    * Update local task in state
    */
-  updateLocalTask: (taskId: string | number, updates: Partial<EnhancedTask>) => {
+  updateLocalTask: (taskId: string | number, updates: Partial<TaskData>) => {
     const id = getTaskId(taskId);
     
     set((state) => {
@@ -662,5 +666,3 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     get().fetchTasks();
   }
 }));
-
-export type { Task };

@@ -1,10 +1,9 @@
 // src/lib/api-handlers/taskHandlers.ts
-import { Task } from '@/store/tasks'
-import { RecurrencePattern, TaskPriority } from '@/types/models/tasks'
+import { TaskData, RecurrencePattern, TaskPriority } from '@/types'
 import { format } from 'date-fns'
 
 // Fetch tasks for a specific date
-export async function getTasksForDate(dateStr: string): Promise<Task[]> {
+export async function getTasksForDate(dateStr: string): Promise<TaskData[]> {
   const response = await fetch(`/api/tasks/due?date=${dateStr}`)
   
   if (!response.ok) {
@@ -17,7 +16,7 @@ export async function getTasksForDate(dateStr: string): Promise<Task[]> {
 }
 
 // Create a new task
-export async function createTask(taskData: Omit<Task, 'id' | 'currentStreak' | 'bestStreak'>): Promise<Task> {
+export async function createTask(taskData: Omit<TaskData, 'id' | 'currentStreak' | 'bestStreak'>): Promise<TaskData> {
   const response = await fetch('/api/tasks', {
     method: 'POST',
     headers: {
@@ -45,7 +44,7 @@ export async function createTask(taskData: Omit<Task, 'id' | 'currentStreak' | '
 }
 
 // Update an existing task
-export async function updateTask(taskId: string, updates: Partial<Task>): Promise<Task> {
+export async function updateTask(taskId: string, updates: Partial<TaskData>): Promise<TaskData> {
   const response = await fetch(`/api/tasks/${taskId}`, {
     method: 'PUT',
     headers: {
@@ -76,7 +75,7 @@ export async function deleteTask(taskId: string): Promise<void> {
 }
 
 // Mark a task as complete or incomplete
-export async function completeTask(taskId: string, completed: boolean): Promise<Task> {
+export async function completeTask(taskId: string, completed: boolean): Promise<TaskData> {
   const response = await fetch(`/api/tasks/${taskId}`, {
     method: 'PUT',
     headers: {

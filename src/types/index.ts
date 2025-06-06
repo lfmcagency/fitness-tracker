@@ -57,8 +57,8 @@ export type {
 export type RecurrencePattern = 'once' | 'daily' | 'weekdays' | 'weekends' | 'weekly' | 'custom';
 export type TaskPriority = 'low' | 'medium' | 'high';
 
-// Legacy Task interface for backward compatibility
-export interface Task {
+// Simple Task interface for UI/Store layer
+export interface TaskItem {
   id: number;
   name: string;
   time: string;
@@ -66,8 +66,8 @@ export interface Task {
   streak: number;
 }
 
-// Enhanced Task interfaces
-export interface EnhancedTask {
+// Comprehensive Task interface for API/Database layer
+export interface TaskData {
   description: any;
   id?: string | number;
   _id?: string;
@@ -91,7 +91,7 @@ export interface EnhancedTask {
   completionDate?: string;
 }
 
-export interface TaskWithHistory extends EnhancedTask {
+export interface TaskWithHistory extends TaskData {
   completionHistory: string[];
 }
 

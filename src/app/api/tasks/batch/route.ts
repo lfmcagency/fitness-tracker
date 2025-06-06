@@ -6,16 +6,16 @@ import Task from '@/models/Task';
 import { ITask } from '@/types/models/tasks';
 import { withAuth, AuthLevel } from '@/lib/auth-utils';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
-import { EnhancedTask } from '@/types';
+import { TaskData } from '@/types';
 import { BatchTaskRequest } from '@/types/api/taskRequests';
-import { convertTaskToEnhancedTask } from '@/lib/task-utils';
+import { convertTaskToTaskData } from '@/lib/task-utils';
 import { isValidObjectId } from 'mongoose';
 
 /**
  * POST /api/tasks/batch
  * Performs batch operations on tasks
  */
-export const POST = withAuth<EnhancedTask[] | { count: number; taskIds: string[] }>(
+export const POST = withAuth<TaskData[] | { count: number; taskIds: string[] }>(
   async (req: NextRequest, userId: string) => {
     try {
       await dbConnect();
@@ -77,7 +77,7 @@ export const POST = withAuth<EnhancedTask[] | { count: number; taskIds: string[]
               return apiError('Invalid completion date', 400, 'ERR_INVALID_DATE');
             }
             
-            const completedTasks: EnhancedTask[] = [];
+            const completedTasks: TaskData[] = [];
             
             for (const taskId of validTaskIds) {
               try {
@@ -88,8 +88,8 @@ export const POST = withAuth<EnhancedTask[] | { count: number; taskIds: string[]
                   await task.save();
                   
                   // Convert task with defensive error handling
-                  const enhancedTask = convertTaskToEnhancedTask(task);
-                  completedTasks.push(enhancedTask);
+                  const taskData = convertTaskToTaskData(task);
+                  completedTasks.push(taskData);
                 }
               } catch (error) {
                 console.error(`Error completing task ${taskId}:`, error);
@@ -134,7 +134,7 @@ export const POST = withAuth<EnhancedTask[] | { count: number; taskIds: string[]
           try {
             // Perform updates for each task individually
             // This ensures proper handling of special cases like recurrence patterns
-            const updatedTasks: EnhancedTask[] = [];
+            const updatedTasks: TaskData[] = [];
             
             for (const taskId of validTaskIds) {
               try {
@@ -147,8 +147,8 @@ export const POST = withAuth<EnhancedTask[] | { count: number; taskIds: string[]
                 
                 if (updatedTask) {
                   // Convert task with defensive error handling
-                  const enhancedTask = convertTaskToEnhancedTask(updatedTask);
-                  updatedTasks.push(enhancedTask);
+                  const taskData = convertTaskToTaskData(updatedTask);
+                  updatedTasks.push(taskData);
                 }
               } catch (error) {
                 console.error(`Error updating task ${taskId}:`, error);

@@ -6,9 +6,9 @@ import Task from '@/models/Task';
 import { ITask } from '@/types/models/tasks';
 import { withAuth, AuthLevel } from '@/lib/auth-utils';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
-import { EnhancedTask, PaginationInfo, RecurrencePattern, TaskPriority } from '@/types';
+import { TaskData, PaginationInfo, RecurrencePattern, TaskPriority } from '@/types';
 import { CreateTaskRequest, TaskQueryParams } from '@/types/api/taskRequests';
-import { convertTaskToEnhancedTask } from '@/lib/task-utils';
+import { convertTaskToTaskData } from '@/lib/task-utils';
 
 // Default pagination values
 const DEFAULT_PAGE = 1;
@@ -18,7 +18,7 @@ const DEFAULT_LIMIT = 20;
  * GET /api/tasks
  * Lists tasks with optional filtering and pagination
  */
-export const GET = withAuth<{ data: EnhancedTask[]; pagination: PaginationInfo }>(
+export const GET = withAuth<{ data: TaskData[]; pagination: PaginationInfo }>(
   async (req: NextRequest, userId: string) => {
     try {
       console.log('GET /api/tasks - User ID:', userId);
@@ -150,17 +150,17 @@ export const GET = withAuth<{ data: EnhancedTask[]; pagination: PaginationInfo }
         tasks = [];
       }
       
-      // Convert tasks to enhanced format with defensive error handling
-      const enhancedTasks: EnhancedTask[] = [];
+      // Convert tasks to TaskData format with defensive error handling
+      const taskDataList: TaskData[] = [];
       
       for (const task of tasks) {
         try {
-          const enhancedTask = convertTaskToEnhancedTask(task);
-          enhancedTasks.push(enhancedTask);
+          const taskData = convertTaskToTaskData(task);
+          taskDataList.push(taskData);
         } catch (error) {
           console.error(`Error converting task ${task._id}:`, error);
           // Add basic task info instead
-          enhancedTasks.push({
+          taskDataList.push({
             id: task._id?.toString(),
             name: task.name || 'Unknown task',
             completed: !!task.completed,
@@ -180,7 +180,7 @@ export const GET = withAuth<{ data: EnhancedTask[]; pagination: PaginationInfo }
       const totalPages = Math.max(1, Math.ceil(total / Math.max(1, limit)));
       
       return apiResponse({
-        data: enhancedTasks,
+        data: taskDataList,
         pagination: {
           total,
           page,
@@ -200,7 +200,7 @@ export const GET = withAuth<{ data: EnhancedTask[]; pagination: PaginationInfo }
  * POST /api/tasks
  * Creates a new task
  */
-export const POST = withAuth<EnhancedTask>(
+export const POST = withAuth<TaskData>(
   async (req: NextRequest, userId: string) => {
     try {
       await dbConnect();
@@ -285,10 +285,10 @@ export const POST = withAuth<EnhancedTask>(
         return handleApiError(error, 'Error creating task in database');
       }
       
-      // Convert to enhanced format with defensive error handling
-      const enhancedTask = convertTaskToEnhancedTask(newTask);
+      // Convert to TaskData format with defensive error handling
+      const taskData_result = convertTaskToTaskData(newTask);
       
-      return apiResponse(enhancedTask, true, 'Task created successfully', 201);
+      return apiResponse(taskData_result, true, 'Task created successfully', 201);
     } catch (error) {
       return handleApiError(error, 'Error creating task');
     }

@@ -1,4 +1,4 @@
-import { EnhancedTask, TaskWithHistory } from '@/types';
+import { TaskData, TaskWithHistory } from '@/types';
 
 /**
  * Task Statistics Interfaces
@@ -155,7 +155,7 @@ export function getEndOfYear(date: Date): Date {
 /**
  * Check if a task is due on a specific date based on its recurrence pattern
  */
-export function isTaskDueOnDate(task: EnhancedTask, date: Date): boolean {
+export function isTaskDueOnDate(task: TaskData, date: Date): boolean {
   const checkDate = new Date(date);
   const dayOfWeek = checkDate.getDay(); // 0-6 (Sunday-Saturday)
   
@@ -365,7 +365,7 @@ export function calculateAllTimeCompletionRate(tasks: TaskWithHistory[]): TaskCo
 /**
  * Get summary of current and best streaks across all tasks
  */
-export function getStreakSummary(tasks: EnhancedTask[]): TaskStreakSummary {
+export function getStreakSummary(tasks: TaskData[]): TaskStreakSummary {
   if (tasks.length === 0) {
     return {
       currentStreaks: {
@@ -442,7 +442,7 @@ export function getStreakSummary(tasks: EnhancedTask[]): TaskStreakSummary {
 /**
  * Get task category distribution
  */
-export function getCategoryDistribution(tasks: EnhancedTask[]): CategoryDistribution[] {
+export function getCategoryDistribution(tasks: TaskData[]): CategoryDistribution[] {
   const categoryMap = new Map<string, { count: number, completedCount: number }>();
   
   // Count tasks by category

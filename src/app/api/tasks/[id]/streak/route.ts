@@ -6,7 +6,7 @@ import Task from '@/models/Task';
 import { ITask } from '@/types/models/tasks';
 import { withAuth, AuthLevel } from '@/lib/auth-utils';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
-import { StreakInfo } from '@/types';
+import { TaskData, StreakInfo } from '@/types';
 import { TaskStreakRequest } from '@/types/api/taskRequests';
 import { isValidObjectId } from 'mongoose';
 

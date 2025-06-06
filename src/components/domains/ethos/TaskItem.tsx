@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { EnhancedTask, RecurrencePattern, TaskPriority } from '@/types'
+import { TaskData, RecurrencePattern, TaskPriority } from '@/types'
 import { Flame, MoreVertical, Edit2, Trash2, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -10,11 +10,11 @@ import { useTaskStore } from '@/store/tasks'
 import { format } from 'date-fns'
 
 interface TaskItemProps {
-  task: EnhancedTask
+  task: TaskData
   onComplete: (completed: boolean) => void
   onUpdate: (updates: any) => void
   onDelete: () => void
-  selectedDate?: Date // New prop for date-specific completion
+  selectedDate?: Date
 }
 
 export default function TaskItem({ 

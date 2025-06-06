@@ -1,9 +1,9 @@
 'use client'
 
-import { EnhancedTask } from '@/types'
+import { TaskData } from '@/types'
 
 interface ProgressIndicatorProps {
-  tasks: EnhancedTask[]
+  tasks: TaskData[]
 }
 
 export default function ProgressIndicator({ tasks }: ProgressIndicatorProps) {
