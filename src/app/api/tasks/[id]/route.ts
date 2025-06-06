@@ -102,6 +102,15 @@ export const PATCH = withAuth<TaskData | { task: TaskData; xpAward: any }, { id:
         return apiError('Updates must be a valid object', 400, 'ERR_INVALID_FORMAT');
       }
       
+      // Parse completion date early - we'll need it for all responses
+      const completionDate = updates.completionDate 
+        ? new Date(updates.completionDate) 
+        : new Date();
+        
+      if (updates.completionDate && isNaN(completionDate.getTime())) {
+        return apiError('Invalid completion date', 400, 'ERR_INVALID_DATE');
+      }
+      
       // Validate incoming updates
       const validationError = validateTaskUpdates(updates);
       if (validationError) {
@@ -121,15 +130,6 @@ export const PATCH = withAuth<TaskData | { task: TaskData; xpAward: any }, { id:
       // Special handling for task completion with date-specific logic
       if (updates.hasOwnProperty('completed')) {
         try {
-          // Parse completion date, default to today
-          const completionDate = updates.completionDate 
-            ? new Date(updates.completionDate) 
-            : new Date();
-            
-          if (isNaN(completionDate.getTime())) {
-            return apiError('Invalid completion date', 400, 'ERR_INVALID_DATE');
-          }
-          
           // If marking as completed
           if (updates.completed === true) {
             // Use the model method to add completion date
@@ -215,8 +215,8 @@ export const PATCH = withAuth<TaskData | { task: TaskData; xpAward: any }, { id:
           return apiError('Task not found or could not be updated', 404, 'ERR_UPDATE_FAILED');
         }
         
-        // Convert to TaskData format
-        const taskData = convertTaskToTaskData(updatedTask);
+        // Convert to TaskData format - USE THE COMPLETION DATE FROM REQUEST
+        const taskData = convertTaskToTaskData(updatedTask, completionDate);
         
         return apiResponse(taskData, true, 'Task updated successfully');
       } catch (error) {
