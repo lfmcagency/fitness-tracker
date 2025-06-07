@@ -1,6 +1,5 @@
 // src/models/UserProgress.ts
 import mongoose, { Schema, HydratedDocument } from 'mongoose';
-import { awardXp } from '@/lib/xp-manager-improved';
 import {
   IUserProgress,
   IUserProgressModel,
@@ -134,17 +133,41 @@ userProgressSchema.methods.addXp = async function (
   category?: ProgressCategory,
   description?: string
 ): Promise<boolean> {
-  const result = await awardXp(this.userId, amount, source, category, description);
-  this.totalXp = result.totalXp;
-  this.level = result.currentLevel;
+  // Store previous values
+  const previousLevel = this.level;
+  const previousTotalXp = this.totalXp;
+  
+  // Update total XP and level
+  this.totalXp += amount;
+  this.level = this.calculateLevel(this.totalXp);
+  
+  // Update category XP if provided
   if (category) {
-    this.categoryXp[category] += amount;
-    this.categoryProgress[category].xp = this.categoryXp[category];
-    this.categoryProgress[category].level = this.calculateLevel(this.categoryXp[category]);
+  this.categoryXp[category] = (this.categoryXp[category] || 0) + amount;
+  
+  // Ensure categoryProgress exists for this category
+  if (!this.categoryProgress[category]) {
+    this.categoryProgress[category] = { level: 1, xp: 0, unlockedExercises: [] };
   }
+  
+  this.categoryProgress[category].xp = this.categoryXp[category];
+  this.categoryProgress[category].level = this.calculateLevel(this.categoryXp[category]);
+}
+  
+  // Add transaction to history
+  this.xpHistory.push({
+    amount,
+    source,
+    category,
+    date: new Date(),
+    description: description || '',
+    timestamp: Date.now(),
+  });
+  
   this.lastUpdated = new Date();
   await this.save();
-  return result.leveledUp;
+  
+  return this.level > previousLevel;
 };
 
 userProgressSchema.methods.getNextLevelXp = function (this: HydratedDocument<IUserProgress>): number {

@@ -70,8 +70,7 @@ export async function handleTaskXpAward(userId: string | Types.ObjectId, task: a
   const xpResult = await awardTaskCompletionXp(
     userId,
     task.name,
-    task.currentStreak, 
-    task.category
+    task.currentStreak,
   );
   
   return {

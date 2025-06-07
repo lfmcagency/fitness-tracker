@@ -137,15 +137,24 @@ export async function awardXp(
  * @returns UserProgress document
  */
 async function getUserProgress(userId: Types.ObjectId): Promise<HydratedDocument<IUserProgress>> {
+  console.log('Getting user progress for:', userId);
   let userProgress = await UserProgress.findOne({ userId });
+  console.log('Found existing progress:', !!userProgress);
+  
+  if (userProgress) {
+    console.log('Existing progress totalXp:', userProgress.totalXp);
+    console.log('Existing progress level:', userProgress.level);
+  }
 
   if (!userProgress) {
+    console.log('Creating initial progress...');
     userProgress = await UserProgress.createInitialProgress(userId);
+    console.log('Created progress:', !!userProgress);
+    console.log('New progress saved with id:', userProgress._id);
   }
 
   return userProgress;
 }
-
 /**
  * Check for and award newly unlocked achievements
  * @param userProgress User progress document

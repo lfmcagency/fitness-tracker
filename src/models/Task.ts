@@ -176,10 +176,10 @@ TaskSchema.methods.completeTask = function(date: Date): void {
   
   // Check if this date already exists in history
   const dateExists = this.completionHistory.some((d: Date) => {
-    const existingDate = new Date(d);
-    existingDate.setHours(0, 0, 0, 0);
-    return existingDate.getTime() === completionDate.getTime();
-  });
+  const existingDate = new Date(d);
+  existingDate.setUTCHours(0, 0, 0, 0); // ← NOW CONSISTENT
+  return existingDate.getTime() === completionDate.getTime();
+});
   
   if (!dateExists) {
     this.completionHistory.push(completionDate);
