@@ -207,6 +207,10 @@ TaskSchema.methods.isTaskDueToday = function(date: Date): boolean {
 TaskSchema.methods.calculateStreak = function(): number {
   if (!this.completionHistory || this.completionHistory.length === 0) return 0;
   
+  // For "once" tasks, streak is just 0 or 1
+  if (this.recurrencePattern === 'once') {
+    return this.completionHistory.length > 0 ? 1 : 0;
+  }
   // Get all completion dates as normalized date keys, sorted in descending order
   const completionKeys = this.completionHistory
     .map((date: Date) => getDateKey(date))

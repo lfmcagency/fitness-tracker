@@ -39,27 +39,35 @@ export function DateSelector({ selectedDate, onDateChange }: DateSelectorProps) 
     });
   };
 
+  // Helper to get date string in local timezone (not UTC)
+  const getLocalDateString = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   // Navigate to previous day
   const goToPreviousDay = () => {
-    const prevDate = new Date(currentDate);
+    const prevDate = new Date(selectedDate);
     prevDate.setDate(prevDate.getDate() - 1);
-    const dateString = prevDate.toISOString().split('T')[0];
+    const dateString = getLocalDateString(prevDate);
     console.log('📅 [DateSelector] Going to previous day:', dateString);
     onDateChange(dateString);
   };
 
   // Navigate to next day  
   const goToNextDay = () => {
-    const nextDate = new Date(currentDate);
+    const nextDate = new Date(selectedDate);
     nextDate.setDate(nextDate.getDate() + 1);
-    const dateString = nextDate.toISOString().split('T')[0];
+    const dateString = getLocalDateString(nextDate);
     console.log('📅 [DateSelector] Going to next day:', dateString);
     onDateChange(dateString);
   };
 
   // Jump to today
   const goToToday = () => {
-    const todayString = new Date().toISOString().split('T')[0];
+    const todayString = getLocalDateString(new Date());
     console.log('📅 [DateSelector] Jumping to today:', todayString);
     onDateChange(todayString);
   };
