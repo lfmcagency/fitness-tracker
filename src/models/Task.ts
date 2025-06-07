@@ -1,30 +1,6 @@
 import mongoose from 'mongoose';
 import { ITask, ITaskMethods, RecurrencePattern, TaskPriority, ITaskModel } from '@/types/models/tasks';
 
-// Define TypeScript interfaces
-export interface ITaskDocument extends mongoose.Document {
-  user: mongoose.Types.ObjectId;
-  name: string;
-  description?: string;
-  scheduledTime: string;
-  completed: boolean;
-  date: Date;
-  recurrencePattern: RecurrencePattern;
-  customRecurrenceDays: number[];
-  currentStreak: number;
-  bestStreak: number;
-  lastCompletedDate: Date | null;
-  category: string;
-  priority: TaskPriority;
-  completionHistory: Array<Date>;
-  calculateStreak(): number;
-  completeTask(date: Date): void;
-  uncompleteTask(date: Date): void;
-  isCompletedOnDate(date: Date): boolean;
-  isTaskDueToday(date: Date): boolean;
-  resetStreak(): void;
-}
-
 const TaskSchema = new mongoose.Schema({
   user: {
     type: mongoose.Schema.Types.ObjectId,
@@ -116,6 +92,14 @@ function getDateKey(date: Date): string {
   return normalized.toISOString().split('T')[0]; // YYYY-MM-DD format
 }
 
+// Helper function to calculate days between two dates
+function daysBetween(date1: Date, date2: Date): number {
+  const normalized1 = normalizeDate(date1);
+  const normalized2 = normalizeDate(date2);
+  const diffTime = Math.abs(normalized2.getTime() - normalized1.getTime());
+  return Math.floor(diffTime / (1000 * 60 * 60 * 24));
+}
+
 // Check if task is completed on a specific date
 TaskSchema.methods.isCompletedOnDate = function(date: Date): boolean {
   if (!this.completionHistory || this.completionHistory.length === 0) return false;
@@ -128,30 +112,94 @@ TaskSchema.methods.isCompletedOnDate = function(date: Date): boolean {
   });
 };
 
-// Check if task is due on a specific date based on recurrence pattern
+// BULLETPROOF: Check if task is due on a specific date based on recurrence pattern
 TaskSchema.methods.isTaskDueToday = function(date: Date): boolean {
+  const taskId = this._id?.toString() || 'unknown';
   const checkDate = normalizeDate(date);
-  const dayOfWeek = checkDate.getUTCDay(); // Use UTC day
+  const checkDateKey = getDateKey(checkDate);
+  const dayOfWeek = checkDate.getUTCDay(); // 0 = Sunday, 1 = Monday, etc.
+  
+  // Validate task has required fields
+  if (!this.recurrencePattern || !this.date) {
+    console.warn(`⚠️ [TASK-${taskId}] Missing required fields for due check`);
+    return false;
+  }
+  
+  const taskCreationDate = normalizeDate(new Date(this.date));
+  const taskDateKey = getDateKey(taskCreationDate);
+  
+  console.log(`🔍 [TASK-${taskId}] Due check for "${this.name}":`, {
+    pattern: this.recurrencePattern,
+    checkDate: checkDateKey,
+    taskCreated: taskDateKey,
+    dayOfWeek
+  });
   
   switch (this.recurrencePattern) {
-    case 'once':
-      // Task only occurs on its creation date
-      const taskDate = normalizeDate(new Date(this.date));
-      return getDateKey(taskDate) === getDateKey(checkDate);
-    case 'daily':
-      return true;
-    case 'weekdays':
-      return dayOfWeek >= 1 && dayOfWeek <= 5;
-    case 'weekends':
-      return dayOfWeek === 0 || dayOfWeek === 6;
-    case 'weekly':
-      // If the original creation day matches the current day
-      const creationDate = normalizeDate(new Date(this.date));
-      return creationDate.getUTCDay() === dayOfWeek;
-    case 'custom':
-      return this.customRecurrenceDays.includes(dayOfWeek);
-    default:
+    case 'once': {
+      // Task only occurs on its exact creation date
+      const isDue = taskDateKey === checkDateKey;
+      console.log(`📅 [TASK-${taskId}] "Once" pattern: ${isDue ? 'DUE' : 'NOT DUE'} (created: ${taskDateKey}, check: ${checkDateKey})`);
+      return isDue;
+    }
+    
+    case 'daily': {
+      // Task is due every day after (and including) creation date
+      const isDue = checkDate >= taskCreationDate;
+      console.log(`📅 [TASK-${taskId}] "Daily" pattern: ${isDue ? 'DUE' : 'NOT DUE'} (check >= creation: ${checkDate >= taskCreationDate})`);
+      return isDue;
+    }
+    
+    case 'weekdays': {
+      // Task is due Monday-Friday after creation date
+      const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
+      const isAfterCreation = checkDate >= taskCreationDate;
+      const isDue = isWeekday && isAfterCreation;
+      console.log(`📅 [TASK-${taskId}] "Weekdays" pattern: ${isDue ? 'DUE' : 'NOT DUE'} (weekday: ${isWeekday}, after creation: ${isAfterCreation})`);
+      return isDue;
+    }
+    
+    case 'weekends': {
+      // Task is due Saturday-Sunday after creation date
+      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+      const isAfterCreation = checkDate >= taskCreationDate;
+      const isDue = isWeekend && isAfterCreation;
+      console.log(`📅 [TASK-${taskId}] "Weekends" pattern: ${isDue ? 'DUE' : 'NOT DUE'} (weekend: ${isWeekend}, after creation: ${isAfterCreation})`);
+      return isDue;
+    }
+    
+    case 'weekly': {
+      // Task is due every 7 days starting from creation date
+      const isAfterCreation = checkDate >= taskCreationDate;
+      if (!isAfterCreation) {
+        console.log(`📅 [TASK-${taskId}] "Weekly" pattern: NOT DUE (before creation date)`);
+        return false;
+      }
+      
+      const daysDiff = daysBetween(taskCreationDate, checkDate);
+      const isDue = daysDiff % 7 === 0;
+      console.log(`📅 [TASK-${taskId}] "Weekly" pattern: ${isDue ? 'DUE' : 'NOT DUE'} (days since creation: ${daysDiff}, divisible by 7: ${isDue})`);
+      return isDue;
+    }
+    
+    case 'custom': {
+      // Task is due on specified days of week after creation date
+      const isAfterCreation = checkDate >= taskCreationDate;
+      if (!isAfterCreation) {
+        console.log(`📅 [TASK-${taskId}] "Custom" pattern: NOT DUE (before creation date)`);
+        return false;
+      }
+      
+      const customDays = this.customRecurrenceDays || [];
+      const isDue = customDays.includes(dayOfWeek);
+      console.log(`📅 [TASK-${taskId}] "Custom" pattern: ${isDue ? 'DUE' : 'NOT DUE'} (custom days: [${customDays.join(',')}], today: ${dayOfWeek})`);
+      return isDue;
+    }
+    
+    default: {
+      console.warn(`⚠️ [TASK-${taskId}] Unknown recurrence pattern: ${this.recurrencePattern}`);
       return false;
+    }
   }
 };
 
@@ -295,4 +343,4 @@ TaskSchema.pre('save', function(this: any, next) {
 
 // This maintains Mongoose model singleton pattern
 export default mongoose.models.Task as ITaskModel || 
-  mongoose.model<ITaskDocument, ITaskModel>('Task', TaskSchema);
+  mongoose.model<ITask, ITaskModel>('Task', TaskSchema);

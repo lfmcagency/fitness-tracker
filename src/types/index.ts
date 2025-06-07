@@ -66,6 +66,16 @@ export interface TaskItem {
   streak: number;
 }
 
+export interface CreateTaskParams {
+  name: string;
+  scheduledTime: string;
+  recurrencePattern?: RecurrencePattern;
+  customRecurrenceDays?: number[];
+  category?: string;
+  priority?: TaskPriority;
+  description?: string;
+}
+
 // Comprehensive Task interface for API/Database layer
 export interface TaskData {
   description: any;

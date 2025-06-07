@@ -202,6 +202,7 @@ export const GET = withAuth<{ data: TaskData[]; pagination: PaginationInfo }>(
  */
 export const POST = withAuth<TaskData>(
   async (req: NextRequest, userId: string) => {
+    console.log('🚀 POST /api/tasks called - userId:', userId);
     try {
       await dbConnect();
       

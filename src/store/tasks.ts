@@ -1,28 +1,7 @@
 import { create } from 'zustand';
-import type { TaskData, RecurrencePattern, TaskPriority, TaskWithHistory } from '@/types';
-import { TaskStatistics } from '@/lib/task-statistics';
-import { TaskListResponse, TaskResponse, TaskStatisticsResponse } from '@/types/api/taskResponses';
-import { ApiSuccessResponse, ApiErrorResponse } from '@/types/api/common';
+import type { TaskData, RecurrencePattern, TaskPriority } from '@/types';
 
-// Export Task type for use in handlers
-export type Task = TaskData;
-
-// Task filter parameters interface
-export interface TaskFilter {
-  date?: string;
-  startDate?: string;
-  endDate?: string;
-  today?: boolean;
-  category?: string;
-  completed?: boolean;
-  includeHistory?: boolean;
-  sort?: string;
-  order?: 'asc' | 'desc';
-  page?: number;
-  limit?: number;
-}
-
-// Task creation parameters interface
+// Simple creation parameters
 export interface CreateTaskParams {
   name: string;
   scheduledTime: string;
@@ -30,156 +9,68 @@ export interface CreateTaskParams {
   customRecurrenceDays?: number[];
   category?: string;
   priority?: TaskPriority;
-  date?: string;
   description?: string;
-  timeBlock?: string;
 }
 
+// Dead simple state
 interface TaskState {
+  // Core state
   tasks: TaskData[];
-  filteredTasks: TaskData[];
+  selectedDate: string; // YYYY-MM-DD format
   isLoading: boolean;
   error: string | null;
-  completedTasks: number;
-  currentPage: number;
-  totalPages: number;
-  totalTasks: number;
-  currentFilter: TaskFilter;
-  statistics: TaskStatistics | null;
-  isLoadingStats: boolean;
   
-  // API methods
-  fetchTasks: (filter?: TaskFilter) => Promise<void>;
-  fetchTaskById: (taskId: string | number) => Promise<TaskData | null>;
-  addTask: (task: CreateTaskParams) => Promise<TaskData | null>;
-  addBlankTask: (timeBlock?: string) => string;
-  saveBlankTask: (tempId: string, taskData: CreateTaskParams) => Promise<TaskData | null>;
-  cancelBlankTask: (tempId: string) => void;
-  updateTask: (taskId: string | number, updates: Partial<TaskData>) => Promise<TaskData | null>;
-  completeTask: (taskId: string | number, date?: string) => Promise<TaskData | null>;
-  completeTaskOnDate: (taskId: string | number, date: string) => Promise<any>;
+  // Actions - simple and focused
+  setSelectedDate: (date: string) => void;
   fetchTasksForDate: (date: string) => Promise<void>;
-  deleteTask: (taskId: string | number, skipConfirmation?: boolean) => Promise<boolean>;
-  fetchStatistics: (filter?: TaskFilter) => Promise<TaskStatistics | null>;
+  createTask: (taskData: CreateTaskParams) => Promise<TaskData | null>;
+  updateTask: (taskId: string, updates: Partial<TaskData>) => Promise<TaskData | null>;
+  completeTask: (taskId: string, completed: boolean, date?: string) => Promise<TaskData | null>;
+  deleteTask: (taskId: string) => Promise<boolean>;
   
-  // Cache and state helpers
-  updateLocalTask: (taskId: string | number, updates: Partial<TaskData>) => void;
-  removeLocalTask: (taskId: string | number) => void;
-  updateTaskFilters: (filter: TaskFilter) => void;
-  clearTaskFilters: () => void;
+  // Helpers
+  clearError: () => void;
+  getTasksForTimeBlock: (timeBlock: 'morning' | 'afternoon' | 'evening') => TaskData[];
 }
 
-// Helper functions
-function isValidTaskResponse(data: any): data is TaskData | { task: TaskData } {
-  // Check if it's TaskData directly
-  if (data && typeof data.id !== 'undefined' && typeof data.name === 'string') {
-    return true;
-  }
-  // Check if it has a task property with TaskData
-  if (data && data.task && typeof data.task.id !== 'undefined' && typeof data.task.name === 'string') {
-    return true;
-  }
-  return false;
+// Time block logic - moved out of components
+function getTimeBlockForScheduledTime(scheduledTime: string): 'morning' | 'afternoon' | 'evening' {
+  const [hours] = scheduledTime.split(':').map(Number);
+  
+  if (hours >= 6 && hours < 12) return 'morning';
+  if (hours >= 12 && hours < 18) return 'afternoon';
+  return 'evening';
 }
 
-const getTaskId = (taskId: string | number): string => {
-  return typeof taskId === 'number' ? taskId.toString() : taskId;
-};
-
-const buildQueryString = (filter?: TaskFilter): string => {
-  if (!filter) return '';
-  
-  const params = new URLSearchParams();
-  
-  // Add all filter parameters if they exist
-  if (filter.date) params.append('date', filter.date);
-  if (filter.startDate) params.append('startDate', filter.startDate);
-  if (filter.endDate) params.append('endDate', filter.endDate);
-  if (filter.today) params.append('today', 'true');
-  if (filter.category) params.append('category', filter.category);
-  if (filter.completed !== undefined) params.append('completed', filter.completed.toString());
-  if (filter.includeHistory) params.append('includeHistory', 'true');
-  if (filter.sort) params.append('sort', filter.sort);
-  if (filter.order) params.append('order', filter.order);
-  if (filter.page) params.append('page', filter.page.toString());
-  if (filter.limit) params.append('limit', filter.limit.toString());
-  
-  return `?${params.toString()}`;
-};
+// Helper to format today's date
+function getTodayString(): string {
+  return new Date().toISOString().split('T')[0];
+}
 
 export const useTaskStore = create<TaskState>((set, get) => ({
+  // Initial state
   tasks: [],
-  filteredTasks: [],
+  selectedDate: getTodayString(),
   isLoading: false,
   error: null,
-  completedTasks: 0,
-  currentPage: 1,
-  totalPages: 1,
-  totalTasks: 0,
-  currentFilter: {},
-  statistics: null,
-  isLoadingStats: false,
 
   /**
-   * Fetch tasks with optional filtering
+   * Set the selected date and fetch tasks for it
    */
-  fetchTasks: async (filter?: TaskFilter) => {
-    set({ isLoading: true, error: null });
-    try {
-      // Update current filter
-      if (filter) {
-        set({ currentFilter: { ...get().currentFilter, ...filter } });
-      }
-      
-      // Build query string from current filters
-      const queryString = buildQueryString(get().currentFilter);
-      
-      console.log("Fetching tasks with URL:", `/api/tasks${queryString}`);
-
-      // Fetch tasks from API
-      const response = await fetch(`/api/tasks${queryString}`);
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch tasks: ${response.status} ${response.statusText}`);
-      }
-      
-      const data = await response.json() as TaskListResponse;
-      
-      if (data.success) {
-        // Extract tasks and pagination information
-        const tasks = data.data.data;
-        const pagination = data.data.pagination;
-        
-        set({ 
-          tasks: tasks,
-          filteredTasks: tasks,
-          completedTasks: tasks.filter((task: TaskData) => task.completed).length,
-          currentPage: pagination.page,
-          totalPages: pagination.pages,
-          totalTasks: pagination.total,
-          isLoading: false
-        });
-      } else {
-        // Handle API error
-        const errorData = data as ApiErrorResponse;
-        throw new Error(errorData.error.message || 'Failed to fetch tasks');
-      }
-    } catch (error) {
-      const queryString = buildQueryString(get().currentFilter);
-      console.log("Fetching tasks with URL:", `/api/tasks${queryString}`);
-      console.error('Error fetching tasks:', error);
-      set({ 
-        error: error instanceof Error ? error.message : 'Failed to fetch tasks', 
-        isLoading: false 
-      });
-    }
+  setSelectedDate: (date: string) => {
+    console.log('📅 [STORE] Setting selected date:', date);
+    set({ selectedDate: date });
+    get().fetchTasksForDate(date);
   },
 
   /**
-   * Fetch tasks for specific date
+   * Fetch tasks for a specific date - uses our bulletproof endpoint
    */
   fetchTasksForDate: async (date: string) => {
+    console.log('🔄 [STORE] Fetching tasks for date:', date);
+    
     set({ isLoading: true, error: null });
+    
     try {
       const response = await fetch(`/api/tasks/due?date=${date}`);
       
@@ -191,243 +82,90 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       
       if (data.success) {
         const tasks = data.data || [];
+        console.log(`✅ [STORE] Loaded ${tasks.length} tasks for ${date}`);
+        
         set({ 
-          tasks: tasks,
-          filteredTasks: tasks,
-          completedTasks: tasks.filter((task: TaskData) => task.completed).length,
-          isLoading: false
+          tasks,
+          isLoading: false,
+          selectedDate: date // Ensure date is synced
         });
       } else {
         throw new Error(data.error?.message || 'Failed to fetch tasks');
       }
     } catch (error) {
-      console.error('Error fetching tasks for date:', error);
+      console.error('💥 [STORE] Error fetching tasks:', error);
       set({ 
-        error: error instanceof Error ? error.message : 'Failed to fetch tasks', 
-        isLoading: false 
+        error: error instanceof Error ? error.message : 'Failed to fetch tasks',
+        isLoading: false,
+        tasks: [] // Clear tasks on error
       });
     }
   },
 
   /**
-   * Fetch a single task by ID
+   * Create a new task - no temp IDs, just wait for response
    */
-  fetchTaskById: async (taskId: string | number) => {
-    const id = getTaskId(taskId);
+  createTask: async (taskData: CreateTaskParams) => {
+    console.log('➕ [STORE] Creating task:', taskData.name);
     
-    try {
-      // Check if we already have this task in local state
-      const cachedTask = get().tasks.find(t => getTaskId(t.id!) === id);
-      if (cachedTask) return cachedTask;
-      
-      // Otherwise fetch from API
-      const response = await fetch(`/api/tasks/${id}?includeHistory=true`);
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch task: ${response.status} ${response.statusText}`);
-      }
-      
-      const data = await response.json() as TaskResponse;
-      
-      if (data.success) {
-        // Add to local state
-        set((state) => ({
-          tasks: [...state.tasks.filter(t => getTaskId(t.id!) !== id), data.data]
-        }));
-        
-        return data.data;
-      } else {
-        // Handle API error
-        const errorData = data as ApiErrorResponse;
-        throw new Error(errorData.error.message || `Failed to fetch task ${id}`);
-      }
-    } catch (error) {
-      console.error(`Error fetching task ${id}:`, error);
-      set({ 
-        error: error instanceof Error ? error.message : `Failed to fetch task ${id}` 
-      });
-      return null;
-    }
-  },
-
-  /**
-   * Add a blank task for inline editing
-   */
-  addBlankTask: (timeBlock = 'morning') => {
-    const tempId = `blank-${Date.now()}`;
-    const blankTask: TaskData = {
-      id: tempId,
-      name: '',
-      description: '',
-      scheduledTime: '09:00', // Default based on time block
-      completed: false,
-      recurrencePattern: 'once',
-      customRecurrenceDays: [],
-      currentStreak: 0,
-      bestStreak: 0,
-      category: 'general',
-      priority: 'medium',
-      date: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-      timeBlock,
-      isNew: true // Flag to indicate this is a new task being created
-    };
+    set({ isLoading: true, error: null });
     
-    // Add to top of the list for the selected time block
-    set((state) => ({
-      tasks: [blankTask, ...state.tasks],
-      filteredTasks: [blankTask, ...state.filteredTasks],
-      error: null
-    }));
-    
-    return tempId;
-  },
-
-  /**
-   * Save a blank task (convert to real task)
-   */
-  saveBlankTask: async (tempId: string, taskData: CreateTaskParams) => {
-  console.log('saveBlankTask: removing tempId', tempId);
-  
-  try {
-    // Call API directly instead of using addTask
-    const response = await fetch('/api/tasks', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(taskData)
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Failed to create task: ${response.status}`);
-    }
-    
-    const data = await response.json() as TaskResponse;
-    
-    if (data.success) {
-      // Remove blank task AND add real task in single state update
-      set((state) => {
-        const filteredTasks = state.tasks.filter(t => getTaskId(t.id!) !== tempId);
-        const filteredFilteredTasks = state.filteredTasks.filter(t => getTaskId(t.id!) !== tempId);
-        
-        return {
-          tasks: [...filteredTasks, data.data],
-          filteredTasks: [...filteredFilteredTasks, data.data],
-          error: null
-        };
-      });
-      
-      return data.data;
-    } else {
-      throw new Error('Failed to create task');
-    }
-  } catch (error) {
-    console.error('Error in saveBlankTask:', error);
-    // Remove blank task on error
-    get().cancelBlankTask(tempId);
-    set({ error: error instanceof Error ? error.message : 'Failed to create task' });
-    return null;
-  }
-},
-
-  /**
-   * Cancel blank task creation
-   */
-  cancelBlankTask: (tempId: string) => {
-    set((state) => ({
-      tasks: state.tasks.filter(t => getTaskId(t.id!) !== tempId),
-      filteredTasks: state.filteredTasks.filter(t => getTaskId(t.id!) !== tempId)
-    }));
-  },
-
-  /**
-   * Add a new task
-   */
-  addTask: async (taskData: CreateTaskParams) => {
-    // Generate temporary ID for optimistic updates
-    const tempId = `temp-${Date.now()}`;
-    const tempTask: TaskData = {
-      id: tempId,
-      name: taskData.name,
-      scheduledTime: taskData.scheduledTime,
-      completed: false,
-      recurrencePattern: taskData.recurrencePattern || 'daily',
-      customRecurrenceDays: taskData.customRecurrenceDays || [],
-      currentStreak: 0,
-      bestStreak: 0,
-      category: taskData.category || 'general',
-      priority: taskData.priority || 'medium',
-      date: taskData.date || new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-      description: taskData.description
-    };
-    
-    // Optimistic update
-    set((state) => ({
-      tasks: [...state.tasks, tempTask],
-      filteredTasks: [...state.filteredTasks, tempTask],
-      error: null
-    }));
-    
-    // Send to API
     try {
       const response = await fetch('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(taskData)
+        body: JSON.stringify({
+          ...taskData,
+          date: get().selectedDate // Use current selected date
+        })
       });
       
       if (!response.ok) {
-        throw new Error(`Failed to add task: ${response.status} ${response.statusText}`);
+        throw new Error(`Failed to create task: ${response.status} ${response.statusText}`);
       }
       
-      const data = await response.json() as TaskResponse;
+      const data = await response.json();
       
       if (data.success) {
-        // Replace temp task with real one from server
-        set((state) => ({
-          tasks: state.tasks.map(t => getTaskId(t.id!) === tempId ? data.data : t),
-          filteredTasks: state.filteredTasks.map(t => getTaskId(t.id!) === tempId ? data.data : t)
-        }));
+        const newTask = data.data;
+        console.log('✅ [STORE] Task created:', newTask.id);
         
-        return data.data;
+        // Add to current tasks if it's for the selected date
+        const selectedDate = get().selectedDate;
+        if (newTask.date?.startsWith(selectedDate) || !newTask.date) {
+          set((state) => ({
+            tasks: [...state.tasks, newTask],
+            isLoading: false
+          }));
+        } else {
+          // Task created for different date, just stop loading
+          set({ isLoading: false });
+        }
+        
+        return newTask;
       } else {
-        // Handle API error
-        const errorData = data as ApiErrorResponse;
-        throw new Error(errorData.error.message || 'Failed to add task');
+        throw new Error(data.error?.message || 'Failed to create task');
       }
     } catch (error) {
-      console.error('Error adding task:', error);
-      
-      // Remove the temporary task on error
-      set((state) => ({
-        tasks: state.tasks.filter(t => getTaskId(t.id!) !== tempId),
-        filteredTasks: state.filteredTasks.filter(t => getTaskId(t.id!) !== tempId),
-        error: error instanceof Error ? error.message : 'Failed to add task'
-      }));
-      
+      console.error('💥 [STORE] Error creating task:', error);
+      set({ 
+        error: error instanceof Error ? error.message : 'Failed to create task',
+        isLoading: false 
+      });
       return null;
     }
   },
 
   /**
-   * Update a task
+   * Update a task - wait for server response
    */
-  updateTask: async (taskId: string | number, updates: Partial<TaskData>): Promise<TaskData | null> => {
-    const id = getTaskId(taskId);
+  updateTask: async (taskId: string, updates: Partial<TaskData>) => {
+    console.log('✏️ [STORE] Updating task:', taskId, updates);
     
-    // Store original task for rollback
-    const originalTask = get().tasks.find(t => getTaskId(t.id!) === id);
-    if (!originalTask) {
-      set({ error: `Task with ID ${id} not found` });
-      return null;
-    }
+    set({ isLoading: true, error: null });
     
-    // Optimistic update
-    get().updateLocalTask(id, updates);
-    
-    // Send to API
     try {
-      const response = await fetch(`/api/tasks/${id}`, {
+      const response = await fetch(`/api/tasks/${taskId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)
@@ -437,122 +175,97 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         throw new Error(`Failed to update task: ${response.status} ${response.statusText}`);
       }
       
-      const data = await response.json() as TaskResponse;
+      const data = await response.json();
       
       if (data.success) {
-      const successResponse = data as ApiSuccessResponse<TaskData | { task: TaskData }>;
-      const taskData = 'task' in successResponse.data ? successResponse.data.task : successResponse.data;
-      get().updateLocalTask(id, taskData);
-      return taskData as TaskData;
+        // Handle both TaskData and { task: TaskData } response formats
+        const updatedTask = 'task' in data.data ? data.data.task : data.data;
+        console.log('✅ [STORE] Task updated:', updatedTask.id);
+        
+        // Update in local state
+        set((state) => ({
+          tasks: state.tasks.map(task => 
+            task.id === taskId ? updatedTask : task
+          ),
+          isLoading: false
+        }));
+        
+        return updatedTask;
       } else {
-        // Handle API error
-        const errorData = data as ApiErrorResponse;
-        throw new Error(errorData.error.message || 'Failed to update task');
+        throw new Error(data.error?.message || 'Failed to update task');
       }
     } catch (error) {
-      console.error(`Error updating task ${id}:`, error);
-      
-      // Revert on error
-      if (originalTask) {
-        get().updateLocalTask(id, originalTask);
-      }
-      
-      set({ error: error instanceof Error ? error.message : `Failed to update task ${id}` });
+      console.error('💥 [STORE] Error updating task:', error);
+      set({ 
+        error: error instanceof Error ? error.message : 'Failed to update task',
+        isLoading: false 
+      });
       return null;
     }
   },
 
   /**
-/**
- * Mark a task as completed
- */
-completeTask: async (taskId: string | number, date?: string): Promise<TaskData | null> => {
-  const id = getTaskId(taskId);
-  
-  // Find task in state
-  const task = get().tasks.find(t => getTaskId(t.id!) === id);
-  if (!task) {
-    set({ error: `Task with ID ${id} not found` });
-    return null;
-  }
-  
-  console.log('Store completeTask:', { taskId: id, date, currentCompleted: task.completed });
-  
-  // NO optimistic update - wait for server response
-  
-  // Send to API with completion date
-  try {
-    const body: any = { completed: true };
-    if (date) {
-      body.completionDate = date;
-    }
-    
-    console.log('Sending PATCH request:', body);
-    
-    const response = await fetch(`/api/tasks/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Failed to complete task: ${response.status} ${response.statusText}`);
-    }
-    
-    const data = await response.json() as TaskResponse;
-    
-    if (data.success) {
-      const successResponse = data as ApiSuccessResponse<TaskData | { task: TaskData }>;
-      const taskData = 'task' in successResponse.data ? successResponse.data.task : successResponse.data;
-      
-      console.log('Server response taskData:', taskData);
-      
-      // Update with server response
-      get().updateLocalTask(id, taskData);
-      return taskData as TaskData;
-    } else {
-      const errorData = data as ApiErrorResponse;
-      throw new Error(errorData.error.message || 'Failed to complete task');
-    }
-  } catch (error) {
-    console.error(`Error completing task ${id}:`, error);
-    set({ error: error instanceof Error ? error.message : `Failed to complete task ${id}` });
-    return null;
-  }
-},
-
-  /**
-   * Complete task on specific date
+   * Complete/uncomplete a task for specific date
    */
-  completeTaskOnDate: async (taskId: string | number, date: string): Promise<TaskData | null> => {
-  return await get().completeTask(taskId, date);
+  completeTask: async (taskId: string, completed: boolean, date?: string) => {
+    const completionDate = date || get().selectedDate;
+    console.log(`${completed ? '✅' : '❌'} [STORE] ${completed ? 'Completing' : 'Uncompleting'} task:`, taskId, 'for date:', completionDate);
+    
+    set({ isLoading: true, error: null });
+    
+    try {
+      const response = await fetch(`/api/tasks/${taskId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          completed,
+          completionDate 
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to ${completed ? 'complete' : 'uncomplete'} task: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        // Handle both TaskData and { task: TaskData } response formats
+        const updatedTask = 'task' in data.data ? data.data.task : data.data;
+        console.log(`✅ [STORE] Task ${completed ? 'completed' : 'uncompleted'}:`, updatedTask.id);
+        
+        // Update in local state
+        set((state) => ({
+          tasks: state.tasks.map(task => 
+            task.id === taskId ? updatedTask : task
+          ),
+          isLoading: false
+        }));
+        
+        return updatedTask;
+      } else {
+        throw new Error(data.error?.message || `Failed to ${completed ? 'complete' : 'uncomplete'} task`);
+      }
+    } catch (error) {
+      console.error(`💥 [STORE] Error ${completed ? 'completing' : 'uncompleting'} task:`, error);
+      set({ 
+        error: error instanceof Error ? error.message : `Failed to ${completed ? 'complete' : 'uncomplete'} task`,
+        isLoading: false 
+      });
+      return null;
+    }
   },
 
   /**
    * Delete a task
    */
-  deleteTask: async (taskId: string | number, skipConfirmation = false) => {
-    const id = getTaskId(taskId);
+  deleteTask: async (taskId: string) => {
+    console.log('🗑️ [STORE] Deleting task:', taskId);
     
-    // Find task in state
-    const taskToRemove = get().tasks.find(t => getTaskId(t.id!) === id);
-    if (!taskToRemove) {
-      set({ error: `Task with ID ${id} not found` });
-      return false;
-    }
+    set({ isLoading: true, error: null });
     
-    // Confirmation (if not skipped)
-    if (!skipConfirmation) {
-      const confirmed = window.confirm(`Are you sure you want to delete task: ${taskToRemove.name}?`);
-      if (!confirmed) return false;
-    }
-    
-    // Optimistic update
-    get().removeLocalTask(id);
-    
-    // Send to API
     try {
-      const response = await fetch(`/api/tasks/${id}`, {
+      const response = await fetch(`/api/tasks/${taskId}`, {
         method: 'DELETE'
       });
       
@@ -563,147 +276,43 @@ completeTask: async (taskId: string | number, date?: string): Promise<TaskData |
       const data = await response.json();
       
       if (data.success) {
+        console.log('✅ [STORE] Task deleted:', taskId);
+        
+        // Remove from local state
+        set((state) => ({
+          tasks: state.tasks.filter(task => task.id !== taskId),
+          isLoading: false
+        }));
+        
         return true;
       } else {
-        // Handle API error
-        const errorData = data as ApiErrorResponse;
-        throw new Error(errorData.error.message || 'Failed to delete task');
+        throw new Error(data.error?.message || 'Failed to delete task');
       }
     } catch (error) {
-      console.error(`Error deleting task ${id}:`, error);
-      
-      // Restore the task on error
-      set((state) => ({
-        tasks: [...state.tasks, taskToRemove],
-        filteredTasks: [...state.filteredTasks, taskToRemove],
-        error: error instanceof Error ? error.message : `Failed to delete task ${id}`
-      }));
-      
+      console.error('💥 [STORE] Error deleting task:', error);
+      set({ 
+        error: error instanceof Error ? error.message : 'Failed to delete task',
+        isLoading: false 
+      });
       return false;
     }
   },
 
   /**
-   * Fetch task statistics
+   * Clear error state
    */
-  fetchStatistics: async (filter?: TaskFilter) => {
-    set({ isLoadingStats: true, error: null });
-    
-    try {
-      // Build query string from filters
-      const queryString = buildQueryString(filter);
-      
-      // Fetch statistics from API
-      const response = await fetch(`/api/tasks/statistics${queryString}`);
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch statistics: ${response.status} ${response.statusText}`);
-      }
-      
-      const data = await response.json() as TaskStatisticsResponse;
-      
-      if (data.success) {
-        set({ 
-          statistics: data.data,
-          isLoadingStats: false
-        });
-        
-        return data.data;
-      } else {
-        // Handle API error
-        const errorData = data as ApiErrorResponse;
-        throw new Error(errorData.error.message || 'Failed to fetch statistics');
-      }
-    } catch (error) {
-      console.error('Error fetching statistics:', error);
-      set({ 
-        error: error instanceof Error ? error.message : 'Failed to fetch statistics', 
-        isLoadingStats: false 
-      });
-      
-      return null;
-    }
+  clearError: () => {
+    set({ error: null });
   },
 
   /**
-   * Update local task in state
+   * Get tasks for a specific time block
    */
-  updateLocalTask: (taskId: string | number, updates: Partial<TaskData>) => {
-  const id = getTaskId(taskId);
-  
-  set((state) => {
-    // Find and update the task
-    const taskIndex = state.tasks.findIndex(task => getTaskId(task.id!) === id);
-    const filteredTaskIndex = state.filteredTasks.findIndex(task => getTaskId(task.id!) === id);
-    
-    if (taskIndex === -1) {
-      console.warn(`Task ${id} not found in state`);
-      return state;
-    }
-    
-    // Create updated task
-    const updatedTask = { ...state.tasks[taskIndex], ...updates };
-    
-    // Replace in both arrays
-    const newTasks = [...state.tasks];
-    newTasks[taskIndex] = updatedTask;
-    
-    const newFilteredTasks = [...state.filteredTasks];
-    if (filteredTaskIndex !== -1) {
-      newFilteredTasks[filteredTaskIndex] = updatedTask;
-    }
-    
-    return {
-      tasks: newTasks,
-      filteredTasks: newFilteredTasks,
-      completedTasks: newTasks.filter(task => task.completed).length
-    };
-  });
-},
-
-  /**
-   * Remove a task from local state
-   */
-  removeLocalTask: (taskId: string | number) => {
-    const id = getTaskId(taskId);
-    
-    set((state) => {
-      // Remove from main tasks array
-      const updatedTasks = state.tasks.filter(task => getTaskId(task.id!) !== id);
-      
-      // Remove from filtered tasks array
-      const updatedFilteredTasks = state.filteredTasks.filter(task => getTaskId(task.id!) !== id);
-      
-      // Recalculate completed tasks count
-      const completedCount = updatedTasks.filter(task => task.completed).length;
-      
-      return {
-        tasks: updatedTasks,
-        filteredTasks: updatedFilteredTasks,
-        completedTasks: completedCount
-      };
+  getTasksForTimeBlock: (timeBlock: 'morning' | 'afternoon' | 'evening') => {
+    const tasks = get().tasks;
+    return tasks.filter(task => {
+      const taskTimeBlock = getTimeBlockForScheduledTime(task.scheduledTime);
+      return taskTimeBlock === timeBlock;
     });
-  },
-
-  /**
-   * Update task filters
-   */
-  updateTaskFilters: (filter: TaskFilter) => {
-    set((state) => ({
-      currentFilter: { ...state.currentFilter, ...filter }
-    }));
-    
-    // Reload tasks with new filters
-    get().fetchTasks();
-  },
-
-  /**
-   * Clear all task filters
-   */
-  clearTaskFilters: () => {
-    set({ currentFilter: {} });
-    
-    // Reload tasks without filters
-    get().fetchTasks();
   }
 }));
