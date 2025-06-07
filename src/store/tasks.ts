@@ -287,15 +287,47 @@ export const useTaskStore = create<TaskState>((set, get) => ({
    * Save a blank task (convert to real task)
    */
   saveBlankTask: async (tempId: string, taskData: CreateTaskParams) => {
-    // Remove the blank task first
-    set((state) => ({
-      tasks: state.tasks.filter(t => getTaskId(t.id!) !== tempId),
-      filteredTasks: state.filteredTasks.filter(t => getTaskId(t.id!) !== tempId)
-    }));
+  console.log('saveBlankTask: removing tempId', tempId);
+  
+  try {
+    // Call API directly instead of using addTask
+    const response = await fetch('/api/tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(taskData)
+    });
     
-    // Create the real task using existing addTask method
-    return await get().addTask(taskData);
-  },
+    if (!response.ok) {
+      throw new Error(`Failed to create task: ${response.status}`);
+    }
+    
+    const data = await response.json() as TaskResponse;
+    
+    if (data.success) {
+      // Remove blank task AND add real task in single state update
+      set((state) => {
+        const filteredTasks = state.tasks.filter(t => getTaskId(t.id!) !== tempId);
+        const filteredFilteredTasks = state.filteredTasks.filter(t => getTaskId(t.id!) !== tempId);
+        
+        return {
+          tasks: [...filteredTasks, data.data],
+          filteredTasks: [...filteredFilteredTasks, data.data],
+          error: null
+        };
+      });
+      
+      return data.data;
+    } else {
+      throw new Error('Failed to create task');
+    }
+  } catch (error) {
+    console.error('Error in saveBlankTask:', error);
+    // Remove blank task on error
+    get().cancelBlankTask(tempId);
+    set({ error: error instanceof Error ? error.message : 'Failed to create task' });
+    return null;
+  }
+},
 
   /**
    * Cancel blank task creation
@@ -410,7 +442,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       if (data.success) {
       const successResponse = data as ApiSuccessResponse<TaskData | { task: TaskData }>;
       const taskData = 'task' in successResponse.data ? successResponse.data.task : successResponse.data;
-      get().updateLocalTask(id, taskData as Partial<TaskData>);
+      get().updateLocalTask(id, taskData);
       return taskData as TaskData;
       } else {
         // Handle API error
@@ -476,7 +508,7 @@ completeTask: async (taskId: string | number, date?: string): Promise<TaskData |
       console.log('Server response taskData:', taskData);
       
       // Update with server response
-      get().updateLocalTask(id, taskData as Partial<TaskData>);
+      get().updateLocalTask(id, taskData);
       return taskData as TaskData;
     } else {
       const errorData = data as ApiErrorResponse;
@@ -597,33 +629,37 @@ completeTask: async (taskId: string | number, date?: string): Promise<TaskData |
    * Update local task in state
    */
   updateLocalTask: (taskId: string | number, updates: Partial<TaskData>) => {
-    const id = getTaskId(taskId);
+  const id = getTaskId(taskId);
+  
+  set((state) => {
+    // Find and update the task
+    const taskIndex = state.tasks.findIndex(task => getTaskId(task.id!) === id);
+    const filteredTaskIndex = state.filteredTasks.findIndex(task => getTaskId(task.id!) === id);
     
-    set((state) => {
-      // Update in main tasks array
-      const updatedTasks = state.tasks.map(task =>
-        getTaskId(task.id!) === id 
-          ? { ...task, ...updates }
-          : task
-      );
-      
-      // Update in filtered tasks array
-      const updatedFilteredTasks = state.filteredTasks.map(task =>
-        getTaskId(task.id!) === id 
-          ? { ...task, ...updates }
-          : task
-      );
-      
-      // Recalculate completed tasks count
-      const completedCount = updatedTasks.filter(task => task.completed).length;
-      
-      return {
-        tasks: updatedTasks,
-        filteredTasks: updatedFilteredTasks,
-        completedTasks: completedCount
-      };
-    });
-  },
+    if (taskIndex === -1) {
+      console.warn(`Task ${id} not found in state`);
+      return state;
+    }
+    
+    // Create updated task
+    const updatedTask = { ...state.tasks[taskIndex], ...updates };
+    
+    // Replace in both arrays
+    const newTasks = [...state.tasks];
+    newTasks[taskIndex] = updatedTask;
+    
+    const newFilteredTasks = [...state.filteredTasks];
+    if (filteredTaskIndex !== -1) {
+      newFilteredTasks[filteredTaskIndex] = updatedTask;
+    }
+    
+    return {
+      tasks: newTasks,
+      filteredTasks: newFilteredTasks,
+      completedTasks: newTasks.filter(task => task.completed).length
+    };
+  });
+},
 
   /**
    * Remove a task from local state

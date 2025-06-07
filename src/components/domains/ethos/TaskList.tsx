@@ -20,6 +20,9 @@ export default function TaskList({
   onTaskDelete,
   selectedDate = new Date() // Default to today if not provided
 }: TaskListProps) {
+  // Debug logs
+  console.log('TaskList - Tasks received:', tasks.length);
+  console.log('TaskList - Task IDs:', tasks.map(t => ({ id: t.id, name: t.name })));
   // Group tasks by time block
   const getTimeBlock = (time: string) => {
     const hour = parseInt(time.split(':')[0])

@@ -25,7 +25,9 @@ export default function DailyRoutineManager() {
     fetchTasksForDate // New method to fetch tasks for specific date
   } = useTaskStore()
 console.log('Store tasks:', tasks);
-
+// Debug logs
+console.log('DailyRoutineManager - Tasks in state:', tasks.length);
+console.log('DailyRoutineManager - Task IDs:', tasks.map(t => ({ id: t.id, name: t.name })));
   // Fetch tasks due on selected date
   useEffect(() => {
   const fetchDueTasks = async () => {

@@ -7,6 +7,10 @@ interface ProgressIndicatorProps {
 }
 
 export default function ProgressIndicator({ tasks }: ProgressIndicatorProps) {
+  // Debug logs
+  console.log('TaskList - Tasks received:', tasks.length);
+  console.log('TaskList - Task IDs:', tasks.map(t => ({ id: t.id, name: t.name })));
+  
   const completedCount = tasks.filter(task => task.completed).length
   const totalCount = tasks.length
   const completionPercentage = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0
