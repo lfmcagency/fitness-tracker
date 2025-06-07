@@ -172,7 +172,7 @@ TaskSchema.methods.calculateStreak = function(): number {
 // Mark task as completed for a specific date
 TaskSchema.methods.completeTask = function(date: Date): void {
   const completionDate = new Date(date);
-  completionDate.setHours(0, 0, 0, 0);
+  completionDate.setUTCHours(0, 0, 0, 0);
   
   // Check if this date already exists in history
   const dateExists = this.completionHistory.some((d: Date) => {
