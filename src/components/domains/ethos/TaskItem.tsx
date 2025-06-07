@@ -48,12 +48,25 @@ export default function TaskItem({
     }
   }, [isEditing, task.isNew, task.id])
 
-  const handleComplete = () => {
-    if (!task.isNew) {
-    // Pass the selectedDate when completing
-    onComplete(!task.completed, format(selectedDate, 'yyyy-MM-dd'))
+  const handleComplete = async () => {
+  if (task.isNew) return;
+  
+  const dateString = format(selectedDate, 'yyyy-MM-dd');
+  console.log('TaskItem handleComplete:', { 
+    taskId: task.id, 
+    currentCompleted: task.completed, 
+    targetDate: dateString 
+  });
+  
+  // Explicit completion state (no toggle)
+  if (task.completed) {
+    // Currently completed, so uncomplete it
+    await onComplete(false, dateString);
+  } else {
+    // Currently not completed, so complete it
+    await onComplete(true, dateString);
   }
-}
+};
 
   const handleSave = async () => {
     if (!formData.name.trim()) {

@@ -103,10 +103,10 @@ const TaskSchema = new mongoose.Schema({
   }
 }, { timestamps: true });
 
-// Helper function to normalize date to start of day in local time
+// Helper function to normalize date to start of day in UTC
 function normalizeDate(date: Date): Date {
   const normalized = new Date(date);
-  normalized.setHours(0, 0, 0, 0);
+  normalized.setUTCHours(0, 0, 0, 0);
   return normalized;
 }
 
@@ -131,7 +131,7 @@ TaskSchema.methods.isCompletedOnDate = function(date: Date): boolean {
 // Check if task is due on a specific date based on recurrence pattern
 TaskSchema.methods.isTaskDueToday = function(date: Date): boolean {
   const checkDate = normalizeDate(date);
-  const dayOfWeek = checkDate.getDay(); // 0 is Sunday, 6 is Saturday
+  const dayOfWeek = checkDate.getUTCDay(); // Use UTC day
   
   switch (this.recurrencePattern) {
     case 'once':
@@ -147,7 +147,7 @@ TaskSchema.methods.isTaskDueToday = function(date: Date): boolean {
     case 'weekly':
       // If the original creation day matches the current day
       const creationDate = normalizeDate(new Date(this.date));
-      return creationDate.getDay() === dayOfWeek;
+      return creationDate.getUTCDay() === dayOfWeek;
     case 'custom':
       return this.customRecurrenceDays.includes(dayOfWeek);
     default:
@@ -159,14 +159,46 @@ TaskSchema.methods.isTaskDueToday = function(date: Date): boolean {
 TaskSchema.methods.calculateStreak = function(): number {
   if (!this.completionHistory || this.completionHistory.length === 0) return 0;
   
+  // Get all completion dates as normalized date keys, sorted in descending order
+  const completionKeys = this.completionHistory
+    .map((date: Date) => getDateKey(date))
+    .sort()
+    .reverse(); // Most recent first
+  
   const today = normalizeDate(new Date());
+  const todayKey = getDateKey(today);
+  
+  // For daily tasks, calculate consecutive days
+  if (this.recurrencePattern === 'daily') {
+    let streak = 0;
+    let checkDate = new Date(today);
+    
+    // Start from today and go backwards
+    for (let i = 0; i < 365; i++) {
+      const checkKey = getDateKey(checkDate);
+      
+      if (completionKeys.includes(checkKey)) {
+        streak++;
+      } else {
+        // Gap found, streak ends
+        break;
+      }
+      
+      // Move to previous day
+      checkDate.setUTCDate(checkDate.getUTCDate() - 1);
+    }
+    
+    return streak;
+  }
+  
+  // For other patterns, check consecutive due dates
   let streak = 0;
   let checkDate = new Date(today);
   
-  // Start from today and go backwards
-  for (let i = 0; i < 365; i++) { // Limit to 365 days to prevent infinite loops
+  for (let i = 0; i < 365; i++) {
     const isDue = this.isTaskDueToday(checkDate);
-    const isCompleted = this.isCompletedOnDate(checkDate);
+    const checkKey = getDateKey(checkDate);
+    const isCompleted = completionKeys.includes(checkKey);
     
     if (isDue) {
       if (isCompleted) {
@@ -176,10 +208,9 @@ TaskSchema.methods.calculateStreak = function(): number {
         break;
       }
     }
-    // If task is not due on this date, continue to previous day
     
     // Move to previous day
-    checkDate.setDate(checkDate.getDate() - 1);
+    checkDate.setUTCDate(checkDate.getUTCDate() - 1);
   }
   
   return streak;

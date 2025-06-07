@@ -431,68 +431,63 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   },
 
   /**
-   * Mark a task as completed
-   */
-  completeTask: async (taskId: string | number, date?: string): Promise<TaskData | null> => {
-    const id = getTaskId(taskId);
-    
-    // Find task in state
-    const task = get().tasks.find(t => getTaskId(t.id!) === id);
-    if (!task) {
-      set({ error: `Task with ID ${id} not found` });
-      return null;
+/**
+ * Mark a task as completed
+ */
+completeTask: async (taskId: string | number, date?: string): Promise<TaskData | null> => {
+  const id = getTaskId(taskId);
+  
+  // Find task in state
+  const task = get().tasks.find(t => getTaskId(t.id!) === id);
+  if (!task) {
+    set({ error: `Task with ID ${id} not found` });
+    return null;
+  }
+  
+  console.log('Store completeTask:', { taskId: id, date, currentCompleted: task.completed });
+  
+  // NO optimistic update - wait for server response
+  
+  // Send to API with completion date
+  try {
+    const body: any = { completed: true };
+    if (date) {
+      body.completionDate = date;
     }
     
-    // Optimistic update
-    get().updateLocalTask(id, { 
-      completed: true,
-      currentStreak: task.currentStreak + 1,
-      lastCompletedDate: date || new Date().toISOString()
+    console.log('Sending PATCH request:', body);
+    
+    const response = await fetch(`/api/tasks/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
     });
     
-    // Send to API with optional completion date
-    try {
-      const body: any = { completed: true };
-      if (date) {
-        body.completionDate = date;
-      }
-      
-      const response = await fetch(`/api/tasks/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to complete task: ${response.status} ${response.statusText}`);
-      }
-      
-      const data = await response.json() as TaskResponse;
-      
-      if (data.success) {
+    if (!response.ok) {
+      throw new Error(`Failed to complete task: ${response.status} ${response.statusText}`);
+    }
+    
+    const data = await response.json() as TaskResponse;
+    
+    if (data.success) {
       const successResponse = data as ApiSuccessResponse<TaskData | { task: TaskData }>;
       const taskData = 'task' in successResponse.data ? successResponse.data.task : successResponse.data;
+      
+      console.log('Server response taskData:', taskData);
+      
+      // Update with server response
       get().updateLocalTask(id, taskData as Partial<TaskData>);
       return taskData as TaskData;
-      } else {
-        // Handle API error
-        const errorData = data as ApiErrorResponse;
-        throw new Error(errorData.error.message || 'Failed to complete task');
-      }
-    } catch (error) {
-      console.error(`Error completing task ${id}:`, error);
-      
-      // Revert on error
-      get().updateLocalTask(id, { 
-        completed: task.completed,
-        currentStreak: task.currentStreak,
-        lastCompletedDate: task.lastCompletedDate
-      });
-      
-      set({ error: error instanceof Error ? error.message : `Failed to complete task ${id}` });
-      return null;
+    } else {
+      const errorData = data as ApiErrorResponse;
+      throw new Error(errorData.error.message || 'Failed to complete task');
     }
-  },
+  } catch (error) {
+    console.error(`Error completing task ${id}:`, error);
+    set({ error: error instanceof Error ? error.message : `Failed to complete task ${id}` });
+    return null;
+  }
+},
 
   /**
    * Complete task on specific date
