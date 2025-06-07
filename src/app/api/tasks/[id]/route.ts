@@ -12,6 +12,175 @@ import { UpdateTaskRequest } from '@/types/api/taskRequests';
 import { isValidObjectId } from 'mongoose';
 
 /**
+ * PATCH /api/tasks/[id]
+ * 
+ * Updates a task with validation and proper streak handling
+ */
+export const PATCH = withAuth<TaskData | { task: TaskData; xpAward: any }, { id: string }>(
+  async (req: NextRequest, userId: string, context) => {
+    try {
+      await dbConnect();
+      
+      // Validate taskId parameter
+      const taskId = context?.params?.id;
+      if (!taskId || typeof taskId !== 'string' || taskId.trim() === '') {
+        return apiError('Invalid task ID', 400, 'ERR_INVALID_ID');
+      }
+      
+      // Additional validation for ObjectId format
+      if (!isValidObjectId(taskId)) {
+        return apiError('Invalid task ID format', 400, 'ERR_INVALID_ID');
+      }
+      
+      // Parse request body with defensive error handling
+      let updates: UpdateTaskRequest & { completionDate?: string };
+      try {
+        updates = await req.json();
+        console.log('PATCH updates received:', updates);
+      } catch (error) {
+        return apiError('Invalid JSON in request body', 400, 'ERR_INVALID_JSON');
+      }
+      
+      if (!updates || typeof updates !== 'object') {
+        return apiError('Updates must be a valid object', 400, 'ERR_INVALID_FORMAT');
+      }
+      
+      // Parse completion date early - we'll need it for all responses
+      const completionDate = updates.completionDate 
+        ? new Date(updates.completionDate) 
+        : new Date();
+        
+      if (updates.completionDate && isNaN(completionDate.getTime())) {
+        return apiError('Invalid completion date', 400, 'ERR_INVALID_DATE');
+      }
+      
+      // Validate incoming updates
+      const validationError = validateTaskUpdates(updates);
+      if (validationError) {
+        return apiError(validationError, 400, 'ERR_VALIDATION');
+      }
+      
+      // First check if the task exists and belongs to the user
+      const existingTask = await Task.findOne({ 
+        _id: taskId, 
+        user: userId 
+      }) as ITask | null;
+      
+      if (!existingTask) {
+        return apiError('Task not found or you do not have permission to update it', 404, 'ERR_NOT_FOUND');
+      }
+      
+      // Special handling for task completion with date-specific logic
+      if (updates.hasOwnProperty('completed')) {
+        console.log('Entering completion branch');
+        try {
+          // If marking as completed
+          if (updates.completed === true) {
+            console.log('Marking as completed for date:', completionDate);
+            
+            // Use the model method to add completion date
+            existingTask.completeTask(completionDate);
+            console.log('After completeTask, history:', existingTask.completionHistory);
+            
+            // Award XP for completing the task
+            try {
+              const xpResult = await handleTaskXpAward(userId, existingTask);
+              
+              // Apply any other updates safely
+              delete updates.completed;
+              delete updates.completionDate;
+              if (updates && typeof updates === 'object') {
+                Object.assign(existingTask, updates);
+              }
+              
+              // Save the task with error handling
+              await existingTask.save();
+              console.log('Task saved. Completion history:', existingTask.completionHistory);
+              
+              // Return the updated task with XP info
+              const taskData = convertTaskToTaskData(existingTask, completionDate);
+              
+              return apiResponse({
+                task: taskData,
+                xpAward: xpResult
+              }, true, xpResult.leveledUp 
+                ? `Task completed! Level up to ${xpResult.newLevel}!` 
+                : 'Task marked as completed and streak updated');
+            } catch (error) {
+              console.error('Error awarding XP:', error);
+              // Continue without XP award rather than failing the request
+              
+              // Apply any other updates safely
+              delete updates.completed;
+              delete updates.completionDate;
+              if (updates && typeof updates === 'object') {
+                Object.assign(existingTask, updates);
+              }
+              
+              await existingTask.save();
+              console.log('Task saved. Completion history:', existingTask.completionHistory);
+              
+              // Return the updated task without XP info
+              const taskData = convertTaskToTaskData(existingTask, completionDate);
+              return apiResponse(taskData, true, 'Task marked as completed, but XP could not be awarded');
+            }
+          }
+          
+          // If marking as incomplete (uncompleting)
+          if (updates.completed === false) {
+            console.log('Marking as incomplete for date:', completionDate);
+            // Use the model method to remove completion date
+            existingTask.uncompleteTask(completionDate);
+            
+            // Apply any other updates
+            delete updates.completed;
+            delete updates.completionDate;
+            
+            if (updates && typeof updates === 'object') {
+              Object.assign(existingTask, updates);
+            }
+            
+            // Save the task with error handling
+            await existingTask.save();
+            console.log('Task saved. Completion history:', existingTask.completionHistory);
+            
+            // Return the updated task
+            const taskData = convertTaskToTaskData(existingTask, completionDate);
+            return apiResponse(taskData, true, 'Task marked as incomplete');
+          }
+        } catch (error) {
+          return handleApiError(error, 'Error updating task completion');
+        }
+      }
+      
+      // For other updates (not changing completion status)
+      try {
+        // Use findOneAndUpdate with validation
+        const updatedTask = await Task.findOneAndUpdate(
+          { _id: taskId, user: userId },
+          updates,
+          { new: true, runValidators: true }
+        ) as ITask | null;
+        
+        if (!updatedTask) {
+          return apiError('Task not found or could not be updated', 404, 'ERR_UPDATE_FAILED');
+        }
+        
+        // Convert to TaskData format - USE THE COMPLETION DATE FROM REQUEST
+        const taskData = convertTaskToTaskData(updatedTask, completionDate);
+        
+        return apiResponse(taskData, true, 'Task updated successfully');
+      } catch (error) {
+        return handleApiError(error, 'Error updating task');
+      }
+    } catch (error) {
+      return handleApiError(error, 'Error updating task');
+    }
+  },
+  AuthLevel.DEV_OPTIONAL
+);
+
+/**
  * GET /api/tasks/[id]
  * 
  * Retrieves a specific task by ID
@@ -69,167 +238,6 @@ export const GET = withAuth<TaskData, { id: string }>(
   AuthLevel.DEV_OPTIONAL
 );
 
-/**
- * PATCH /api/tasks/[id]
- * 
- * Updates a task with validation and proper streak handling
- */
-export const PATCH = withAuth<TaskData | { task: TaskData; xpAward: any }, { id: string }>(
-  async (req: NextRequest, userId: string, context) => {
-    try {
-      await dbConnect();
-      
-      // Validate taskId parameter
-      const taskId = context?.params?.id;
-      if (!taskId || typeof taskId !== 'string' || taskId.trim() === '') {
-        return apiError('Invalid task ID', 400, 'ERR_INVALID_ID');
-      }
-      
-      // Additional validation for ObjectId format
-      if (!isValidObjectId(taskId)) {
-        return apiError('Invalid task ID format', 400, 'ERR_INVALID_ID');
-      }
-      
-      // Parse request body with defensive error handling
-      let updates: UpdateTaskRequest & { completionDate?: string };
-      try {
-        updates = await req.json();
-      } catch (error) {
-        return apiError('Invalid JSON in request body', 400, 'ERR_INVALID_JSON');
-      }
-      
-      if (!updates || typeof updates !== 'object') {
-        return apiError('Updates must be a valid object', 400, 'ERR_INVALID_FORMAT');
-      }
-      
-      // Parse completion date early - we'll need it for all responses
-      const completionDate = updates.completionDate 
-        ? new Date(updates.completionDate) 
-        : new Date();
-        
-      if (updates.completionDate && isNaN(completionDate.getTime())) {
-        return apiError('Invalid completion date', 400, 'ERR_INVALID_DATE');
-      }
-      
-      // Validate incoming updates
-      const validationError = validateTaskUpdates(updates);
-      if (validationError) {
-        return apiError(validationError, 400, 'ERR_VALIDATION');
-      }
-      
-      // First check if the task exists and belongs to the user
-      const existingTask = await Task.findOne({ 
-        _id: taskId, 
-        user: userId 
-      }) as ITask | null;
-      
-      if (!existingTask) {
-        return apiError('Task not found or you do not have permission to update it', 404, 'ERR_NOT_FOUND');
-      }
-      
-      // Special handling for task completion with date-specific logic
-      if (updates.hasOwnProperty('completed')) {
-        try {
-          // If marking as completed
-          if (updates.completed === true) {
-            // Use the model method to add completion date
-            existingTask.completeTask(completionDate);
-            
-            // Award XP for completing the task
-            try {
-              const xpResult = await handleTaskXpAward(userId, existingTask);
-              
-              // Apply any other updates safely
-              delete updates.completed;
-              delete updates.completionDate;
-              if (updates && typeof updates === 'object') {
-                Object.assign(existingTask, updates);
-              }
-              
-              // Save the task with error handling
-              await existingTask.save();
-              await existingTask.save();
-              console.log('Task saved. Completion history:', existingTask.completionHistory);
-              
-              // Return the updated task with XP info
-              const taskData = convertTaskToTaskData(existingTask, completionDate);
-              
-              return apiResponse({
-                task: taskData,
-                xpAward: xpResult
-              }, true, xpResult.leveledUp 
-                ? `Task completed! Level up to ${xpResult.newLevel}!` 
-                : 'Task marked as completed and streak updated');
-            } catch (error) {
-              console.error('Error awarding XP:', error);
-              // Continue without XP award rather than failing the request
-              
-              // Apply any other updates safely
-              delete updates.completed;
-              delete updates.completionDate;
-              if (updates && typeof updates === 'object') {
-                Object.assign(existingTask, updates);
-              }
-              
-              await existingTask.save();
-              
-              // Return the updated task without XP info
-              const taskData = convertTaskToTaskData(existingTask, completionDate);
-              return apiResponse(taskData, true, 'Task marked as completed, but XP could not be awarded');
-            }
-          }
-          
-          // If marking as incomplete (uncompleting)
-          if (updates.completed === false) {
-            // Use the model method to remove completion date
-            existingTask.uncompleteTask(completionDate);
-            
-            // Apply any other updates
-            delete updates.completed;
-            delete updates.completionDate;
-            
-            if (updates && typeof updates === 'object') {
-              Object.assign(existingTask, updates);
-            }
-            
-            // Save the task with error handling
-            await existingTask.save();
-            
-            // Return the updated task
-            const taskData = convertTaskToTaskData(existingTask, completionDate);
-            return apiResponse(taskData, true, 'Task marked as incomplete');
-          }
-        } catch (error) {
-          return handleApiError(error, 'Error updating task completion');
-        }
-      }
-      
-      // For other updates (not changing completion status)
-      try {
-        // Use findOneAndUpdate with validation
-        const updatedTask = await Task.findOneAndUpdate(
-          { _id: taskId, user: userId },
-          updates,
-          { new: true, runValidators: true }
-        ) as ITask | null;
-        
-        if (!updatedTask) {
-          return apiError('Task not found or could not be updated', 404, 'ERR_UPDATE_FAILED');
-        }
-        
-        // Convert to TaskData format - USE THE COMPLETION DATE FROM REQUEST
-        const taskData = convertTaskToTaskData(updatedTask, completionDate);
-        
-        return apiResponse(taskData, true, 'Task updated successfully');
-      } catch (error) {
-        return handleApiError(error, 'Error updating task');
-      }
-    } catch (error) {
-      return handleApiError(error, 'Error updating task');
-    }
-  },
-  AuthLevel.DEV_OPTIONAL
-);
 
 /**
  * DELETE /api/tasks/[id]
