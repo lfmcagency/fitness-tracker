@@ -1,10 +1,9 @@
 // src/store/user.ts
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
-import { UserProfilePayload, IUserProfileData, ApiWeightEntry } from '@/types/api/userResponses';
+import { UserProfilePayload, IUserProfileData } from '@/types/api/userResponses';
 import { UserSettingsPayload, UpdateUserSettingsRequest } from '@/types/api/settingsResponses';
-import { WeightHistoryPayload, AddWeightEntryRequest, AddedWeightEntryPayload } from '@/types/api/weightResponses';
-import { IUserSettings, IWeightEntry as DbWeightEntry } from '@/types/models/user';
+import { IUserSettings } from '@/types/models/user';
 // Import common types needed for API call results
 import { ApiResponse, ApiSuccessResponse, ApiErrorResponse } from '@/types/api/common';
 
@@ -12,15 +11,11 @@ import { ApiResponse, ApiSuccessResponse, ApiErrorResponse } from '@/types/api/c
 interface UserStoreState {
   profile: IUserProfileData | null; // Holds the 'user' part of the profile payload
   settings: IUserSettings | null;
-  weightHistory: ApiWeightEntry[] | null; // Use API type with string dates/IDs
-  weightUnit: 'kg' | 'lbs'; // Keep readily accessible
+  weightUnit: 'kg' | 'lbs'; // Keep readily accessible from settings
 
   isLoadingProfile: boolean;
   isLoadingSettings: boolean; // Loading for initial fetch
-  isLoadingWeight: boolean;
   isUpdatingSettings: boolean; // Loading for PUT operation
-  isAddingWeight: boolean;
-  isDeletingWeight: boolean;
 
   error: string | null; // Store only error message string
 }
@@ -31,9 +26,6 @@ interface UserStoreActions {
   fetchUserProfile: () => Promise<void>;
   fetchSettings: () => Promise<void>;
   updateSettings: (newSettings: Partial<IUserSettings>) => Promise<boolean>; // Returns true on success
-  fetchWeightHistory: (params?: { limit?: number; sort?: 'asc' | 'desc' }) => Promise<void>;
-  addWeightEntry: (entryData: AddWeightEntryRequest) => Promise<boolean>; // Returns true on success
-  deleteWeightEntry: (entryId: string) => Promise<boolean>; // Returns true on success
   clearError: () => void;
   clearUserState: () => void; // For logout
 }
@@ -45,14 +37,10 @@ type UserStore = UserStoreState & UserStoreActions;
 const initialState: UserStoreState = {
   profile: null,
   settings: null,
-  weightHistory: null,
   weightUnit: 'kg', // Default until settings are loaded
   isLoadingProfile: false,
   isLoadingSettings: false,
-  isLoadingWeight: false,
   isUpdatingSettings: false,
-  isAddingWeight: false,
-  isDeletingWeight: false,
   error: null,
 };
 
@@ -84,7 +72,6 @@ export const useUserStore = create<UserStore>()(
              await Promise.all([
                  get().fetchUserProfile(), // Should set isLoadingProfile false itself
                  get().fetchSettings()     // Should set isLoadingSettings false itself
-                 // Optional: get().fetchWeightHistory()
              ]);
              console.log("User data initialization fetches complete.");
         } catch (e) {
@@ -174,101 +161,6 @@ export const useUserStore = create<UserStore>()(
         } catch (error: any) {
           console.error("updateSettings Error:", error);
           set({ isUpdatingSettings: false, error: error.message });
-          return false; // Indicate failure
-        }
-      },
-
-      // --- Fetch Weight History ---
-      fetchWeightHistory: async (params = { limit: 30 }) => {
-        set({ isLoadingWeight: true, error: null });
-        console.log("Fetching weight history with params:", params);
-        try {
-          const queryParams = new URLSearchParams();
-          if (params.limit) queryParams.append('limit', params.limit.toString());
-          if (params.sort) queryParams.append('sort', params.sort);
-
-          const response = await fetch(`/api/progress/weight?${queryParams.toString()}`);
-          const result: ApiResponse<WeightHistoryPayload> = await response.json();
-
-          if (!result.success) {
-            throw new Error(result.error.message || 'Failed to fetch weight history');
-          }
-          // result.data should be WeightHistoryPayload
-          console.log(`Weight history fetched successfully (${result.data.history.length} entries)`);
-          set({
-            weightHistory: result.data.history, // Already ApiWeightEntry[]
-            weightUnit: result.data.unit || get().weightUnit, // Update unit if API returns it
-            isLoadingWeight: false,
-          });
-        } catch (error: any) {
-          console.error("fetchWeightHistory Error:", error);
-          set({ isLoadingWeight: false, error: error.message });
-        }
-      },
-
-      // --- Add Weight Entry ---
-      addWeightEntry: async (entryData) => {
-        set({ isAddingWeight: true, error: null });
-        console.log("Adding weight entry:", entryData);
-        try {
-          const response = await fetch('/api/progress/weight', {
-            method: 'POST', // Ensure POST
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(entryData),
-          });
-          const result: ApiResponse<AddedWeightEntryPayload> = await response.json();
-
-          if (!result.success) {
-            throw new Error(result.error.message || 'Failed to add weight entry');
-          }
-          // result.data should be AddedWeightEntryPayload
-          const newEntry = result.data.entry; // This is ApiWeightEntry
-          console.log("Weight entry added successfully:", newEntry);
-
-          // Optimistic update: Add new entry to the start of the list
-          set((state) => ({
-            weightHistory: [newEntry, ...(state.weightHistory || [])]
-                             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()), // Keep sorted desc
-            isAddingWeight: false,
-          }));
-          return true; // Indicate success
-        } catch (error: any) {
-          console.error("addWeightEntry Error:", error);
-          set({ isAddingWeight: false, error: `Add weight error: ${error.message}` });
-          return false; // Indicate failure
-        }
-      },
-
-      // --- Delete Weight Entry ---
-      deleteWeightEntry: async (entryId) => {
-        // Optimistic update: Remove immediately for better UX
-        const originalHistory = get().weightHistory;
-        set((state) => ({
-            weightHistory: (state.weightHistory || []).filter(entry => entry._id !== entryId),
-            isDeletingWeight: true, // Indicate deletion process start
-            error: null
-        }));
-        console.log(`Attempting to delete weight entry: ${entryId}`);
-
-        try {
-          const response = await fetch(`/api/progress/weight/${entryId}`, { method: 'DELETE' });
-
-          // Check if the deletion failed on the server
-          if (!response.ok) {
-              let errorMsg = 'Failed to delete weight entry';
-              try { const errorResult: ApiErrorResponse = await response.json(); errorMsg = errorResult.error.message || errorMsg; } catch (e) { /* Ignore parsing error if body is not JSON */ }
-              throw new Error(errorMsg);
-          }
-
-          // Success: state already updated optimistically
-          console.log(`Weight entry ${entryId} deleted successfully (optimistic).`);
-          set({ isDeletingWeight: false });
-          return true;
-
-        } catch (error: any) {
-          console.error("deleteWeightEntry Error:", error);
-          // Revert state if deletion failed
-          set({ weightHistory: originalHistory, isDeletingWeight: false, error: error.message });
           return false; // Indicate failure
         }
       },

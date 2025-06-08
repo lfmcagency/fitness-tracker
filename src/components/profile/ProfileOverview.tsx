@@ -6,7 +6,6 @@ import { useUserStore } from '@/store/user';
 import { useSession } from 'next-auth/react'; // Use useSession FOR STATUS
 import ProfileCard from './ProfileCard';
 import ProfileSettings from './ProfileSettings';
-import WeightEntryForm from './WeightEntryForm';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
@@ -128,10 +127,7 @@ const ProfileOverview: React.FC = () => {
           </CardContent>
         </Card>
       </section>
-
-      {/* Weight Logging Form */}
-      <section><WeightEntryForm onSuccess={() => { console.log("Weight entry saved callback triggered"); }} /></section>
-
+   
       {/* Settings Section */}
       <section><ProfileSettings /></section>
 
