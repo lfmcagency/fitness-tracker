@@ -115,7 +115,6 @@ export const useUserStore = create<UserStore>()(
           set({
             profile: result.data.user,
             settings: result.data.settings || get().settings, // Update settings if included
-            weightHistory: result.data.bodyweight || get().weightHistory, // Update weight if included
             weightUnit: result.data.settings?.weightUnit || get().weightUnit, // Update shortcut unit
             isLoadingProfile: false, // Always set loading false on finish
           });
@@ -188,7 +187,7 @@ export const useUserStore = create<UserStore>()(
           if (params.limit) queryParams.append('limit', params.limit.toString());
           if (params.sort) queryParams.append('sort', params.sort);
 
-          const response = await fetch(`/api/user/weight?${queryParams.toString()}`);
+          const response = await fetch(`/api/progress/weight?${queryParams.toString()}`);
           const result: ApiResponse<WeightHistoryPayload> = await response.json();
 
           if (!result.success) {
@@ -212,7 +211,7 @@ export const useUserStore = create<UserStore>()(
         set({ isAddingWeight: true, error: null });
         console.log("Adding weight entry:", entryData);
         try {
-          const response = await fetch('/api/user/weight', {
+          const response = await fetch('/api/progress/weight', {
             method: 'POST', // Ensure POST
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(entryData),
@@ -252,7 +251,7 @@ export const useUserStore = create<UserStore>()(
         console.log(`Attempting to delete weight entry: ${entryId}`);
 
         try {
-          const response = await fetch(`/api/user/weight/${entryId}`, { method: 'DELETE' });
+          const response = await fetch(`/api/progress/weight/${entryId}`, { method: 'DELETE' });
 
           // Check if the deletion failed on the server
           if (!response.ok) {

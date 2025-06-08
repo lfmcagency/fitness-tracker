@@ -24,7 +24,6 @@ type RegisteredUser = {
   email: string;
   image?: string;
   role: string;
-  bodyweight?: Array<{ weight: number; date: Date; notes?: string }>;
 };
 
 /**

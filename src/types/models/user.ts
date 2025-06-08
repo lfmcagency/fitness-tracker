@@ -37,8 +37,6 @@ export interface IUser extends Document {
   password?: string; // Optional because of OAuth
   image?: string | null;
   role: 'user' | 'admin' | 'trainer';
-  bodyweight?: IWeightEntry[]; // Standardized to bodyweight, array of subdocuments
-  // profile?: IUserProfileDetails; // Optional extended profile details
   stats?: {
     level: number;
     xp: number;

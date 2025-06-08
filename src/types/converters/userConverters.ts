@@ -30,20 +30,9 @@ export function convertUserToProfileResponse(user: IUser): UserProfilePayload {
       weightUnit: 'kg', lengthUnit: 'cm', theme: 'system'
   };
 
-  // Convert bodyweight entries
-  const bodyweightData: ApiWeightEntry[] | null = Array.isArray(user.bodyweight)
-    ? user.bodyweight.map((entry: DbWeightEntry): ApiWeightEntry => ({
-        _id: entry._id?.toString(), // Ensure _id is stringified
-        weight: entry.weight,
-        date: entry.date.toISOString(),
-        notes: entry.notes,
-      }))
-    : null; // Return null if no bodyweight data
-
   return {
     user: userData,
     settings: settingsData,
-    bodyweight: bodyweightData,
   };
 }
 

@@ -6,13 +6,6 @@ import { IUser, IWeightEntry, IUserSettings } from '@/types/models/user'; // Use
 // --- Subdocument Schemas ---
 
 // Re-defined here for clarity, ensure matches type file
-const WeightEntrySchema = new Schema<IWeightEntry>({
-  weight: { type: Number, required: true, min: 1, max: 999 },
-  date: { type: Date, default: Date.now, required: true, index: true },
-  notes: { type: String, trim: true, maxlength: 500 }
-}, { _id: true, timestamps: { createdAt: true, updatedAt: false } });
-
-// Re-defined here for clarity, ensure matches type file
 const UserSettingsSchema = new Schema<IUserSettings>({
   weightUnit: { type: String, enum: ['kg', 'lbs'], default: 'kg' },
   lengthUnit: { type: String, enum: ['cm', 'in'], default: 'cm' },
@@ -40,11 +33,7 @@ const UserSchema = new Schema<IUser>({
   },
   role: { type: String, enum: ['user', 'admin', 'trainer'], default: 'user' },
   image: { type: String, default: null }, // Default to null
-  bodyweight: { type: [WeightEntrySchema], default: [] }, // Standardize on bodyweight, default empty array
-  stats: { // Embedded object for stats
-    level: { type: Number, default: 1, min: 1 },
-    xp: { type: Number, default: 0, min: 0 },
-  },
+
   settings: { // Embedded object for settings using the sub-schema
     type: UserSettingsSchema,
     default: () => ({ weightUnit: 'kg', lengthUnit: 'cm', theme: 'system' }) // Use function default

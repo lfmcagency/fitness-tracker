@@ -28,7 +28,6 @@ export interface IUserProfileData {
 export interface UserProfilePayload {
     user: IUserProfileData;
     settings?: IUserSettings | null;
-    bodyweight?: ApiWeightEntry[] | null; // Use the locally defined type
 }
 
 // Specific response type for the profile endpoint
