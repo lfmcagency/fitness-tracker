@@ -1,6 +1,9 @@
 import { Types, Document, HydratedDocument } from 'mongoose';
 import Achievement from '@/models/Achievement';
 import { IUserProgress } from '@/types/models/progress';
+import { ETHOS_ACHIEVEMENTS } from './ethos';
+import { SOMA_ACHIEVEMENTS } from './soma';
+import { CROSS_DOMAIN_ACHIEVEMENTS } from './cross-domain';
 
 /**
  * Achievement requirement types
@@ -35,212 +38,12 @@ export interface AchievementDefinition {
 }
 
 /**
- * Available achievements in the system
+ * All achievements across all domains
  */
 export const ACHIEVEMENTS: AchievementDefinition[] = [
-  // Global level achievements
-  {
-    id: 'global_level_5',
-    title: 'Fitness Enthusiast',
-    description: 'Reach level 5 in your fitness journey',
-    type: 'milestone',
-    requirements: {
-      level: 5
-    },
-    xpReward: 50,
-    icon: 'award'
-  },
-  {
-    id: 'global_level_10',
-    title: 'Fitness Devotee',
-    description: 'Reach level 10 in your fitness journey',
-    type: 'milestone',
-    requirements: {
-      level: 10
-    },
-    xpReward: 100,
-    icon: 'award'
-  },
-  {
-    id: 'global_level_25',
-    title: 'Fitness Master',
-    description: 'Reach level 25 in your fitness journey',
-    type: 'milestone',
-    requirements: {
-      level: 25
-    },
-    xpReward: 250,
-    icon: 'award'
-  },
-  
-  // XP milestones
-  {
-    id: 'xp_1000',
-    title: 'Dedicated Athlete',
-    description: 'Accumulate 1,000 XP in your fitness journey',
-    type: 'milestone',
-    requirements: {
-      totalXp: 1000
-    },
-    xpReward: 100,
-    icon: 'zap'
-  },
-  {
-    id: 'xp_5000',
-    title: 'Fitness Veteran',
-    description: 'Accumulate 5,000 XP in your fitness journey',
-    type: 'milestone',
-    requirements: {
-      totalXp: 5000
-    },
-    xpReward: 250,
-    icon: 'zap'
-  },
-  
-  // Category-specific achievements
-  {
-    id: 'core_level_5',
-    title: 'Core Strength',
-    description: 'Reach level 5 in core exercises',
-    type: 'strength',
-    requirements: {
-      categoryLevel: {
-        category: 'core',
-        level: 5
-      }
-    },
-    xpReward: 50,
-    icon: 'disc',
-    badgeColor: 'bg-blue-500'
-  },
-  {
-    id: 'push_level_5',
-    title: 'Push Power',
-    description: 'Reach level 5 in pushing exercises',
-    type: 'strength',
-    requirements: {
-      categoryLevel: {
-        category: 'push',
-        level: 5
-      }
-    },
-    xpReward: 50,
-    icon: 'arrow-up',
-    badgeColor: 'bg-red-500'
-  },
-  {
-    id: 'pull_level_5',
-    title: 'Pull Proficiency',
-    description: 'Reach level 5 in pulling exercises',
-    type: 'strength',
-    requirements: {
-      categoryLevel: {
-        category: 'pull',
-        level: 5
-      }
-    },
-    xpReward: 50,
-    icon: 'arrow-down',
-    badgeColor: 'bg-green-500'
-  },
-  {
-    id: 'legs_level_5',
-    title: 'Leg Legend',
-    description: 'Reach level 5 in leg exercises',
-    type: 'strength',
-    requirements: {
-      categoryLevel: {
-        category: 'legs',
-        level: 5
-      }
-    },
-    xpReward: 50,
-    icon: 'activity',
-    badgeColor: 'bg-purple-500'
-  },
-  
-  // Consistency achievements
-  {
-    id: 'streak_7',
-    title: 'Week Warrior',
-    description: 'Maintain a 7-day workout streak',
-    type: 'consistency',
-    requirements: {
-      streakCount: 7
-    },
-    xpReward: 70,
-    icon: 'calendar'
-  },
-  {
-    id: 'streak_30',
-    title: 'Monthly Devotion',
-    description: 'Maintain a 30-day workout streak',
-    type: 'consistency',
-    requirements: {
-      streakCount: 30
-    },
-    xpReward: 300,
-    icon: 'calendar'
-  },
-  
-  // Workout achievements
-  {
-    id: 'workouts_10',
-    title: 'Workout Beginner',
-    description: 'Complete 10 workouts',
-    type: 'consistency',
-    requirements: {
-      completedWorkouts: 10
-    },
-    xpReward: 50,
-    icon: 'list-checks'
-  },
-  {
-    id: 'workouts_50',
-    title: 'Workout Regular',
-    description: 'Complete 50 workouts',
-    type: 'consistency',
-    requirements: {
-      completedWorkouts: 50
-    },
-    xpReward: 100,
-    icon: 'list-checks'
-  },
-  {
-    id: 'workouts_100',
-    title: 'Workout Expert',
-    description: 'Complete 100 workouts',
-    type: 'consistency',
-    requirements: {
-      completedWorkouts: 100
-    },
-    xpReward: 200,
-    icon: 'list-checks'
-  },
-  
-  // Nutrition achievements
-  {
-    id: 'nutrition_streak_7',
-    title: 'Nutrition Aware',
-    description: 'Track your nutrition for 7 consecutive days',
-    type: 'nutrition',
-    requirements: {
-      streakCount: 7
-    },
-    xpReward: 70,
-    icon: 'utensils'
-  },
-  {
-    id: 'nutrition_streak_30',
-    title: 'Nutrition Master',
-    description: 'Track your nutrition for 30 consecutive days',
-    type: 'nutrition',
-    requirements: {
-      streakCount: 30
-    },
-    xpReward: 150,
-    icon: 'utensils'
-  }
+  ...ETHOS_ACHIEVEMENTS,
+  ...SOMA_ACHIEVEMENTS,
+  ...CROSS_DOMAIN_ACHIEVEMENTS
 ];
 
 /**
@@ -249,6 +52,21 @@ export const ACHIEVEMENTS: AchievementDefinition[] = [
  */
 export function getAchievements(): AchievementDefinition[] {
   return ACHIEVEMENTS;
+}
+
+/**
+ * Get achievements by domain
+ */
+export function getEthosAchievements(): AchievementDefinition[] {
+  return ETHOS_ACHIEVEMENTS;
+}
+
+export function getSomaAchievements(): AchievementDefinition[] {
+  return SOMA_ACHIEVEMENTS;
+}
+
+export function getCrossDomainAchievements(): AchievementDefinition[] {
+  return CROSS_DOMAIN_ACHIEVEMENTS;
 }
 
 /**
