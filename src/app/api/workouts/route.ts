@@ -12,8 +12,9 @@ import { WorkoutListData, WorkoutData } from "@/types/api/workoutResponses";
 import { CreateWorkoutRequest } from "@/types/api/workoutRequests";
 import { convertWorkoutToResponse, convertWorkoutListToResponse, parseWorkoutQueryParams } from "@/types/converters/workoutConverters";
 import { IWorkout } from "@/types/models/workout";
-import { awardXp } from "@/lib/xp-manager-improved";
+import { awardWorkoutCompletionXp } from "@/lib/xp/soma";
 import { Types } from "mongoose";
+import { ProgressCategory } from "@/lib/category-progress";
 
 /**
  * GET /api/workouts
@@ -195,13 +196,12 @@ export const POST = withAuth<WorkoutData>(
           }
           
           // Award XP with workout completion as source
-          await awardXp(
-            userId,
-            xpAmount,
-            'workout_completion',
-            category as "push" | "core" | "pull" | "legs" | undefined,
-            `Completed workout: ${body.name}`
-          );
+          await awardWorkoutCompletionXp(
+                userId,
+                body.name,
+                'medium', // or calculate difficulty based on workout
+          category ? [category as ProgressCategory] : undefined
+);
         } catch (xpError) {
           // Log but don't fail if XP award fails
           console.error('Error awarding XP for workout completion:', xpError);

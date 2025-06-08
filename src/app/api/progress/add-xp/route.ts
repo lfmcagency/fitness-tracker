@@ -5,7 +5,7 @@ import { dbConnect } from '@/lib/db';
 import { withAuth, AuthLevel } from '@/lib/auth-utils';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { validateRequest } from '@/lib/validation';
-import { awardXp } from '@/lib/xp-manager-improved';
+import { awardXp } from '@/lib/xp/index';
 import { Types } from 'mongoose';
 import { AddXpResponse, AddXpResponseData } from '@/types/api/progressResponses';
 import { schemas } from '@/lib/validation';

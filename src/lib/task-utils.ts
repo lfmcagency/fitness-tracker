@@ -1,6 +1,6 @@
 import { Types } from 'mongoose';
 import { ITask } from '@/types/models/tasks';
-import { awardTaskCompletionXp } from '@/lib/xp-manager-improved';
+import { awardTaskCompletionXp } from '@/lib/xp/ethos';
 import { NextRequest } from 'next/server';
 import { apiError } from '@/lib/api-utils';
 import { TaskData, RecurrencePattern, TaskPriority } from '@/types';
@@ -150,7 +150,6 @@ export async function completeTask(userId: string | Types.ObjectId, task: any, d
     userId,
     task.name,
     task.currentStreak,
-    task.category
   );
   
   return await task.save();
