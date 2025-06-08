@@ -111,7 +111,8 @@ export function TaskCreator({
     updateFormData('customRecurrenceDays', newDays);
   };
 
-  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const dayValues = [1, 2, 3, 4, 5, 6, 0];
 
   // Get time block icon for visual context
   const getTimeBlockIcon = () => {
@@ -218,9 +219,6 @@ export function TaskCreator({
           >
             <option value="once">Once</option>
             <option value="daily">Daily</option>
-            <option value="weekdays">Weekdays</option>
-            <option value="weekends">Weekends</option>
-            <option value="weekly">Weekly</option>
             <option value="custom">Custom</option>
           </select>
         </div>
@@ -237,11 +235,11 @@ export function TaskCreator({
               <button
                 key={index}
                 type="button"
-                onClick={() => toggleCustomDay(index)}
+                onClick={() => toggleCustomDay(dayValues[index])}
                 disabled={isSaving}
                 className={`
                   px-2 py-1 text-xs rounded transition-colors
-                  ${formData.customRecurrenceDays?.includes(index)
+                  ${formData.customRecurrenceDays?.includes(dayValues[index])
                     ? 'bg-green-500 text-white'
                     : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                   }

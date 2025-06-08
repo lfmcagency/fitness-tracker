@@ -1,8 +1,7 @@
 import mongoose from 'mongoose';
 
 // Define type for recurrence patterns
-export type RecurrencePattern = 'once' | 'daily' | 'weekdays' | 'weekends' | 'weekly' | 'custom';
-// Define type for task priorities
+export type RecurrencePattern = 'once' | 'daily' | 'custom';
 export type TaskPriority = 'low' | 'medium' | 'high';
 
 // Define interface for task methods

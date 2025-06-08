@@ -37,7 +37,7 @@ const TaskSchema = new mongoose.Schema({
   },
   recurrencePattern: {
     type: String,
-    enum: ['once', 'daily', 'weekdays', 'weekends', 'weekly', 'custom'],
+    enum: ['once', 'daily', 'custom'], // Simplified: removed weekdays, weekends, weekly
     default: 'once'
   },
   customRecurrenceDays: {
@@ -112,7 +112,7 @@ TaskSchema.methods.isCompletedOnDate = function(date: Date): boolean {
   });
 };
 
-// BULLETPROOF: Check if task is due on a specific date based on recurrence pattern
+// SIMPLIFIED: Check if task is due on a specific date (only 3 patterns now)
 TaskSchema.methods.isTaskDueToday = function(date: Date): boolean {
   const taskId = this._id?.toString() || 'unknown';
   const checkDate = normalizeDate(date);
@@ -150,38 +150,6 @@ TaskSchema.methods.isTaskDueToday = function(date: Date): boolean {
       return isDue;
     }
     
-    case 'weekdays': {
-      // Task is due Monday-Friday after creation date
-      const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
-      const isAfterCreation = checkDate >= taskCreationDate;
-      const isDue = isWeekday && isAfterCreation;
-      console.log(`📅 [TASK-${taskId}] "Weekdays" pattern: ${isDue ? 'DUE' : 'NOT DUE'} (weekday: ${isWeekday}, after creation: ${isAfterCreation})`);
-      return isDue;
-    }
-    
-    case 'weekends': {
-      // Task is due Saturday-Sunday after creation date
-      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-      const isAfterCreation = checkDate >= taskCreationDate;
-      const isDue = isWeekend && isAfterCreation;
-      console.log(`📅 [TASK-${taskId}] "Weekends" pattern: ${isDue ? 'DUE' : 'NOT DUE'} (weekend: ${isWeekend}, after creation: ${isAfterCreation})`);
-      return isDue;
-    }
-    
-    case 'weekly': {
-      // Task is due every 7 days starting from creation date
-      const isAfterCreation = checkDate >= taskCreationDate;
-      if (!isAfterCreation) {
-        console.log(`📅 [TASK-${taskId}] "Weekly" pattern: NOT DUE (before creation date)`);
-        return false;
-      }
-      
-      const daysDiff = daysBetween(taskCreationDate, checkDate);
-      const isDue = daysDiff % 7 === 0;
-      console.log(`📅 [TASK-${taskId}] "Weekly" pattern: ${isDue ? 'DUE' : 'NOT DUE'} (days since creation: ${daysDiff}, divisible by 7: ${isDue})`);
-      return isDue;
-    }
-    
     case 'custom': {
       // Task is due on specified days of week after creation date
       const isAfterCreation = checkDate >= taskCreationDate;
@@ -203,7 +171,7 @@ TaskSchema.methods.isTaskDueToday = function(date: Date): boolean {
   }
 };
 
-// Calculate current streak based on completion history and recurrence pattern
+// OPTIMIZED: Calculate current streak with early termination and pattern-specific logic
 TaskSchema.methods.calculateStreak = function(): number {
   if (!this.completionHistory || this.completionHistory.length === 0) return 0;
   
@@ -211,58 +179,46 @@ TaskSchema.methods.calculateStreak = function(): number {
   if (this.recurrencePattern === 'once') {
     return this.completionHistory.length > 0 ? 1 : 0;
   }
-  // Get all completion dates as normalized date keys, sorted in descending order
-  const completionKeys = this.completionHistory
-    .map((date: Date) => getDateKey(date))
-    .sort()
-    .reverse(); // Most recent first
+  
+  // Convert completion history to Set for O(1) lookups
+  const completionKeySet = new Set(
+    this.completionHistory.map((date: Date) => getDateKey(date))
+  );
   
   const today = normalizeDate(new Date());
-  const todayKey = getDateKey(today);
+  const MAX_DAYS_TO_CHECK = 90; // Reasonable limit
   
-  // For daily tasks, calculate consecutive days
-  if (this.recurrencePattern === 'daily') {
-    let streak = 0;
-    let checkDate = new Date(today);
-    
-    // Start from today and go backwards
-    for (let i = 0; i < 365; i++) {
-      const checkKey = getDateKey(checkDate);
-      
-      if (completionKeys.includes(checkKey)) {
-        streak++;
-      } else {
-        // Gap found, streak ends
-        break;
-      }
-      
-      // Move to previous day
-      checkDate.setUTCDate(checkDate.getUTCDate() - 1);
-    }
-    
-    return streak;
-  }
-  
-  // For other patterns, check consecutive due dates
   let streak = 0;
   let checkDate = new Date(today);
+  let daysChecked = 0;
   
-  for (let i = 0; i < 365; i++) {
-    const isDue = this.isTaskDueToday(checkDate);
+  // Pattern-specific streak calculation with early termination
+  while (daysChecked < MAX_DAYS_TO_CHECK) {
     const checkKey = getDateKey(checkDate);
-    const isCompleted = completionKeys.includes(checkKey);
+    const isDueOnThisDate = this.isTaskDueToday(checkDate);
     
-    if (isDue) {
+    if (isDueOnThisDate) {
+      const isCompleted = completionKeySet.has(checkKey);
+      
       if (isCompleted) {
         streak++;
       } else {
-        // Task was due but not completed, streak ends
+        // Gap found - task was due but not completed, streak ends
         break;
       }
     }
     
     // Move to previous day
     checkDate.setUTCDate(checkDate.getUTCDate() - 1);
+    daysChecked++;
+    
+    // Early termination for daily tasks if we hit creation date
+    if (this.recurrencePattern === 'daily') {
+      const taskCreationDate = normalizeDate(new Date(this.date));
+      if (checkDate < taskCreationDate) {
+        break; // Can't go before task was created
+      }
+    }
   }
   
   return streak;
