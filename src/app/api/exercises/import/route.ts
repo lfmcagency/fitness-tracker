@@ -28,6 +28,7 @@ export const POST = withRoleProtection(['admin'])(async (req: NextRequest) => {
     const parsed = Papa.parse(csvContent, {
       header: true,
       skipEmptyLines: true,
+      delimiter: ';', 
       transformHeader: (header) => header.trim(),
       transform: (value) => typeof value === 'string' ? value.trim() : value
     });
@@ -110,7 +111,9 @@ function parseStringArray(value: any): string[] {
   if (!value || value === '') return [];
   if (Array.isArray(value)) return value.filter(Boolean);
   if (typeof value === 'string') {
-    return value.split(',').map(item => item.trim()).filter(Boolean);
+    // Handle both comma and semicolon separated values
+    const delimiter = value.includes(';') ? ';' : ',';
+    return value.split(delimiter).map(item => item.trim()).filter(Boolean);
   }
   return [];
 }

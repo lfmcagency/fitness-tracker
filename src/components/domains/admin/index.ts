@@ -1,3 +1,6 @@
 export { UserManagement } from './UserManagement'
+export { UserRow } from './UserRow'
+export { UserInlineEditor } from './UserInlineEditor'
+export { UserCreator } from './UserCreator'
 export { ExerciseImport } from './ExerciseImport'
 export { FoodImport } from './FoodImport'

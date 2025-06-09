@@ -23,12 +23,25 @@ interface ImportResult {
   errors: string[]
 }
 
+interface CreateUserData {
+  name: string
+  email: string
+  password: string
+  role?: string
+}
+
+interface UpdateUserData {
+  name?: string
+  email?: string
+  role?: string
+  password?: string
+}
+
 interface AdminState {
   // User management
   users: User[]
   usersPagination: PaginationInfo | null
   usersLoading: boolean
-  deleteUser: (userId: string) => Promise<void>
   
   // CSV import
   importProgress: {
@@ -41,6 +54,9 @@ interface AdminState {
   
   // Actions
   fetchUsers: (page?: number, limit?: number) => Promise<void>
+  createUser: (userData: CreateUserData) => Promise<User | null>
+  updateUser: (userId: string, userData: UpdateUserData) => Promise<User | null>
+  deleteUser: (userId: string) => Promise<void>
   importExercises: (file: File) => Promise<void>
   importFoods: (file: File) => Promise<void>
   clearError: () => void
@@ -81,26 +97,90 @@ export const useAdminStore = create<AdminState>((set, get) => ({
     }
   },
 
+  // Create new user
+  createUser: async (userData: CreateUserData) => {
+    set({ error: null })
+    
+    try {
+      const response = await fetch('/api/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(userData)
+      })
+      
+      if (!response.ok) throw new Error('Failed to create user')
+      
+      const data = await response.json()
+      const newUser = data.data
+      
+      // Add to local state
+      set(state => ({
+        users: [newUser, ...state.users]
+      }))
+      
+      return newUser
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : 'Failed to create user'
+      })
+      return null
+    }
+  },
+
+  // Update user
+  updateUser: async (userId: string, userData: UpdateUserData) => {
+    set({ error: null })
+    
+    try {
+      const response = await fetch(`/api/admin/users/${userId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(userData)
+      })
+      
+      if (!response.ok) throw new Error('Failed to update user')
+      
+      const data = await response.json()
+      const updatedUser = data.data
+      
+      // Update in local state
+      set(state => ({
+        users: state.users.map(user => 
+          user.id === userId ? updatedUser : user
+        )
+      }))
+      
+      return updatedUser
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : 'Failed to update user'
+      })
+      return null
+    }
+  },
+
+  // Delete user
   deleteUser: async (userId: string) => {
-  set({ error: null })
-  
-  try {
-    const response = await fetch(`/api/admin/users/${userId}`, {
-      method: 'DELETE'
-    })
+    set({ error: null })
     
-    if (!response.ok) throw new Error('Failed to delete user')
-    
-    // Remove from local state
-    set(state => ({
-      users: state.users.filter(u => u.id !== userId)
-    }))
-  } catch (error) {
-    set({
-      error: error instanceof Error ? error.message : 'Failed to delete user'
-    })
-  }
-},
+    try {
+      const response = await fetch(`/api/admin/users/${userId}`, {
+        method: 'DELETE'
+      })
+      
+      if (!response.ok) throw new Error('Failed to delete user')
+      
+      // Remove from local state
+      set(state => ({
+        users: state.users.filter(u => u.id !== userId)
+      }))
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : 'Failed to delete user'
+      })
+    }
+  },
+
   // Import exercises CSV
   importExercises: async (file: File) => {
     set(state => ({
