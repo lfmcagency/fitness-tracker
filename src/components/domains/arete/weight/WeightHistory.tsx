@@ -8,8 +8,8 @@ import { ApiWeightEntry } from '@/types/api/userResponses';
 
 interface WeightHistoryProps {
   data: {
-    history: ApiWeightEntry[];
-    unit: 'kg' | 'lb';
+    history: import('@/types/api/userResponses').ApiWeightEntry[];
+    unit: 'kg' | 'lbs';
   } | null;
 }
 

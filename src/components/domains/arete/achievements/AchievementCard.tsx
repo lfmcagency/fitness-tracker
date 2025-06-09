@@ -68,17 +68,18 @@ export default function AchievementCard({ achievement }: AchievementCardProps) {
         </div>
 
         {/* Progress bar for locked achievements */}
-        {isLocked && achievement.progress > 0 && (
+        {isLocked && achievement.progress !== undefined && achievement.progress > 0 && (
+
           <div className="space-y-1">
             <div className="flex justify-between text-xs text-gray-500">
               <span>Progress</span>
-              <span>{achievement.progress}%</span>
+              <span>{achievement.progress || 0}%</span>
             </div>
-            <ProgressBar 
-              progress={achievement.progress} 
-              className="h-2"
-              color="blue"
-            />
+          <ProgressBar 
+          value={achievement.progress || 0} 
+          className="h-2"
+          color="blue"
+          />
           </div>
         )}
 

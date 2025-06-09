@@ -5,9 +5,9 @@ import { ApiWeightEntry } from '@/types/api/userResponses';
 
 interface WeightChartProps {
   data: {
-    history: ApiWeightEntry[];
-    trends: any;
-    unit: 'kg' | 'lb';
+    history: import('@/types/api/userResponses').ApiWeightEntry[];
+    trends?: any;
+    unit: 'kg' | 'lbs';
   } | null;
 }
 

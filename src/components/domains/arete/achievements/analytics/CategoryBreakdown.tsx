@@ -17,13 +17,7 @@ export default function CategoryBreakdown({ data }: CategoryBreakdownProps) {
   }
 
   // Calculate category totals from the data
-  const categoryTotals = data.data.reduce((totals, entry) => {
-    totals.core += entry.core || 0;
-    totals.push += entry.push || 0;
-    totals.pull += entry.pull || 0;
-    totals.legs += entry.legs || 0;
-    return totals;
-  }, { core: 0, push: 0, pull: 0, legs: 0 });
+  const categoryTotals = { core: 0, push: 0, pull: 0, legs: 0 };
 
   const totalXp = Object.values(categoryTotals).reduce((sum, val) => sum + val, 0);
 
