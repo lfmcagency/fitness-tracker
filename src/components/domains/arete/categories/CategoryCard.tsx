@@ -28,11 +28,11 @@ export default function CategoryCard({ category, name, icon, color, data }: Cate
         {/* Icon and Level */}
         <div className="relative mx-auto w-16 h-16">
           <ProgressRing
-            progress={progressPercent}
-            size={64}
-            color="blue"
-            className="w-16 h-16"
-          />
+        value={progressPercent}
+        size={64}
+        color="blue"
+        className="w-16 h-16"
+        />
           <div className="absolute inset-0 flex flex-col items-center justify-center">
             <span className="text-lg">{icon}</span>
             <span className="text-xs font-bold text-gray-600">{data.level}</span>

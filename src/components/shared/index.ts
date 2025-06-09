@@ -1,6 +1,6 @@
 // Export all shared components
 export { default as ProgressBar } from './ProgressBar';
-export { default as ProgressRing } from './ProgressRing';
+export { ProgressRing } from './ProgressRing';
 export { default as StatCard } from './StatCard';
 export { default as StatusBadge } from './StatusBadge';
 export { default as DateNavigator } from './DateNavigator';

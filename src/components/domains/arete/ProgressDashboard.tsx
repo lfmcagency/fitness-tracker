@@ -5,64 +5,79 @@ import { useProgressStore } from '@/store/progress';
 import LevelProgress from './overview/LevelProgress';
 import QuickStats from './overview/QuickStats';
 import RecentAchievements from './overview/RecentAchievements';
+import CategoryGrid from './categories/CategoryGrid';
+import WeightTracker from './weight/WeightTracker';
+import AchievementGallery from './achievements/AchievementGallery';
+import ProgressChart from './achievements/analytics/ProgressChart';
+import CategoryBreakdown from './achievements/analytics/CategoryBreakdown';
+import { Button } from '@/components/ui/button';
+import { RefreshCw } from 'lucide-react';
 
 export default function ProgressDashboard() {
   const { fetchProgress, refreshAll } = useProgressStore();
 
   useEffect(() => {
-    // Load initial data
     refreshAll();
   }, [refreshAll]);
 
   return (
-    <div className="space-y-6 p-4 max-w-4xl mx-auto">
-      {/* Header */}
+    <div className="space-y-8">
+      {/* Header with refresh */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Progress</h1>
-          <p className="text-gray-600">Track your journey toward excellence</p>
+          <h2 className="text-xl font-medium text-kalos-text">Your Progress</h2>
+          <p className="text-kalos-muted mt-1">Track your journey</p>
         </div>
-        <button
+        <Button
           onClick={refreshAll}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          variant="outline"
+          size="sm"
+          className="flex items-center gap-2"
         >
+          <RefreshCw className={`w-4 h-4 $`} />
           Refresh
-        </button>
+        </Button>
       </div>
 
-      {/* Overview Grid */}
+      {/* Top row - Level progress and quick stats */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Level Progress - Takes more space */}
         <div className="lg:col-span-2">
           <LevelProgress />
         </div>
-        
-        {/* Quick Stats */}
         <div className="lg:col-span-1">
           <QuickStats />
         </div>
       </div>
 
-      {/* Recent Achievements */}
-      <RecentAchievements />
+      {/* Category progress grid */}
+      <section className="space-y-4">
+        <h3 className="text-lg font-medium text-kalos-text">Category Progress</h3>
+        <CategoryGrid />
+      </section>
 
-      {/* TODO: Add more sections */}
+      {/* Analytics row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-lg border p-6">
-          <h3 className="font-semibold text-gray-900 mb-4">Category Progress</h3>
-          <p className="text-gray-600">Coming soon...</p>
-        </div>
-        
-        <div className="bg-white rounded-lg border p-6">
-          <h3 className="font-semibold text-gray-900 mb-4">Weight Tracking</h3>
-          <p className="text-gray-600">Coming soon...</p>
-        </div>
+        <ProgressChart />
+        <CategoryBreakdown data={null} />
       </div>
 
-      <div className="bg-white rounded-lg border p-6">
-        <h3 className="font-semibold text-gray-900 mb-4">Progress Analytics</h3>
-        <p className="text-gray-600">Coming soon...</p>
-      </div>
+      {/* Weight tracking */}
+      <section className="space-y-4">
+        <h3 className="text-lg font-medium text-kalos-text">Weight Tracking</h3>
+        <WeightTracker />
+      </section>
+
+      {/* Recent achievements */}
+      <section className="space-y-4">
+        <h3 className="text-lg font-medium text-kalos-text">Recent Achievements</h3>
+        <RecentAchievements />
+      </section>
+
+      {/* Achievement gallery */}
+      <section className="space-y-4">
+        <h3 className="text-lg font-medium text-kalos-text">All Achievements</h3>
+        <AchievementGallery />
+      </section>
     </div>
   );
 }
