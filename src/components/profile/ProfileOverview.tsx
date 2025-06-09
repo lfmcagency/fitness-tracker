@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect } from 'react';
+import Link from 'next/link';
 import { AlertCircle } from 'lucide-react';
 import { useUserStore } from '@/store/user';
 import { useProgressStore } from '@/store/progress';
@@ -211,14 +212,24 @@ const ProfileOverview: React.FC = () => {
         <ProfileSettings />
       </section>
 
-      {/* Quick Links */}
-      <section>
-        <Card className="text-center p-4 border-dashed border-kalos-border">
-          <p className="text-kalos-muted text-sm">
-            Visit <strong>Arete</strong> for detailed progress tracking and analytics
-          </p>
-        </Card>
-      </section>
+      {/* Admin Section - Only show for admin users */}
+      {profile?.role === 'admin' && (
+        <section>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg text-black-600">Admin Controls</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Link 
+                href="/admin/database"
+                className="inline-flex items-center px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+              >
+                Database Management
+              </Link>
+            </CardContent>
+          </Card>
+        </section>
+      )}
     </div>
   );
 };
