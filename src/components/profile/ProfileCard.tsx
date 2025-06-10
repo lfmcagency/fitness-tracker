@@ -6,30 +6,20 @@ import Image from 'next/image';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { UserCircle, ChevronRight } from 'lucide-react';
 import { useUserStore } from '@/store/user';
-import { useProgressStore } from '@/store/progress';
-import { ProgressRing, StatCard } from '@/components/shared';
-import { colors } from '@/lib/colors';
 
 interface ProfileCardProps {
   compact?: boolean;
   showActions?: boolean;
-  showStatsSummary?: boolean;
 }
 
 const ProfileCard: React.FC<ProfileCardProps> = ({
   compact = false,
   showActions = false,
-  showStatsSummary = true,
 }) => {
   const { profile, isLoadingProfile } = useUserStore();
-  const { progress, achievements, isLoading: isLoadingProgress } = useProgressStore((state) => ({
-    progress: state.progress.data,
-    achievements: state.achievements.data,
-    isLoading: state.progress.isLoading || state.achievements.isLoading,
-  }));
 
   // --- Loading Skeleton ---
-  if ((isLoadingProfile && !profile) || (isLoadingProgress && !progress)) {
+  if (isLoadingProfile && !profile) {
     return (
       <div className={`bg-white border border-kalos-border rounded-lg shadow-sm animate-pulse ${compact ? 'p-4' : 'p-6'}`}>
         <div className="flex items-center space-x-4">
@@ -39,13 +29,6 @@ const ProfileCard: React.FC<ProfileCardProps> = ({
             <div className="h-3 bg-kalos-border rounded w-1/2"></div>
           </div>
         </div>
-        {!compact && showStatsSummary && (
-          <div className="mt-4 grid grid-cols-3 gap-4">
-            <div className="h-8 bg-kalos-border rounded"></div>
-            <div className="h-8 bg-kalos-border rounded"></div>
-            <div className="h-8 bg-kalos-border rounded"></div>
-          </div>
-        )}
       </div>
     );
   }
@@ -61,20 +44,6 @@ const ProfileCard: React.FC<ProfileCardProps> = ({
 
   // --- Extract Data ---
   const { name, email, image, role, createdAt } = profile;
-  
-  // Use progress store data instead of manual calculation
-  const currentLevel = progress?.level?.current ?? 1;
-  const levelProgress = progress?.level?.progress ?? 0; // This is already a percentage
-  const xpToNext = progress?.level?.xpToNextLevel ?? 0;
-  
-  // Real stats from progress store
-  const achievementCount = achievements?.unlockedCount ?? 0;
-  const totalAchievements = achievements?.totalCount ?? 0;
-  
-  // TODO: These will come from proper API calls later
-  const streakDays = 0; // Will come from task statistics
-  const completedWorkouts = 0; // Will come from workout history
-
   const joinDate = createdAt ? new Date(createdAt) : new Date();
   const memberSince = formatDistanceToNowStrict(joinDate, { addSuffix: true });
   const getRoleDisplayName = (role?: string) => role || 'Member';
@@ -94,17 +63,6 @@ const ProfileCard: React.FC<ProfileCardProps> = ({
           <div className="flex-1 min-w-0">
             <h3 className="text-base font-medium text-kalos-text truncate">{name || 'Kalos User'}</h3>
             <p className="text-xs text-kalos-muted">{getRoleDisplayName(role)}</p>
-          </div>
-          <div className="flex-shrink-0">
-            <ProgressRing 
-              value={levelProgress} 
-              size={36} 
-              thickness={3} 
-              showPercentage={false}
-              label={`${currentLevel}`}
-              color={colors.statusPrimary}
-              labelSize="sm"
-            />
           </div>
         </div>
       </div>
@@ -128,25 +86,7 @@ const ProfileCard: React.FC<ProfileCardProps> = ({
         
         {/* User Info */}
         <div className="flex-1 min-w-0">
-          {/* Name and Level Ring */}
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-medium text-kalos-text truncate">{name || 'Kalos User'}</h2>
-            <div className="flex-shrink-0 ml-4">
-              <ProgressRing 
-                value={levelProgress} 
-                size={48} 
-                thickness={4} 
-                showPercentage={false}
-                label={
-                  <div className="flex flex-col items-center">
-                    <span className="text-xs text-kalos-muted -mt-1">LVL</span>
-                    <span className="text-md font-medium -mt-1">{currentLevel}</span>
-                  </div>
-                }
-                color={colors.statusPrimary}
-              />
-            </div>
-          </div>
+          <h2 className="text-xl font-medium text-kalos-text truncate">{name || 'Kalos User'}</h2>
           
           {/* Role and Join Date */}
           <div className="mt-1 flex flex-wrap items-center text-sm text-kalos-muted">
@@ -155,38 +95,12 @@ const ProfileCard: React.FC<ProfileCardProps> = ({
             <span>Member {memberSince}</span>
           </div>
           
-          {/* XP to next level */}
-          {xpToNext > 0 && (
-            <div className="mt-2 text-xs text-kalos-muted">
-              {xpToNext} XP to level {currentLevel + 1}
-            </div>
-          )}
+          {/* Email */}
+          <div className="mt-1 text-sm text-kalos-muted">
+            {email}
+          </div>
         </div>
       </div>
-
-      {/* Stats Summary using StatCard */}
-      {showStatsSummary && (
-        <div className="mt-6 grid grid-cols-3 gap-4">
-          <StatCard
-            title="Achievements"
-            value={`${achievementCount}/${totalAchievements}`}
-            size="sm"
-            variant="default"
-          />
-          <StatCard
-            title="Day Streak"
-            value={streakDays}
-            size="sm"
-            variant="default"
-          />
-          <StatCard
-            title="Workouts"
-            value={completedWorkouts}
-            size="sm"
-            variant="default"
-          />
-        </div>
-      )}
 
       {/* Actions Section */}
       {showActions && (

@@ -1,12 +1,18 @@
 'use client';
 
-import { useProgressStore } from '@/store/progress';
+import { useAchievementStore } from '@/store/achievements';
 
 export default function RecentAchievements() {
-  const { achievements } = useProgressStore();
+  const { 
+    achievements, 
+    isLoading, 
+    error, 
+    stats,
+    getClaimedAchievements 
+  } = useAchievementStore();
 
   // Loading state
-  if (achievements.isLoading) {
+  if (isLoading) {
     return (
       <div className="bg-white rounded-lg border p-6">
         <div className="flex items-center justify-between mb-4">
@@ -32,7 +38,7 @@ export default function RecentAchievements() {
   }
 
   // Error state
-  if (achievements.error) {
+  if (error) {
     return (
       <div className="bg-white rounded-lg border p-6">
         <div className="flex items-center justify-between mb-4">
@@ -45,15 +51,15 @@ export default function RecentAchievements() {
             </svg>
           </div>
           <p className="text-red-600 font-medium">Failed to load achievements</p>
-          <p className="text-gray-500 text-sm mt-1">{achievements.error}</p>
+          <p className="text-gray-500 text-sm mt-1">{error}</p>
         </div>
       </div>
     );
   }
 
-  // Get unlocked achievements (recent first - taking first few as "recent")
-  const unlockedAchievements = achievements.data?.list?.filter(a => a.unlocked) || [];
-  const recentAchievements = unlockedAchievements.slice(0, 6); // Show up to 6 recent
+  // Get claimed achievements (recent first - taking first few as "recent")
+  const claimedAchievements = getClaimedAchievements();
+  const recentAchievements = claimedAchievements.slice(0, 6); // Show up to 6 recent
 
   // Type color mapping
   const getTypeColor = (type: string) => {
@@ -70,16 +76,14 @@ export default function RecentAchievements() {
     <div className="bg-white rounded-lg border p-6">
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-semibold text-gray-900">Recent Achievements</h3>
-        {achievements.data && (
-          <div className="flex items-center space-x-4">
-            <span className="text-sm text-gray-500">
-              {achievements.data.unlockedCount} / {achievements.data.totalCount} unlocked
-            </span>
-            <button className="text-sm text-blue-600 hover:text-blue-700">
-              View All
-            </button>
-          </div>
-        )}
+        <div className="flex items-center space-x-4">
+          <span className="text-sm text-gray-500">
+            {stats.claimed} / {stats.total} unlocked
+          </span>
+          <button className="text-sm text-blue-600 hover:text-blue-700">
+            View All
+          </button>
+        </div>
       </div>
 
       {recentAchievements.length === 0 ? (

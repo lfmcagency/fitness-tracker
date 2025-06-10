@@ -4,13 +4,11 @@ import React, { useEffect } from 'react';
 import Link from 'next/link';
 import { AlertCircle } from 'lucide-react';
 import { useUserStore } from '@/store/user';
-import { useProgressStore } from '@/store/progress';
 import { useSession } from 'next-auth/react';
 import ProfileCard from './ProfileCard';
 import ProfileSettings from './ProfileSettings';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { StatCard } from '@/components/shared';
 
 // Loading skeleton component
 const LoadingSkeleton: React.FC = () => (
@@ -23,11 +21,6 @@ const LoadingSkeleton: React.FC = () => (
           <div className="h-4 bg-kalos-border rounded w-3/4"></div>
           <div className="h-3 bg-kalos-border rounded w-1/2"></div>
         </div>
-      </div>
-      <div className="mt-4 grid grid-cols-3 gap-4">
-        <div className="h-8 bg-kalos-border rounded"></div>
-        <div className="h-8 bg-kalos-border rounded"></div>
-        <div className="h-8 bg-kalos-border rounded"></div>
       </div>
     </div>
     {/* Settings skeleton */}
@@ -42,7 +35,7 @@ const LoadingSkeleton: React.FC = () => (
 const ProfileOverview: React.FC = () => {
   const { status } = useSession();
   
-  // User store
+  // User store - simplified, no progress integration
   const {
     initializeUser,
     profile,
@@ -50,39 +43,17 @@ const ProfileOverview: React.FC = () => {
     error: userError,
   } = useUserStore();
 
-  // Progress store
-  const {
-    refreshAll,
-    progress,
-    achievements,
-    categoryProgress,
-    isLoading: isLoadingProgress,
-    error: progressError,
-  } = useProgressStore((state) => ({
-    refreshAll: state.refreshAll,
-    progress: state.progress,
-    achievements: state.achievements,
-    categoryProgress: state.categoryProgress,
-    isLoading: state.progress.isLoading || state.achievements.isLoading || state.categoryProgress.isLoading,
-    error: state.progress.error || state.achievements.error || state.categoryProgress.error,
-  }));
-
-  // Initialize both stores when authenticated
+  // Initialize user store when authenticated
   useEffect(() => {
     if (status === 'authenticated') {
-      console.log("ProfileOverview: Initializing both user and progress data...");
+      console.log("ProfileOverview: Initializing user data...");
       
       // Start user data if not already loading/loaded
       if (!profile && !isLoadingProfile) {
         initializeUser();
       }
-      
-      // Start progress data if not already loading/loaded  
-      if (!progress.data && !isLoadingProgress) {
-        refreshAll();
-      }
     }
-  }, [status, initializeUser, refreshAll, profile, isLoadingProfile, progress.data, isLoadingProgress]);
+  }, [status, initializeUser, profile, isLoadingProfile]);
 
   // --- Render Logic ---
 
@@ -105,107 +76,26 @@ const ProfileOverview: React.FC = () => {
   }
 
   // 3. Still loading initial data
-  if ((isLoadingProfile && !profile) || (isLoadingProgress && !progress.data)) {
+  if (isLoadingProfile && !profile) {
     return <LoadingSkeleton />;
   }
-
-  // 4. Main content - both stores have data
-  const progressData = progress.data;
-  const achievementsData = achievements.data;
-  const categoryData = categoryProgress.data;
 
   return (
     <div className="space-y-8">
       {/* Error Display */}
-      {(userError || progressError) && (
+      {userError && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
-            {userError || progressError}
+            {userError}
           </AlertDescription>
         </Alert>
       )}
 
       {/* Profile Card */}
       <section>
-        <ProfileCard showActions={false} showStatsSummary={true} />
+        <ProfileCard showActions={false} />
       </section>
-
-      {/* Progress Overview - Real data from progress store */}
-      <section>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Progress Overview</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <StatCard
-                title="Level"
-                value={progressData?.level?.current ?? 1}
-                variant="filled"
-                size="sm"
-              />
-              <StatCard
-                title="Total XP"
-                value={progressData?.level?.xp ?? 0}
-                variant="filled"
-                size="sm"
-              />
-              <StatCard
-                title="Achievements"
-                value={`${achievementsData?.unlockedCount ?? 0}/${achievementsData?.totalCount ?? 0}`}
-                variant="filled"
-                size="sm"
-              />
-              <StatCard
-                title="XP to Next"
-                value={progressData?.level?.xpToNextLevel ?? 0}
-                variant="filled"
-                size="sm"
-              />
-            </div>
-          </CardContent>
-        </Card>
-      </section>
-
-      {/* Category Progress - Real data from progress store */}
-      {categoryData && (
-        <section>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Domain Progress</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard
-                  title="Core"
-                  value={`Lvl ${categoryData.core?.level ?? 1}`}
-                  variant="outline"
-                  size="sm"
-                />
-                <StatCard
-                  title="Push"
-                  value={`Lvl ${categoryData.push?.level ?? 1}`}
-                  variant="outline"
-                  size="sm"
-                />
-                <StatCard
-                  title="Pull"
-                  value={`Lvl ${categoryData.pull?.level ?? 1}`}
-                  variant="outline"
-                  size="sm"
-                />
-                <StatCard
-                  title="Legs"
-                  value={`Lvl ${categoryData.legs?.level ?? 1}`}
-                  variant="outline"
-                  size="sm"
-                />
-              </div>
-            </CardContent>
-          </Card>
-        </section>
-      )}
 
       {/* Settings Section */}
       <section>
@@ -217,7 +107,7 @@ const ProfileOverview: React.FC = () => {
         <section>
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg text-black-600">Admin Controls</CardTitle>
+              <CardTitle className="text-lg text-red-600">Admin Controls</CardTitle>
             </CardHeader>
             <CardContent>
               <Link 
@@ -230,6 +120,21 @@ const ProfileOverview: React.FC = () => {
           </Card>
         </section>
       )}
+
+      {/* Future Integration Placeholder */}
+      <section>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg text-gray-500">Progress Overview</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-center py-8 text-gray-500">
+              <p>Progress tracking will be integrated after all domains are complete.</p>
+              <p className="text-sm mt-2">Check the main dashboard for current progress data.</p>
+            </div>
+          </CardContent>
+        </Card>
+      </section>
     </div>
   );
 };

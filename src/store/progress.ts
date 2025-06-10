@@ -10,7 +10,6 @@ import {
   WeightHistoryPayload, 
   AddedWeightEntryPayload 
 } from '@/types/api/weightResponses';
-import { AchievementData } from '@/types/api/achievementResponses';
 import { ApiWeightEntry } from '@/types/api/userResponses';
 
 // Base section interface for consistent error isolation
@@ -29,7 +28,7 @@ interface WeightTrends {
   direction: 'gain' | 'loss' | 'maintain';
 }
 
-// Store state interface
+// Store state interface - ACHIEVEMENTS REMOVED
 interface ProgressState {
   // Main progress overview
   progress: DataSection<ProgressResponseData>;
@@ -49,13 +48,6 @@ interface ProgressState {
     unit: 'kg' | 'lbs';
   }>;
   
-  // Achievements
-  achievements: DataSection<{
-    list: AchievementData[];
-    unlockedCount: number;
-    totalCount: number;
-  }>;
-  
   // History/analytics
   history: DataSection<HistoryResponseData> & {
     timeRange: 'day' | 'week' | 'month' | 'year' | 'all';
@@ -70,12 +62,11 @@ interface ProgressState {
   fetchWeightHistory: () => Promise<void>;
   addWeightEntry: (weight: number, date?: Date) => Promise<void>;
   deleteWeightEntry: (entryId: string) => Promise<void>;
-  fetchAchievements: () => Promise<void>;
   fetchHistory: (timeRange?: string, groupBy?: string, category?: string) => Promise<void>;
   
   // Utility actions
   refreshAll: () => Promise<void>;
-  clearError: (section: keyof Pick<ProgressState, 'progress' | 'categoryProgress' | 'weight' | 'achievements' | 'history'>) => void;
+  clearError: (section: keyof Pick<ProgressState, 'progress' | 'categoryProgress' | 'weight' | 'history'>) => void;
 }
 
 // Helper to create empty data section
@@ -90,7 +81,7 @@ const createDataSection = <T>(): DataSection<T> => ({
 const API_BASE = '/api';
 
 export const useProgressStore = create<ProgressState>((set, get) => ({
-  // Initial state
+  // Initial state - NO ACHIEVEMENTS
   progress: createDataSection<ProgressResponseData>(),
   categoryProgress: createDataSection<{
     core: CategoryProgressData;
@@ -102,11 +93,6 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
     history: ApiWeightEntry[];
     trends: WeightTrends | null;
     unit: 'kg' | 'lbs';
-  }>(),
-  achievements: createDataSection<{
-    list: AchievementData[];
-    unlockedCount: number;
-    totalCount: number;
   }>(),
   history: {
     ...createDataSection<HistoryResponseData>(),
@@ -308,43 +294,6 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
     }
   },
 
-  // Achievements
-  fetchAchievements: async () => {
-    set((state) => ({
-      achievements: { ...state.achievements, isLoading: true, error: null }
-    }));
-
-    try {
-      const response = await fetch(`${API_BASE}/achievements`);
-      const result = await response.json();
-
-      if (!result.success) {
-        throw new Error(result.message || 'Failed to fetch achievements');
-      }
-
-      const achievements = result.data.achievements || [];
-      const unlockedCount = achievements.filter((a: AchievementData) => a.unlocked).length;
-
-      set((state) => ({
-        achievements: {
-          data: {
-            list: achievements,
-            unlockedCount,
-            totalCount: achievements.length,
-          },
-          isLoading: false,
-          error: null,
-          lastFetched: new Date(),
-        }
-      }));
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Failed to fetch achievements';
-      set((state) => ({
-        achievements: { ...state.achievements, isLoading: false, error: errorMsg }
-      }));
-    }
-  },
-
   // Progress history
   fetchHistory: async (timeRange = 'month', groupBy = 'day', category = 'all') => {
     set((state) => ({
@@ -389,15 +338,14 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
     }
   },
 
-  // Utility: refresh all data
+  // Utility: refresh all data (NO MORE ACHIEVEMENTS)
   refreshAll: async () => {
-    const { fetchProgress, fetchCategoryProgress, fetchWeightHistory, fetchAchievements, fetchHistory } = get();
+    const { fetchProgress, fetchCategoryProgress, fetchWeightHistory, fetchHistory } = get();
     
     await Promise.allSettled([
       fetchProgress(),
       fetchCategoryProgress(),
       fetchWeightHistory(),
-      fetchAchievements(),
       fetchHistory(),
     ]);
   },
