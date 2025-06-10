@@ -20,17 +20,10 @@ export default function TrophyRoom({ className = '', showFilters = true }: Troph
     setStatusFilter,
     setTypeFilter,
     getFilteredAchievements,
-    fetchAchievements,
     claimAchievement,
     clearError
   } = useAchievementStore();
 
-  // Fetch achievements on mount
-  useEffect(() => {
-  if (achievements.length === 0 && !isLoading) {
-    fetchAchievements();
-  }
-}, []); // Empty deps - only run on mount
 
   // Handle claim action - delegates to store
   const handleClaim = async (achievementId: string) => {
@@ -91,7 +84,6 @@ export default function TrophyRoom({ className = '', showFilters = true }: Troph
           <button
             onClick={() => {
               clearError();
-              fetchAchievements();
             }}
             className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
           >
