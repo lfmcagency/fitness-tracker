@@ -9,7 +9,7 @@ import {
   BodyweightEntry,
   CategoryProgress,
 } from '@/types/models/progress';
-import { ProgressCategoryEnum } from '@/lib/category-progress'; // Import the corrected enum
+import { ProgressCategoryEnum } from '@/lib/category-progress';
 
 // Define schemas
 const xpTransactionSchema = new Schema<XpTransaction>({
@@ -63,6 +63,8 @@ const userProgressSchema = new Schema<IUserProgress>({
     [ProgressCategoryEnum.legs]: categoryProgressSchema,
   },
   achievements: [{ type: Schema.Types.ObjectId, ref: 'Achievement' }],
+  // 🆕 NEW: Pending achievements (unlocked but not claimed)
+  pendingAchievements: [{ type: String, default: [] }],
   xpHistory: [xpTransactionSchema],
   dailySummaries: [xpDailySummarySchema],
   bodyweight: [bodyweightEntrySchema],
@@ -71,7 +73,7 @@ const userProgressSchema = new Schema<IUserProgress>({
   updatedAt: { type: Date, default: Date.now },
 });
 
-// Static methods using Mongoose's statics
+// Static methods
 userProgressSchema.statics.calculateLevelFromXp = function (xp: number): number {
   return Math.floor(1 + Math.pow(xp / 100, 0.8));
 };
@@ -95,6 +97,9 @@ userProgressSchema.statics.createInitialProgress = async function (
       [ProgressCategoryEnum.pull]: { level: 1, xp: 0, unlockedExercises: [] },
       [ProgressCategoryEnum.legs]: { level: 1, xp: 0, unlockedExercises: [] },
     },
+    achievements: [],
+    // 🆕 Initialize pending achievements as empty
+    pendingAchievements: [],
     xpHistory: [
       {
         amount: 0,
@@ -135,7 +140,6 @@ userProgressSchema.methods.addXp = async function (
 ): Promise<boolean> {
   // Store previous values
   const previousLevel = this.level;
-  const previousTotalXp = this.totalXp;
   
   // Update total XP and level
   this.totalXp += amount;
@@ -143,16 +147,16 @@ userProgressSchema.methods.addXp = async function (
   
   // Update category XP if provided
   if (category) {
-  this.categoryXp[category] = (this.categoryXp[category] || 0) + amount;
-  
-  // Ensure categoryProgress exists for this category
-  if (!this.categoryProgress[category]) {
-    this.categoryProgress[category] = { level: 1, xp: 0, unlockedExercises: [] };
+    this.categoryXp[category] = (this.categoryXp[category] || 0) + amount;
+    
+    // Ensure categoryProgress exists for this category
+    if (!this.categoryProgress[category]) {
+      this.categoryProgress[category] = { level: 1, xp: 0, unlockedExercises: [] };
+    }
+    
+    this.categoryProgress[category].xp = this.categoryXp[category];
+    this.categoryProgress[category].level = this.calculateLevel(this.categoryXp[category]);
   }
-  
-  this.categoryProgress[category].xp = this.categoryXp[category];
-  this.categoryProgress[category].level = this.calculateLevel(this.categoryXp[category]);
-}
   
   // Add transaction to history
   this.xpHistory.push({
@@ -168,6 +172,52 @@ userProgressSchema.methods.addXp = async function (
   await this.save();
   
   return this.level > previousLevel;
+};
+
+// 🆕 NEW: Methods for managing pending achievements
+userProgressSchema.methods.addPendingAchievement = async function (
+  this: HydratedDocument<IUserProgress>,
+  achievementId: string
+): Promise<void> {
+  if (!this.pendingAchievements.includes(achievementId)) {
+    this.pendingAchievements.push(achievementId);
+    this.lastUpdated = new Date();
+    await this.save();
+  }
+};
+
+userProgressSchema.methods.claimPendingAchievement = async function (
+  this: HydratedDocument<IUserProgress>,
+  achievementId: string
+): Promise<boolean> {
+  const index = this.pendingAchievements.indexOf(achievementId);
+  if (index > -1) {
+    // Remove from pending
+    this.pendingAchievements.splice(index, 1);
+    
+    // Add to claimed (if not already there)
+    if (!this.achievements.includes(achievementId as any)) {
+      this.achievements.push(achievementId as any);
+    }
+    
+    this.lastUpdated = new Date();
+    await this.save();
+    return true;
+  }
+  return false;
+};
+
+userProgressSchema.methods.getPendingAchievements = function (
+  this: HydratedDocument<IUserProgress>
+): string[] {
+  return [...this.pendingAchievements];
+};
+
+userProgressSchema.methods.hasPendingAchievement = function (
+  this: HydratedDocument<IUserProgress>,
+  achievementId: string
+): boolean {
+  return this.pendingAchievements.includes(achievementId);
 };
 
 userProgressSchema.methods.getNextLevelXp = function (this: HydratedDocument<IUserProgress>): number {

@@ -7,6 +7,7 @@ import { ITask } from '@/types/models/tasks';
 import { withAuth, AuthLevel } from '@/lib/auth-utils';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { convertTaskToTaskData, handleTaskXpAward } from '@/lib/task-utils';
+import { checkTaskStreakMilestones } from '@/lib/achievements/unlock';
 import { TaskData } from '@/types';
 import { UpdateTaskRequest } from '@/types/api/taskRequests';
 import { isValidObjectId } from 'mongoose';
@@ -61,9 +62,9 @@ function parseCompletionDate(dateString?: string): Date {
 
 /**
  * PATCH /api/tasks/[id]
- * Updates a task with validation and proper streak handling
+ * Updates a task with validation and proper streak handling + achievement unlocks
  */
-export const PATCH = withAuth<TaskData | { task: TaskData; xpAward: any }, { id: string }>(
+export const PATCH = withAuth<TaskData | { task: TaskData; xpAward: any; achievements?: any }, { id: string }>(
   async (req: NextRequest, userId: string, context) => {
     try {
       await dbConnect();
@@ -82,7 +83,7 @@ export const PATCH = withAuth<TaskData | { task: TaskData; xpAward: any }, { id:
       let updates: UpdateTaskRequest & { completionDate?: string };
       try {
         updates = await req.json();
-        console.log('PATCH updates received:', updates);
+        console.log('📝 [TASK] PATCH updates received:', updates);
       } catch (error) {
         return apiError('Invalid JSON in request body', 400, 'ERR_INVALID_JSON');
       }
@@ -109,19 +110,35 @@ export const PATCH = withAuth<TaskData | { task: TaskData; xpAward: any }, { id:
       
       // Parse completion date for all operations
       const completionDate = parseCompletionDate(updates.completionDate);
-      console.log('Using completion date:', completionDate.toISOString());
+      console.log('📅 [TASK] Using completion date:', completionDate.toISOString());
       
       // Handle completion status changes
       if (updates.hasOwnProperty('completed')) {
-        console.log('Processing completion status change:', updates.completed);
+        console.log('🎯 [TASK] Processing completion status change:', updates.completed);
         
         try {
           if (updates.completed === true) {
             // Mark as completed
-            console.log('Marking task as completed for date:', completionDate.toISOString());
+            console.log('✅ [TASK] Marking task as completed for date:', completionDate.toISOString());
             existingTask.completeTask(completionDate);
-            console.log('After completeTask - completion history:', existingTask.completionHistory.map(d => d.toISOString()));
-            console.log('Current streak:', existingTask.currentStreak);
+            console.log('📊 [TASK] After completeTask - completion history:', existingTask.completionHistory.map(d => d.toISOString()));
+            console.log('🔥 [TASK] Current streak:', existingTask.currentStreak);
+            
+            // 🆕 CHECK ACHIEVEMENT MILESTONES 🆕
+            let achievementResult;
+            try {
+              console.log('🏆 [TASK] Checking achievement milestones...');
+              achievementResult = await checkTaskStreakMilestones(userId, existingTask.currentStreak);
+              
+              if (achievementResult.unlockedCount > 0) {
+                console.log(`🎉 [TASK] Unlocked ${achievementResult.unlockedCount} achievements!`, 
+                  achievementResult.achievements.map(a => a.title));
+              }
+            } catch (achievementError) {
+              console.error('💥 [TASK] Error checking achievement milestones:', achievementError);
+              // Continue without failing the task completion
+              achievementResult = { unlockedCount: 0, achievements: [] };
+            }
             
             // Apply other updates (except completion-related fields)
             const otherUpdates = { ...updates };
@@ -134,34 +151,51 @@ export const PATCH = withAuth<TaskData | { task: TaskData; xpAward: any }, { id:
             
             // Save the task
             await existingTask.save();
-            console.log('Task saved successfully');
+            console.log('💾 [TASK] Task saved successfully');
             
-            // Award XP
+            // Award XP for task completion
             try {
               const xpResult = await handleTaskXpAward(userId, existingTask);
-              console.log('XP awarded:', xpResult);
+              console.log('⚡ [TASK] XP awarded:', xpResult);
               
               const taskData = convertTaskToTaskData(existingTask, completionDate);
+              
+              // Build response with achievement info if any were unlocked
+              let message = 'Task marked as completed and streak updated';
+              if (xpResult.leveledUp && achievementResult.unlockedCount > 0) {
+                message = `Task completed! Level up to ${xpResult.newLevel} and ${achievementResult.unlockedCount} achievement(s) unlocked!`;
+              } else if (xpResult.leveledUp) {
+                message = `Task completed! Level up to ${xpResult.newLevel}!`;
+              } else if (achievementResult.unlockedCount > 0) {
+                message = `Task completed and ${achievementResult.unlockedCount} achievement(s) unlocked!`;
+              }
               
               return apiResponse({
                 task: taskData,
-                xpAward: xpResult
-              }, true, xpResult.leveledUp 
-                ? `Task completed! Level up to ${xpResult.newLevel}!` 
-                : 'Task marked as completed and streak updated');
+                xpAward: xpResult,
+                achievements: achievementResult.unlockedCount > 0 ? achievementResult : undefined
+              }, true, message);
             } catch (xpError) {
-              console.error('Error awarding XP:', xpError);
+              console.error('💥 [TASK] Error awarding XP:', xpError);
               
               const taskData = convertTaskToTaskData(existingTask, completionDate);
-              return apiResponse(taskData, true, 'Task marked as completed, but XP could not be awarded');
+              const message = achievementResult.unlockedCount > 0 
+                ? `Task completed and ${achievementResult.unlockedCount} achievement(s) unlocked, but XP could not be awarded`
+                : 'Task marked as completed, but XP could not be awarded';
+                
+              return apiResponse({
+                task: taskData,
+                xpAward: null,
+                achievements: achievementResult.unlockedCount > 0 ? achievementResult : undefined
+              }, true, message);
             }
             
           } else if (updates.completed === false) {
             // Mark as uncompleted
-            console.log('Marking task as incomplete for date:', completionDate.toISOString());
+            console.log('❌ [TASK] Marking task as incomplete for date:', completionDate.toISOString());
             existingTask.uncompleteTask(completionDate);
-            console.log('After uncompleteTask - completion history:', existingTask.completionHistory.map(d => d.toISOString()));
-            console.log('Current streak:', existingTask.currentStreak);
+            console.log('📊 [TASK] After uncompleteTask - completion history:', existingTask.completionHistory.map(d => d.toISOString()));
+            console.log('🔥 [TASK] Current streak:', existingTask.currentStreak);
             
             // Apply other updates (except completion-related fields)
             const otherUpdates = { ...updates };
@@ -174,13 +208,13 @@ export const PATCH = withAuth<TaskData | { task: TaskData; xpAward: any }, { id:
             
             // Save the task
             await existingTask.save();
-            console.log('Task saved successfully');
+            console.log('💾 [TASK] Task saved successfully');
             
             const taskData = convertTaskToTaskData(existingTask, completionDate);
             return apiResponse(taskData, true, 'Task marked as incomplete');
           }
         } catch (error) {
-          console.error('Error updating task completion:', error);
+          console.error('💥 [TASK] Error updating task completion:', error);
           return handleApiError(error, 'Error updating task completion');
         }
       }
@@ -200,11 +234,11 @@ export const PATCH = withAuth<TaskData | { task: TaskData; xpAward: any }, { id:
         const taskData = convertTaskToTaskData(updatedTask, completionDate);
         return apiResponse(taskData, true, 'Task updated successfully');
       } catch (error) {
-        console.error('Error updating task:', error);
+        console.error('💥 [TASK] Error updating task:', error);
         return handleApiError(error, 'Error updating task');
       }
     } catch (error) {
-      console.error('Unexpected error in PATCH /api/tasks/[id]:', error);
+      console.error('💥 [TASK] Unexpected error in PATCH /api/tasks/[id]:', error);
       return handleApiError(error, 'Error updating task');
     }
   },
@@ -261,7 +295,7 @@ export const GET = withAuth<TaskData, { id: string }>(
       
       return apiResponse(taskData);
     } catch (error) {
-      console.error('Error in GET /api/tasks/[id]:', error);
+      console.error('💥 [TASK] Error in GET /api/tasks/[id]:', error);
       return handleApiError(error, 'Error fetching task details');
     }
   }, 
@@ -302,7 +336,7 @@ export const DELETE = withAuth<{ id: string }, { id: string }>(
       
       return apiResponse({ id: taskId }, true, 'Task deleted successfully');
     } catch (error) {
-      console.error('Error in DELETE /api/tasks/[id]:', error);
+      console.error('💥 [TASK] Error in DELETE /api/tasks/[id]:', error);
       return handleApiError(error, 'Error deleting task');
     }
   },

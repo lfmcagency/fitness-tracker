@@ -6,6 +6,7 @@ import Task from '@/models/Task';
 import { ITask } from '@/types/models/tasks';
 import { withAuth, AuthLevel } from '@/lib/auth-utils';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
+import { checkTaskStreakMilestones } from '@/lib/achievements/unlock';
 import { TaskData, StreakInfo } from '@/types';
 import { TaskStreakRequest } from '@/types/api/taskRequests';
 import { isValidObjectId } from 'mongoose';
@@ -69,9 +70,9 @@ export const GET = withAuth<StreakInfo, { id: string }>(
 
 /**
  * POST /api/tasks/[id]/streak
- * Update streak for a task
+ * Update streak for a task + check achievement milestones
  */
-export const POST = withAuth<StreakInfo, { id: string }>(
+export const POST = withAuth<StreakInfo & { achievements?: any }, { id: string }>(
   async (req: NextRequest, userId: string, context) => {
     try {
       await dbConnect();
@@ -124,28 +125,58 @@ export const POST = withAuth<StreakInfo, { id: string }>(
         return apiError('Task is not scheduled for this date', 400, 'ERR_INVALID_DATE');
       }
       
-      // Complete the task using the method that handles streak calculation with error handling
+      console.log(`🎯 [STREAK] Completing task "${task.name}" for date: ${date.toISOString()}`);
+      
+      // Complete the task using the method that handles streak calculation
       try {
         task.completeTask(date);
+        console.log(`🔥 [STREAK] New streak: ${task.currentStreak}`);
+        
+        // 🆕 CHECK ACHIEVEMENT MILESTONES 🆕
+        let achievementResult;
+        try {
+          console.log('🏆 [STREAK] Checking achievement milestones...');
+          achievementResult = await checkTaskStreakMilestones(userId, task.currentStreak);
+          
+          if (achievementResult.unlockedCount > 0) {
+            console.log(`🎉 [STREAK] Unlocked ${achievementResult.unlockedCount} achievements!`, 
+              achievementResult.achievements.map(a => a.title));
+          }
+        } catch (achievementError) {
+          console.error('💥 [STREAK] Error checking achievement milestones:', achievementError);
+          // Continue without failing the streak update
+          achievementResult = { unlockedCount: 0, achievements: [] };
+        }
+        
         await task.save();
+        console.log('💾 [STREAK] Task saved successfully');
+        
+        // Create streak info response
+        const streakInfo: StreakInfo & { achievements?: any } = {
+          taskId: task._id?.toString() || taskId,
+          name: task.name || 'Unknown task',
+          currentStreak: task.currentStreak || 0,
+          bestStreak: task.bestStreak || 0,
+          lastCompletedDate: task.lastCompletedDate ? task.lastCompletedDate.toISOString() : null,
+          isDueToday: true, // We've just verified it's due
+          completionHistory: Array.isArray(task.completionHistory) 
+            ? task.completionHistory.map(date => date.toISOString()) 
+            : []
+        };
+        
+        // Add achievement info if any were unlocked
+        if (achievementResult.unlockedCount > 0) {
+          streakInfo.achievements = achievementResult;
+        }
+        
+        const message = achievementResult.unlockedCount > 0
+          ? `Streak updated successfully and ${achievementResult.unlockedCount} achievement(s) unlocked!`
+          : 'Streak updated successfully';
+        
+        return apiResponse(streakInfo, true, message);
       } catch (error) {
         return handleApiError(error, 'Error updating task streak');
       }
-      
-      // Create streak info response
-      const streakInfo: StreakInfo = {
-        taskId: task._id?.toString() || taskId,
-        name: task.name || 'Unknown task',
-        currentStreak: task.currentStreak || 0,
-        bestStreak: task.bestStreak || 0,
-        lastCompletedDate: task.lastCompletedDate ? task.lastCompletedDate.toISOString() : null,
-        isDueToday: true, // We've just verified it's due
-        completionHistory: Array.isArray(task.completionHistory) 
-          ? task.completionHistory.map(date => date.toISOString()) 
-          : []
-      };
-      
-      return apiResponse(streakInfo, true, 'Streak updated successfully');
     } catch (error) {
       return handleApiError(error, 'Error updating streak');
     }

@@ -6,6 +6,7 @@ import Task from '@/models/Task';
 import { ITask } from '@/types/models/tasks';
 import { withAuth, AuthLevel } from '@/lib/auth-utils';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
+import { checkTaskStreakMilestones } from '@/lib/achievements/unlock';
 import { TaskData } from '@/types';
 import { BatchTaskRequest } from '@/types/api/taskRequests';
 import { convertTaskToTaskData } from '@/lib/task-utils';
@@ -13,9 +14,9 @@ import { isValidObjectId } from 'mongoose';
 
 /**
  * POST /api/tasks/batch
- * Performs batch operations on tasks
+ * Performs batch operations on tasks with achievement milestone checking
  */
-export const POST = withAuth<TaskData[] | { count: number; taskIds: string[] }>(
+export const POST = withAuth<TaskData[] | { count: number; taskIds: string[]; achievements?: any }>(
   async (req: NextRequest, userId: string) => {
     try {
       await dbConnect();
@@ -66,8 +67,10 @@ export const POST = withAuth<TaskData[] | { count: number; taskIds: string[] }>(
       // Perform the requested operation with specific error handling for each
       switch (operation) {
         case 'complete': {
+          console.log(`🎯 [BATCH] Completing ${validTaskIds.length} tasks...`);
+          
           // For 'complete' operation, we need to update each task individually
-          // to correctly calculate streaks
+          // to correctly calculate streaks and check achievements
           try {
             const completionDate = data?.completionDate 
               ? new Date(data.completionDate) 
@@ -78,13 +81,33 @@ export const POST = withAuth<TaskData[] | { count: number; taskIds: string[] }>(
             }
             
             const completedTasks: TaskData[] = [];
+            let totalAchievementsUnlocked = 0;
+            const allUnlockedAchievements: any[] = [];
             
             for (const taskId of validTaskIds) {
               try {
                 const task = await Task.findOne({ _id: taskId, user: userId }) as ITask | null;
                 
                 if (task && !task.completed) {
+                  console.log(`✅ [BATCH] Completing task: ${task.name}`);
+                  
+                  // Complete the task and calculate new streak
                   task.completeTask(completionDate);
+                  
+                  // 🆕 CHECK ACHIEVEMENT MILESTONES FOR EACH TASK 🆕
+                  try {
+                    const achievementResult = await checkTaskStreakMilestones(userId, task.currentStreak);
+                    
+                    if (achievementResult.unlockedCount > 0) {
+                      console.log(`🏆 [BATCH] Task "${task.name}" unlocked ${achievementResult.unlockedCount} achievements!`);
+                      totalAchievementsUnlocked += achievementResult.unlockedCount;
+                      allUnlockedAchievements.push(...achievementResult.achievements);
+                    }
+                  } catch (achievementError) {
+                    console.error(`💥 [BATCH] Error checking achievements for task ${taskId}:`, achievementError);
+                    // Continue with other tasks
+                  }
+                  
                   await task.save();
                   
                   // Convert task with defensive error handling
@@ -92,16 +115,29 @@ export const POST = withAuth<TaskData[] | { count: number; taskIds: string[] }>(
                   completedTasks.push(taskData);
                 }
               } catch (error) {
-                console.error(`Error completing task ${taskId}:`, error);
+                console.error(`💥 [BATCH] Error completing task ${taskId}:`, error);
                 // Continue with other tasks even if one fails
               }
             }
             
-            return apiResponse(
-              completedTasks,
-              true,
-              `${completedTasks.length} tasks marked as completed.`
-            );
+            // Build response with achievement info
+            const response: any = {
+              tasks: completedTasks,
+              completedCount: completedTasks.length
+            };
+            
+            if (totalAchievementsUnlocked > 0) {
+              response.achievements = {
+                unlockedCount: totalAchievementsUnlocked,
+                achievements: allUnlockedAchievements
+              };
+            }
+            
+            const message = totalAchievementsUnlocked > 0
+              ? `${completedTasks.length} tasks completed and ${totalAchievementsUnlocked} achievement(s) unlocked!`
+              : `${completedTasks.length} tasks marked as completed.`;
+            
+            return apiResponse(response, true, message);
           } catch (error) {
             return handleApiError(error, 'Error completing tasks');
           }
@@ -151,7 +187,7 @@ export const POST = withAuth<TaskData[] | { count: number; taskIds: string[] }>(
                   updatedTasks.push(taskData);
                 }
               } catch (error) {
-                console.error(`Error updating task ${taskId}:`, error);
+                console.error(`💥 [BATCH] Error updating task ${taskId}:`, error);
                 // Continue with other tasks even if one fails
               }
             }

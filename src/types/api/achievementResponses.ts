@@ -19,6 +19,8 @@ export interface AchievementData {
     streak?: number;
   };
   unlocked: boolean;
+  // 🆕 NEW: Achievement status for proper UI handling
+  status?: 'pending' | 'claimed' | 'locked';
   progress?: number; // 0-100 percentage for locked achievements
   unlockedAt?: string; // ISO date string when unlocked
 }
@@ -27,10 +29,17 @@ export interface AchievementData {
  * Achievement list response with grouping and stats
  */
 export interface AchievementListData {
+  list: AchievementData[];
   total: number;
+  totalCount: number;
   unlocked: number;
+  unlockedCount: number;
+  // 🆕 NEW: Detailed counts for each status
+  claimedCount: number;
+  pendingCount: number;
+  lockedCount: number;
   byType: Record<string, AchievementData[]>;
-  all: AchievementData[];
+  all?: AchievementData[]; // Keep for backwards compatibility
 }
 
 /**
@@ -45,6 +54,9 @@ export interface ClaimAchievementData {
     xpReward: number;
   };
   xpAwarded?: number;
+  // 🆕 NEW: Level up info from claiming
+  leveledUp?: boolean;
+  newLevel?: number;
 }
 
 /**

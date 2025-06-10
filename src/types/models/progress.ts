@@ -65,6 +65,7 @@ export interface IUserProgress extends mongoose.Document {
   lastUpdated: Date;
   createdAt: Date;
   updatedAt: Date;
+  pendingAchievements: string[];
   
   // Methods
   calculateLevel(xp: number): number;
@@ -74,6 +75,10 @@ export interface IUserProgress extends mongoose.Document {
   hasLeveledUp(previousXp: number, newXp: number): boolean;
   summarizeDailyXp(date?: Date): Promise<XpDailySummary>;
   purgeOldHistory(olderThan: Date): Promise<number>;
+  addPendingAchievement(achievementId: string): Promise<void>;
+  claimPendingAchievement(achievementId: string): Promise<boolean>;
+  getPendingAchievements(): string[];
+  hasPendingAchievement(achievementId: string): boolean;
 }
 
 export interface IUserProgressModel extends mongoose.Model<IUserProgress> {

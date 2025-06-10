@@ -8,7 +8,6 @@ import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import UserProgress from '@/models/UserProgress';
 import { 
   getAchievements, 
-  getAllAchievementsWithStatus, 
   meetsRequirements, 
   awardAchievements 
 } from '@/lib/achievements';
@@ -23,8 +22,90 @@ import {
 import { isValidObjectId } from 'mongoose';
 
 /**
+ * Get all achievements with proper status (pending/claimed/locked)
+ */
+async function getAllAchievementsWithStatus(userProgress: any) {
+  const achievements = getAchievements();
+  
+  if (!userProgress) {
+    // No user progress - all achievements are locked
+    return achievements.map(achievement => ({
+      ...achievement,
+      unlocked: false,
+      status: 'locked' as const,
+      progress: 0
+    }));
+  }
+  
+  // Get claimed and pending achievement IDs
+  const claimedIds = userProgress.achievements ? userProgress.achievements.map((id: any) => id.toString()) : [];
+  const pendingIds = userProgress.pendingAchievements || [];
+  
+  console.log('🏆 [API] User achievement status:', {
+    claimed: claimedIds,
+    pending: pendingIds
+  });
+  
+  return achievements.map(achievement => {
+    let status: 'pending' | 'claimed' | 'locked' = 'locked';
+    let unlocked = false;
+    
+    if (claimedIds.includes(achievement.id)) {
+      status = 'claimed';
+      unlocked = true;
+    } else if (pendingIds.includes(achievement.id)) {
+      status = 'pending';
+      unlocked = true; // Still considered unlocked, just not claimed
+    }
+    
+    // Calculate progress for locked achievements
+    const progress = status === 'locked' ? calculateAchievementProgress(achievement, userProgress) : 100;
+    
+    return {
+      ...achievement,
+      unlocked,
+      status,
+      progress
+    };
+  });
+}
+
+/**
+ * Calculate progress percentage toward an achievement
+ */
+function calculateAchievementProgress(achievement: any, userProgress: any): number {
+  if (!userProgress) return 0;
+  
+  const req = achievement.requirements;
+  
+  // Level-based achievement
+  if (req.level) {
+    return Math.min(100, Math.floor((userProgress.level / req.level) * 100));
+  }
+  
+  // XP-based achievement
+  if (req.totalXp) {
+    return Math.min(100, Math.floor((userProgress.totalXp / req.totalXp) * 100));
+  }
+  
+  // Category level achievement
+  if (req.categoryLevel) {
+    const { category, level } = req.categoryLevel;
+    const userCategoryLevel = userProgress.categoryProgress?.[category]?.level || 1;
+    return Math.min(100, Math.floor((userCategoryLevel / level) * 100));
+  }
+  
+  // Streak-based - for now return 0, we'll improve this when we integrate task data
+  if (req.streakCount) {
+    // TODO: Calculate based on actual task streak data
+    return 0;
+  }
+  
+  return 0;
+}
+
+/**
  * GET /api/achievements
- * 
  * Returns all available achievements with unlock status for the authenticated user.
  */
 export const GET = withAuth<AchievementListData>(
@@ -34,13 +115,19 @@ export const GET = withAuth<AchievementListData>(
       
       // Get query parameters with defensive checks
       const url = new URL(req.url);
-      const unlockedFilter = url.searchParams.get('unlocked') === 'true';
+      const statusFilter = url.searchParams.get('status'); // 'pending', 'claimed', 'locked'
       const typeFilter = url.searchParams.get('type');
       
       if (typeFilter && 
           typeof typeFilter === 'string' && 
           !['strength', 'consistency', 'nutrition', 'milestone'].includes(typeFilter)) {
         return apiError('Invalid achievement type', 400, 'ERR_VALIDATION');
+      }
+      
+      if (statusFilter && 
+          typeof statusFilter === 'string' && 
+          !['pending', 'claimed', 'locked'].includes(statusFilter)) {
+        return apiError('Invalid status filter', 400, 'ERR_VALIDATION');
       }
       
       // Get user progress with defensive error handling
@@ -58,33 +145,50 @@ export const GET = withAuth<AchievementListData>(
         achievements = await getAllAchievementsWithStatus(userProgress);
       } catch (error) {
         console.error('Error getting achievements with status:', error);
-        // Continue with empty achievements rather than failing the request
         achievements = [];
       }
       
-      // Apply filters if any
+      // Apply filters
       let filteredAchievements = achievements;
       
-      if (unlockedFilter) {
+      if (statusFilter) {
         filteredAchievements = filteredAchievements.filter(achievement => 
-          achievement && achievement.unlocked === true
+          achievement && (achievement as any).status === statusFilter
         );
       }
       
-      if (typeFilter && typeof typeFilter === 'string') {
+      if (typeFilter) {
         filteredAchievements = filteredAchievements.filter(
           achievement => achievement && achievement.type === typeFilter
         );
       }
       
-      // Group achievements by type with defensive handling
+      // Calculate stats
+      const totalCount = achievements.length;
+      const claimedCount = achievements.filter(a => (a as any).status === 'claimed').length;
+      const pendingCount = achievements.filter(a => (a as any).status === 'pending').length;
+      const lockedCount = achievements.filter(a => (a as any).status === 'locked').length;
+      
+      console.log('📊 [API] Achievement stats:', {
+        total: totalCount,
+        claimed: claimedCount,
+        pending: pendingCount,
+        locked: lockedCount
+      });
+      
+      // Group achievements by type
       const groupedAchievements = groupAchievementsByType(filteredAchievements);
       
       return apiResponse<AchievementListData>({
-        total: filteredAchievements.length,
-        unlocked: filteredAchievements.filter(a => a && a.unlocked).length,
+        list: filteredAchievements,
+        totalCount,
+        unlockedCount: claimedCount + pendingCount,
+        claimedCount,
+        pendingCount,
+        lockedCount,
         byType: groupedAchievements,
-        all: filteredAchievements
+        total: 0,
+        unlocked: 0
       }, true, 'Achievements retrieved successfully');
     } catch (error) {
       return handleApiError(error, 'Error fetching achievements');
@@ -95,7 +199,6 @@ export const GET = withAuth<AchievementListData>(
 
 /**
  * POST /api/achievements
- * 
  * Claims an achievement if the user meets the requirements.
  */
 export const POST = withAuth<{
@@ -155,7 +258,7 @@ export const POST = withAuth<{
         return handleApiError(error, 'Error fetching user progress');
       }
       
-      // Check if user already has this achievement
+      // Check if user already has this achievement claimed
       const userAchievementIds = Array.isArray(userProgress.achievements) 
         ? userProgress.achievements.map(id => id?.toString() || '')
         : [];
@@ -167,19 +270,24 @@ export const POST = withAuth<{
         }, true, 'Achievement already claimed');
       }
       
-      // Check if user meets requirements
-      let meetsRequirementsResult = false;
-      try {
-        meetsRequirementsResult = meetsRequirements(achievementDef, userProgress);
-      } catch (error) {
-        return handleApiError(error, 'Error checking achievement requirements');
-      }
+      // Check if achievement is pending (eligible to claim)
+      const isPending = userProgress.pendingAchievements?.includes(achievementId) || false;
       
-      if (!meetsRequirementsResult) {
-        return apiResponse({
-          success: false,
-          requirementsMet: false
-        }, false, 'Requirements not met for this achievement');
+      if (!isPending) {
+        // Check if user meets requirements
+        let meetsRequirementsResult = false;
+        try {
+          meetsRequirementsResult = meetsRequirements(achievementDef, userProgress);
+        } catch (error) {
+          return handleApiError(error, 'Error checking achievement requirements');
+        }
+        
+        if (!meetsRequirementsResult) {
+          return apiResponse({
+            success: false,
+            requirementsMet: false
+          }, false, 'Requirements not met for this achievement');
+        }
       }
       
       // Award the achievement

@@ -7,9 +7,6 @@ import QuickStats from './overview/QuickStats';
 import RecentAchievements from './overview/RecentAchievements';
 import CategoryGrid from './categories/CategoryGrid';
 import WeightTracker from './weight/WeightTracker';
-import AchievementGallery from './achievements/AchievementGallery';
-import ProgressChart from './achievements/analytics/ProgressChart';
-import CategoryBreakdown from './achievements/analytics/CategoryBreakdown';
 import { Button } from '@/components/ui/button';
 import { RefreshCw } from 'lucide-react';
 
@@ -55,28 +52,10 @@ export default function ProgressDashboard() {
         <CategoryGrid />
       </section>
 
-      {/* Analytics row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <ProgressChart />
-        <CategoryBreakdown data={null} />
-      </div>
-
       {/* Weight tracking */}
       <section className="space-y-4">
         <h3 className="text-lg font-medium text-kalos-text">Weight Tracking</h3>
         <WeightTracker />
-      </section>
-
-      {/* Recent achievements */}
-      <section className="space-y-4">
-        <h3 className="text-lg font-medium text-kalos-text">Recent Achievements</h3>
-        <RecentAchievements />
-      </section>
-
-      {/* Achievement gallery */}
-      <section className="space-y-4">
-        <h3 className="text-lg font-medium text-kalos-text">All Achievements</h3>
-        <AchievementGallery />
       </section>
     </div>
   );
