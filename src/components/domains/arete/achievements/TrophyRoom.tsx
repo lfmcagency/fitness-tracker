@@ -27,10 +27,10 @@ export default function TrophyRoom({ className = '', showFilters = true }: Troph
 
   // Fetch achievements on mount
   useEffect(() => {
-    if (achievements.length === 0 && !isLoading) {
-      fetchAchievements();
-    }
-  }, [fetchAchievements, achievements.length, isLoading]);
+  if (achievements.length === 0 && !isLoading) {
+    fetchAchievements();
+  }
+}, []); // Empty deps - only run on mount
 
   // Handle claim action - delegates to store
   const handleClaim = async (achievementId: string) => {

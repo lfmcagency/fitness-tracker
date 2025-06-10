@@ -1,5 +1,6 @@
 'use client';
 
+import { Calendar, ListChecks, Utensils, Disc, ArrowUp, ArrowDown, Activity, Award, Zap, Trophy } from 'lucide-react';
 import { useAchievementStore } from '@/store/achievements';
 
 export default function RecentAchievements() {
@@ -10,6 +11,24 @@ export default function RecentAchievements() {
     stats,
     getClaimedAchievements 
   } = useAchievementStore();
+
+  // Icon mapper (same as AchievementTrophy)
+  const getIcon = (iconName: string) => {
+    const iconMap = {
+      calendar: Calendar,
+      'list-checks': ListChecks,
+      utensils: Utensils,
+      disc: Disc,
+      'arrow-up': ArrowUp,
+      'arrow-down': ArrowDown,
+      activity: Activity,
+      award: Award,
+      zap: Zap,
+    };
+    
+    const IconComponent = iconMap[iconName as keyof typeof iconMap] || Trophy;
+    return <IconComponent className="text-lg" />;
+  };
 
   // Loading state
   if (isLoading) {
@@ -89,7 +108,7 @@ export default function RecentAchievements() {
       {recentAchievements.length === 0 ? (
         <div className="text-center py-8">
           <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <span className="text-2xl">🏆</span>
+            <Trophy className="w-8 h-8 text-gray-400" />
           </div>
           <p className="text-gray-500 font-medium">No achievements unlocked yet</p>
           <p className="text-gray-400 text-sm mt-1">Keep training to earn your first achievement!</p>
@@ -105,7 +124,7 @@ export default function RecentAchievements() {
                 {/* Achievement Icon */}
                 <div className="flex-shrink-0">
                   <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center">
-                    <span className="text-lg">{achievement.icon || '🏆'}</span>
+                    {getIcon(achievement.icon || 'trophy')}
                   </div>
                 </div>
                 

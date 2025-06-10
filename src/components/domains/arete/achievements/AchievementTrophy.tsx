@@ -1,5 +1,7 @@
+// src/components/domains/arete/achievements/AchievementTrophy.tsx
 'use client';
 
+import { Calendar, ListChecks, Utensils, Disc, ArrowUp, ArrowDown, Activity, Award, Zap, Trophy } from 'lucide-react';
 import { AchievementWithStatus } from '@/store/achievements';
 import ClaimButton from './ClaimButton';
 
@@ -12,13 +14,30 @@ interface AchievementTrophyProps {
 export default function AchievementTrophy({ achievement, onClaim, onClick }: AchievementTrophyProps) {
   const { status, title, description, type, xpReward, icon, progress } = achievement;
 
+  // Icon mapper
+  const getIcon = (iconName: string) => {
+    const iconMap = {
+      calendar: Calendar,
+      'list-checks': ListChecks,
+      utensils: Utensils,
+      disc: Disc,
+      'arrow-up': ArrowUp,
+      'arrow-down': ArrowDown,
+      activity: Activity,
+      award: Award,
+      zap: Zap,
+    };
+    
+    const IconComponent = iconMap[iconName as keyof typeof iconMap] || Trophy;
+    return <IconComponent className="w-8 h-8" />;
+  };
+
   // Visual state based on achievement status
   const getVisualState = () => {
     switch (status) {
       case 'pending':
         return {
           containerClass: 'bg-gradient-to-br from-yellow-50 to-amber-50 border-2 border-yellow-300 shadow-lg ring-2 ring-yellow-200/50',
-          iconClass: 'text-4xl animate-pulse drop-shadow-lg',
           iconBg: 'bg-gradient-to-br from-yellow-400 to-amber-500',
           titleClass: 'text-yellow-900 font-bold',
           descClass: 'text-yellow-700',
@@ -28,7 +47,6 @@ export default function AchievementTrophy({ achievement, onClaim, onClick }: Ach
       case 'claimed':
         return {
           containerClass: 'bg-white border border-gray-200 shadow-sm hover:shadow-md transition-shadow',
-          iconClass: 'text-4xl',
           iconBg: 'bg-gradient-to-br from-yellow-400 to-amber-500',
           titleClass: 'text-gray-900 font-semibold',
           descClass: 'text-gray-600',
@@ -39,7 +57,6 @@ export default function AchievementTrophy({ achievement, onClaim, onClick }: Ach
       default:
         return {
           containerClass: 'bg-gray-50 border border-gray-200 opacity-60',
-          iconClass: 'text-4xl grayscale',
           iconBg: 'bg-gray-300',
           titleClass: 'text-gray-500',
           descClass: 'text-gray-400',
@@ -78,9 +95,7 @@ export default function AchievementTrophy({ achievement, onClaim, onClick }: Ach
         {/* Trophy icon */}
         <div className="flex justify-center mb-4">
           <div className={`w-16 h-16 ${visual.iconBg} rounded-full flex items-center justify-center shadow-lg`}>
-            <span className={visual.iconClass}>
-              {icon || '🏆'}
-            </span>
+            {getIcon(icon || 'trophy')}
           </div>
         </div>
 
@@ -109,7 +124,7 @@ export default function AchievementTrophy({ achievement, onClaim, onClick }: Ach
             </div>
           )}
 
-          {/* Bottom row: type badge + XP + claim button */}
+          {/* Bottom row: type badge + XP */}
           <div className="flex items-center justify-between mt-4">
             {/* Type badge */}
             <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${getTypeBadgeColor(type)}`}>
@@ -117,11 +132,9 @@ export default function AchievementTrophy({ achievement, onClaim, onClick }: Ach
             </span>
             
             {/* XP reward */}
-            <div className="flex items-center space-x-2">
-              <span className="text-sm font-medium text-gray-600">
-                +{xpReward} XP
-              </span>
-            </div>
+            <span className="text-sm font-medium text-gray-600">
+              +{xpReward} XP
+            </span>
           </div>
 
           {/* Claim button for pending achievements */}

@@ -78,37 +78,24 @@ export const useAchievementStore = create<AchievementState>()(
           }
           
           // Transform API data to include status and canClaim
-          const achievementsWithStatus: AchievementWithStatus[] = (data.data?.all || []).map((achievement: AchievementData) => {
-            // Determine status based on unlocked flag and pending state
-            let status: 'pending' | 'claimed' | 'locked' = 'locked';
-            let canClaim = false;
-            
-            if (achievement.unlocked) {
-              // If unlocked=true, it could be either pending or claimed
-              // We'll need to check if it's in pendingAchievements vs achievements
-              // For now, assume unlocked=true means claimed
-              status = 'claimed';
-            }
-            // TODO: We need API to tell us if it's pending vs claimed
-            // For now, we'll work with what we have
-            
-            return {
-              ...achievement,
-              status,
-              canClaim,
-            };
-          });
+          const achievementsWithStatus: AchievementWithStatus[] = (data.data?.list || []).map((achievement: AchievementData) => {
+  return {
+    ...achievement,
+    status: achievement.status || 'locked', // Use API status directly
+    canClaim: achievement.status === 'pending',
+  };
+});
           
           // Calculate stats
           const stats = {
-            total: achievementsWithStatus.length,
-            claimed: achievementsWithStatus.filter(a => a.status === 'claimed').length,
-            pending: achievementsWithStatus.filter(a => a.status === 'pending').length,
-            locked: achievementsWithStatus.filter(a => a.status === 'locked').length,
-            claimableXp: achievementsWithStatus
-              .filter(a => a.status === 'pending')
-              .reduce((total, a) => total + a.xpReward, 0),
-          };
+  total: data.data?.totalCount || 0,
+  claimed: data.data?.claimedCount || 0,
+  pending: data.data?.pendingCount || 0,
+  locked: data.data?.lockedCount || 0,
+  claimableXp: achievementsWithStatus
+    .filter(a => a.status === 'pending')
+    .reduce((total, a) => total + a.xpReward, 0),
+};
           
           console.log(`✅ [STORE] Loaded ${achievementsWithStatus.length} achievements`, stats);
           

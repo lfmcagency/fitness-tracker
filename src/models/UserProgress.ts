@@ -62,7 +62,7 @@ const userProgressSchema = new Schema<IUserProgress>({
     [ProgressCategoryEnum.pull]: categoryProgressSchema,
     [ProgressCategoryEnum.legs]: categoryProgressSchema,
   },
-  achievements: [{ type: Schema.Types.ObjectId, ref: 'Achievement' }],
+  achievements: [{ type: String }],
   // 🆕 NEW: Pending achievements (unlocked but not claimed)
   pendingAchievements: [{ type: String, default: [] }],
   xpHistory: [xpTransactionSchema],
