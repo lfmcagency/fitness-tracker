@@ -3,7 +3,7 @@
 
 import { useEffect } from 'react'
 import { useNutritionStore } from '@/store/nutrition'
-import { DateNavigator } from '@/components/shared/DateNavigator'
+import { DateSelector } from '@/components/domains/ethos/DateSelector'
 import { TimeBlockContainer } from '@/components/shared/TimeBlockContainer'
 import { ProgressBar } from '@/components/shared/ProgressBar'
 import { StatCard } from '@/components/shared/StatCard'
@@ -38,17 +38,13 @@ export function NutritionTracker() {
   }, [fetchMealsForDate, fetchFoods, selectedDate])
 
   // Handle date change
-  const handleDateChange = (date: Date) => {
-    const dateString = date.toISOString().split('T')[0]
-    setSelectedDate(dateString)
-  }
+  const handleDateChange = (dateString: string) => {
+  setSelectedDate(dateString)
+}
 
   // Calculate current totals and progress
   const dailyTotals = getDailyTotals()
   const goalProgress = getGoalProgress()
-
-  // Get current date as Date object
-  const currentDate = new Date(selectedDate + 'T00:00:00')
 
   if (error) {
     return (
@@ -66,12 +62,10 @@ export function NutritionTracker() {
       {/* Header with date navigation */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Nutrition</h1>
-        <DateNavigator
-          date={currentDate}
-          onDateChange={handleDateChange}
-          useRelativeDates={true}
-          showCalendar={true}
-        />
+        <DateSelector
+  selectedDate={selectedDate}
+  onDateChange={handleDateChange}
+/>
       </div>
 
       {/* Daily macro progress overview */}

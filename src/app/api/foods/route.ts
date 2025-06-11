@@ -5,153 +5,84 @@ import { withAuth, AuthLevel } from "@/lib/auth-utils";
 import { dbConnect } from '@/lib/db';
 import Food from "@/models/Food";
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
+import { isValidObjectId } from "mongoose";
 import { FoodData } from "@/types/api/foodResponses";
-import { CreateFoodRequest } from "@/types/api/foodRequests";
+import { UpdateFoodRequest } from "@/types/api/foodRequests";
 import { convertFoodToResponse } from "@/types/converters/foodConverters";
 import { IFood } from "@/types/models/food";
 
-// Default pagination values
-const DEFAULT_PAGE = 1;
-const DEFAULT_LIMIT = 50;
-const MAX_LIMIT = 100;
-
 /**
- * GET /api/foods
- * Get foods with optional search and pagination
+ * GET /api/foods/[id]
+ * Get a specific food by ID
  */
-export const GET = withAuth<{
-  foods: FoodData[];
-  pagination: {
-    total: number;
-    page: number;
-    limit: number;
-    pages: number;
-  };
-}>(
-  async (req: NextRequest, userId: string) => {
+export const GET = withAuth<FoodData, { id: string }>(
+  async (req: NextRequest, userId: string, context) => {
     try {
       await dbConnect();
       
-      // Get query parameters
-      const url = new URL(req.url);
-      const search = url.searchParams.get('search');
-      const category = url.searchParams.get('category');
+      // Validate food ID parameter
+      const foodId = context?.params?.id;
+      if (!foodId || typeof foodId !== 'string' || foodId.trim() === '') {
+        return apiError('Invalid food ID', 400, 'ERR_INVALID_ID');
+      }
       
-      // Pagination
-      let page = DEFAULT_PAGE;
-      let limit = DEFAULT_LIMIT;
+      // Additional validation for ObjectId format
+      if (!isValidObjectId(foodId)) {
+        return apiError('Invalid food ID format', 400, 'ERR_INVALID_ID');
+      }
       
+      // Find food with defensive error handling
+      let food: IFood | null = null;
       try {
-        const pageParam = url.searchParams.get('page');
-        if (pageParam) {
-          const parsedPage = parseInt(pageParam);
-          if (!isNaN(parsedPage) && parsedPage > 0) {
-            page = parsedPage;
-          }
-        }
+        // Allow access to system foods and user's own foods
+        food = await Food.findOne({
+          _id: foodId,
+          $or: [
+            { isSystemFood: true },
+            { userId: userId }
+          ]
+        }) as IFood | null;
       } catch (error) {
-        console.error('Error parsing page parameter:', error);
+        return handleApiError(error, 'Error querying food database');
       }
       
-      try {
-        const limitParam = url.searchParams.get('limit');
-        if (limitParam) {
-          const parsedLimit = parseInt(limitParam);
-          if (!isNaN(parsedLimit) && parsedLimit > 0) {
-            limit = Math.min(parsedLimit, MAX_LIMIT);
-          }
-        }
-      } catch (error) {
-        console.error('Error parsing limit parameter:', error);
+      if (!food) {
+        return apiError('Food not found', 404, 'ERR_NOT_FOUND');
       }
       
-      const skip = (page - 1) * limit;
+      // Convert to response using converter function
+      const foodResponse = convertFoodToResponse(food);
       
-      // Build query - include system foods and user's custom foods
-      const query: Record<string, any> = {
-        $or: [
-          { isSystemFood: true },
-          { userId: userId }
-        ]
-      };
-      
-      // Add search filter
-      if (search && search.trim()) {
-        const searchRegex = new RegExp(search.trim(), 'i');
-        query.$and = [
-          query.$or ? { $or: query.$or } : {},
-          {
-            $or: [
-              { name: searchRegex },
-              { brand: searchRegex },
-              { description: searchRegex }
-            ]
-          }
-        ];
-        delete query.$or; // Move to $and
-      }
-      
-      // Add category filter
-      if (category && category.trim()) {
-        if (query.$and) {
-          query.$and.push({ category: category.trim() });
-        } else {
-          query.category = category.trim();
-        }
-      }
-      
-      // Get count for pagination
-      let total = 0;
-      try {
-        total = await Food.countDocuments(query);
-      } catch (countError) {
-        console.error('Error counting foods:', countError);
-      }
-      
-      // Get foods
-      let foods: IFood[] = [];
-      try {
-        foods = await Food.find(query)
-          .sort({ name: 1 }) // Sort alphabetically
-          .skip(skip)
-          .limit(limit) as IFood[];
-      } catch (error) {
-        return handleApiError(error, 'Error querying foods database');
-      }
-      
-      // Calculate pagination info
-      const totalPages = Math.max(1, Math.ceil(total / Math.max(1, limit)));
-      
-      // Convert foods to response format
-      const processedFoods = foods.map(food => convertFoodToResponse(food));
-      
-      return apiResponse({
-        foods: processedFoods,
-        pagination: {
-          total,
-          page,
-          limit,
-          pages: totalPages
-        }
-      }, true, `Retrieved ${processedFoods.length} foods`);
+      return apiResponse(foodResponse, true, 'Food retrieved successfully');
     } catch (error) {
-      return handleApiError(error, "Error retrieving foods");
+      return handleApiError(error, "Error retrieving food");
     }
   }, 
   AuthLevel.DEV_OPTIONAL
 );
 
 /**
- * POST /api/foods
- * Create a new custom food
+ * PUT /api/foods/[id]
+ * Update a specific food
  */
-export const POST = withAuth<FoodData>(
-  async (req: NextRequest, userId: string) => {
+export const PUT = withAuth<FoodData, { id: string }>(
+  async (req: NextRequest, userId, context) => {
     try {
       await dbConnect();
       
-      // Parse request body
-      let body: CreateFoodRequest;
+      // Validate food ID parameter
+      const foodId = context?.params?.id;
+      if (!foodId || typeof foodId !== 'string' || foodId.trim() === '') {
+        return apiError('Invalid food ID', 400, 'ERR_INVALID_ID');
+      }
+      
+      // Additional validation for ObjectId format
+      if (!isValidObjectId(foodId)) {
+        return apiError('Invalid food ID format', 400, 'ERR_INVALID_ID');
+      }
+      
+      // Parse request body with defensive error handling
+      let body: UpdateFoodRequest;
       try {
         body = await req.json();
       } catch (error) {
@@ -163,49 +94,248 @@ export const POST = withAuth<FoodData>(
         return apiError('Invalid food data', 400, 'ERR_INVALID_DATA');
       }
       
-      // Validate required fields
-      if (!body.name || typeof body.name !== 'string' || body.name.trim() === '') {
-        return apiError('Food name is required', 400, 'ERR_VALIDATION');
-      }
-      
-      // Create food data
-      const foodData = {
-        name: body.name.trim(),
-        brand: body.brand?.trim() || '',
-        description: body.description?.trim() || '',
-        category: body.category?.trim() || 'Other',
-        servingSize: body.servingSize || 100,
-        servingUnit: body.servingUnit || 'g',
-        protein: body.protein || 0,
-        carbs: body.carbs || 0,
-        fat: body.fat || 0,
-        calories: body.calories || 0,
-        barcode: body.barcode?.trim() || '',
-        userId, // Associate with current user
-        isSystemFood: false // User-created foods are not system foods
-      };
-      
-      // Auto-calculate calories if not provided
-      if (!foodData.calories && (foodData.protein || foodData.carbs || foodData.fat)) {
-        foodData.calories = Math.round(
-          (foodData.protein * 4) + (foodData.carbs * 4) + (foodData.fat * 9)
-        );
-      }
-      
-      // Create food
-      let newFood: IFood;
+      // Find food to update with defensive error handling
+      let food: IFood | null = null;
       try {
-        newFood = await Food.create(foodData) as IFood;
+        // Only allow users to update their own foods (not system foods)
+        food = await Food.findOne({
+          _id: foodId,
+          userId: userId,
+          isSystemFood: false
+        }) as IFood | null;
       } catch (error) {
-        return handleApiError(error, 'Error creating food in database');
+        return handleApiError(error, 'Error querying food database');
       }
       
-      // Convert to response format
-      const foodResponse = convertFoodToResponse(newFood);
+      if (!food) {
+        return apiError('Food not found or you do not have permission to update it', 404, 'ERR_NOT_FOUND');
+      }
       
-      return apiResponse(foodResponse, true, 'Food created successfully', 201);
+      // Prepare update data with validation
+      const updateData: Record<string, any> = {};
+      
+      // Validate name
+      if (body.name !== undefined) {
+        if (typeof body.name === 'string' && body.name.trim() !== '') {
+          updateData.name = body.name.trim();
+        } else {
+          return apiError('Name must be a non-empty string', 400, 'ERR_VALIDATION');
+        }
+      }
+      
+      // Validate description
+      if (body.description !== undefined) {
+        if (typeof body.description === 'string') {
+          updateData.description = body.description.trim();
+        } else if (body.description === null) {
+          updateData.description = '';
+        } else {
+          return apiError('Description must be a string or null', 400, 'ERR_VALIDATION');
+        }
+      }
+      
+      // Validate macros with numeric parsing
+      if (body.protein !== undefined) {
+        let protein;
+        if (typeof body.protein === 'string') {
+          protein = parseFloat(body.protein);
+        } else if (typeof body.protein === 'number') {
+          protein = body.protein;
+        } else {
+          return apiError('Protein must be a number', 400, 'ERR_VALIDATION');
+        }
+        
+        if (isNaN(protein) || protein < 0) {
+          return apiError('Protein must be a non-negative number', 400, 'ERR_VALIDATION');
+        }
+        
+        updateData.protein = protein;
+      }
+      
+      if (body.carbs !== undefined) {
+        let carbs;
+        if (typeof body.carbs === 'string') {
+          carbs = parseFloat(body.carbs);
+        } else if (typeof body.carbs === 'number') {
+          carbs = body.carbs;
+        } else {
+          return apiError('Carbs must be a number', 400, 'ERR_VALIDATION');
+        }
+        
+        if (isNaN(carbs) || carbs < 0) {
+          return apiError('Carbs must be a non-negative number', 400, 'ERR_VALIDATION');
+        }
+        
+        updateData.carbs = carbs;
+      }
+      
+      if (body.fat !== undefined) {
+        let fat;
+        if (typeof body.fat === 'string') {
+          fat = parseFloat(body.fat);
+        } else if (typeof body.fat === 'number') {
+          fat = body.fat;
+        } else {
+          return apiError('Fat must be a number', 400, 'ERR_VALIDATION');
+        }
+        
+        if (isNaN(fat) || fat < 0) {
+          return apiError('Fat must be a non-negative number', 400, 'ERR_VALIDATION');
+        }
+        
+        updateData.fat = fat;
+      }
+      
+      if (body.calories !== undefined) {
+        let calories;
+        if (typeof body.calories === 'string') {
+          calories = parseFloat(body.calories);
+        } else if (typeof body.calories === 'number') {
+          calories = body.calories;
+        } else {
+          return apiError('Calories must be a number', 400, 'ERR_VALIDATION');
+        }
+        
+        if (isNaN(calories) || calories < 0) {
+          return apiError('Calories must be a non-negative number', 400, 'ERR_VALIDATION');
+        }
+        
+        updateData.calories = calories;
+      }
+      
+      // Validate serving size
+      if (body.servingSize !== undefined) {
+        let servingSize;
+        if (typeof body.servingSize === 'string') {
+          servingSize = parseFloat(body.servingSize);
+        } else if (typeof body.servingSize === 'number') {
+          servingSize = body.servingSize;
+        } else {
+          return apiError('Serving size must be a number', 400, 'ERR_VALIDATION');
+        }
+        
+        if (isNaN(servingSize) || servingSize <= 0) {
+          return apiError('Serving size must be a positive number', 400, 'ERR_VALIDATION');
+        }
+        
+        updateData.servingSize = servingSize;
+      }
+      
+      // Validate serving unit
+      if (body.servingUnit !== undefined) {
+        if (typeof body.servingUnit === 'string' && body.servingUnit.trim() !== '') {
+          const validUnits = ['g', 'ml', 'oz', 'cup', 'tbsp', 'tsp', 'piece'];
+          const unit = body.servingUnit.toLowerCase().trim();
+          
+          if (validUnits.includes(unit)) {
+            updateData.servingUnit = unit;
+          } else {
+            return apiError(`Invalid serving unit. Valid units: ${validUnits.join(', ')}`, 400, 'ERR_VALIDATION');
+          }
+        } else {
+          return apiError('Serving unit must be a non-empty string', 400, 'ERR_VALIDATION');
+        }
+      }
+      
+      // Validate category
+      if (body.category !== undefined) {
+        if (typeof body.category === 'string') {
+          updateData.category = body.category.trim() || 'Other';
+        } else if (body.category === null) {
+          updateData.category = 'Other';
+        } else {
+          return apiError('Category must be a string or null', 400, 'ERR_VALIDATION');
+        }
+      }
+      
+      // Validate brand if provided
+      if (body.brand !== undefined) {
+        if (typeof body.brand === 'string') {
+          updateData.brand = body.brand.trim();
+        } else if (body.brand === null) {
+          updateData.brand = '';
+        } else {
+          return apiError('Brand must be a string or null', 400, 'ERR_VALIDATION');
+        }
+      }
+      
+      // Update food with defensive error handling
+      let updatedFood: IFood | null = null;
+      try {
+        updatedFood = await Food.findByIdAndUpdate(
+          foodId,
+          { $set: updateData },
+          { new: true, runValidators: true }
+        ) as IFood | null;
+      } catch (error) {
+        return handleApiError(error, 'Error updating food in database');
+      }
+      
+      if (!updatedFood) {
+        return apiError('Food not found after update', 404, 'ERR_NOT_FOUND');
+      }
+      
+      // Convert to response using converter function
+      const foodResponse = convertFoodToResponse(updatedFood);
+      
+      return apiResponse(foodResponse, true, 'Food updated successfully');
     } catch (error) {
-      return handleApiError(error, "Error creating food");
+      return handleApiError(error, "Error updating food");
+    }
+  }, 
+  AuthLevel.DEV_OPTIONAL
+);
+
+/**
+ * DELETE /api/foods/[id]
+ * Delete a specific food
+ */
+export const DELETE = withAuth<{ success: boolean; id: string }, { id: string }>(
+  async (req: NextRequest, userId, context) => {
+    try {
+      await dbConnect();
+      
+      // Validate food ID parameter
+      const foodId = context?.params?.id;
+      if (!foodId || typeof foodId !== 'string' || foodId.trim() === '') {
+        return apiError('Invalid food ID', 400, 'ERR_INVALID_ID');
+      }
+      
+      // Additional validation for ObjectId format
+      if (!isValidObjectId(foodId)) {
+        return apiError('Invalid food ID format', 400, 'ERR_INVALID_ID');
+      }
+      
+      // Find food to delete with defensive error handling
+      let food: IFood | null = null;
+      try {
+        // Only allow users to delete their own foods (not system foods)
+        food = await Food.findOne({
+          _id: foodId,
+          userId: userId,
+          isSystemFood: false
+        }) as IFood | null;
+      } catch (error) {
+        return handleApiError(error, 'Error querying food database');
+      }
+      
+      if (!food) {
+        return apiError('Food not found or you do not have permission to delete it', 404, 'ERR_NOT_FOUND');
+      }
+      
+      // Delete food with defensive error handling
+      try {
+        await Food.deleteOne({ _id: foodId });
+      } catch (error) {
+        return handleApiError(error, 'Error deleting food from database');
+      }
+      
+      return apiResponse({
+        success: true,
+        id: foodId
+      }, true, 'Food deleted successfully');
+    } catch (error) {
+      return handleApiError(error, "Error deleting food");
     }
   }, 
   AuthLevel.DEV_OPTIONAL

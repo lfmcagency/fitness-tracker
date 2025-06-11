@@ -63,16 +63,19 @@ export const POST = withRoleProtection(['admin'])(async (req: NextRequest) => {
 
         // Transform the data
         const foodData = {
-          name: row.name,
-          protein: parseFloat(row.protein) || 0,
-          carbs: parseFloat(row.carbs) || 0,
-          fats: parseFloat(row.fats) || 0,
-          calories: parseFloat(row.calories) || 0,
-          unit: row.unit || 'g',
-          servingSize: parseFloat(row.servingSize || row.serving_size) || 100,
-          brand: row.brand || '',
-          category: row.category || ''
-        };
+  name: row.name,
+  brand: row.brand || undefined,
+  description: row.description || undefined,
+  category: row.category || 'Other',
+  servingSize: parseFloat(row.servingSize || row.serving_size) || 100,
+  servingUnit: row.servingUnit || 'g',
+  protein: parseFloat(row.protein) || 0,
+  carbs: parseFloat(row.carbs) || 0,
+  fat: parseFloat(row.fat) || 0,
+  calories: parseFloat(row.calories) || 0,
+  barcode: row.barcode || undefined,
+  isSystemFood: false  // Mark as custom food
+};
 
         // Check if food already exists
         const existing = await Food.findOne({ name: foodData.name });

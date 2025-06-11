@@ -49,10 +49,10 @@ export function FoodSearchModal({ isOpen, onClose, onSelectFood }: FoodSearchMod
   }
 
   const handleCreateFood = () => {
-  setShowCreateForm(false)
-  // Refresh foods list after creation
-  fetchFoods(searchQuery)
-}
+    setShowCreateForm(false)
+    // Refresh foods list after creation
+    fetchFoods(searchQuery)
+  }
 
   const handleSelectFood = (food: FoodData) => {
     setSelectedFood(food)
@@ -125,20 +125,24 @@ export function FoodSearchModal({ isOpen, onClose, onSelectFood }: FoodSearchMod
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-4xl max-h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>Add Food to Meal</DialogTitle>
         </DialogHeader>
 
         <div className="flex-1 overflow-hidden space-y-4">
           {/* Search */}
-          <SearchInput
-            value={searchQuery}
-            onChange={setSearchQuery}
-            onSearch={handleSearch}
-            placeholder="Search foods..."
-            showClear={true}
-          />
+          
+
+          {/* Create custom food form - outside the scrolling area */}
+          {showCreateForm && (
+            <div className="mb-4">
+              <FoodCreator
+                onSave={handleCreateFood}
+                onCancel={() => setShowCreateForm(false)}
+              />
+            </div>
+          )}
 
           {/* Main content */}
           {selectedFood ? (
@@ -236,28 +240,6 @@ export function FoodSearchModal({ isOpen, onClose, onSelectFood }: FoodSearchMod
               </div>
             </div>
           )}
-
-        {/* Create custom food form */}
-        {showCreateForm && (
-  <div className="mt-4 border-2 border-red-500 p-4">
-    <p>Debug: showCreateForm is true</p>
-    <div className="border border-blue-500 p-2">
-      <p>About to render FoodCreator...</p>
-      {(() => {
-        try {
-          return (
-            <FoodCreator
-              onSave={handleCreateFood}
-              onCancel={() => setShowCreateForm(false)}
-            />
-          );
-        } catch (error) {
-          return <p>FoodCreator crashed: {String(error)}</p>;
-        }
-      })()}
-    </div>
-  </div>
-)}
         </div>
 
         {/* Footer actions */}

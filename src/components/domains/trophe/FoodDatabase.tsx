@@ -141,13 +141,6 @@ export function FoodDatabase() {
       {/* Search and Table */}
       <Card className="p-6">
         <div className="space-y-4">
-          <SearchInput
-            value={searchQuery}
-            onChange={setSearchQuery}
-            onSearch={handleSearch}
-            placeholder="Search foods by name, brand, or category..."
-            showClear={true}
-          />
 
           <DataTable
             data={foods}
@@ -172,9 +165,13 @@ export function FoodDatabase() {
                     size="sm"
                     onClick={async () => {
                       if (confirm(`Delete "${food.name}"?`)) {
-                        // TODO: Add delete functionality to store
-                        console.log('Delete food:', food.id)
-                      }
+                      const { deleteFood } = useNutritionStore.getState()
+                      const success = await deleteFood(food.id)
+                      if (success) {
+                      // Refresh the list to show the deletion
+                      fetchFoods(searchQuery)
+                    }
+                  }
                     }}
                     className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
                   >
