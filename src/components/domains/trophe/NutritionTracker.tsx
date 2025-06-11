@@ -18,15 +18,24 @@ export function NutritionTracker() {
     isLoading,
     error,
     macroGoals,
+    fetchMealsForDate,
+    fetchFoods,
     getDailyTotals,
     getGoalProgress,
     getMealsForTimeBlock
   } = useNutritionStore()
 
-  // Fetch meals when component mounts or date changes
+  // Fetch data when component mounts
   useEffect(() => {
-    // Initial fetch will happen via setSelectedDate since that triggers fetchMealsForDate
-  }, [])
+    const initData = async () => {
+      await Promise.all([
+        fetchMealsForDate(selectedDate),
+        fetchFoods() // This was missing
+      ])
+    }
+    
+    initData()
+  }, [fetchMealsForDate, fetchFoods, selectedDate])
 
   // Handle date change
   const handleDateChange = (date: Date) => {

@@ -49,10 +49,10 @@ export function FoodSearchModal({ isOpen, onClose, onSelectFood }: FoodSearchMod
   }
 
   const handleCreateFood = () => {
-    setShowCreateForm(false)
-    // Refresh foods list
-    fetchFoods(searchQuery)
-  }
+  setShowCreateForm(false)
+  // Refresh foods list after creation
+  fetchFoods(searchQuery)
+}
 
   const handleSelectFood = (food: FoodData) => {
     setSelectedFood(food)
@@ -237,21 +237,27 @@ export function FoodSearchModal({ isOpen, onClose, onSelectFood }: FoodSearchMod
             </div>
           )}
 
-          {/* Create custom food form */}
-          {showCreateForm && (
-            <Card className="p-4 border-2 border-green-200 bg-green-50/50">
-              <h4 className="font-medium mb-3">Add Custom Food</h4>
-              <div className="text-sm text-gray-600 mb-2">
-                This is a simplified form. For now, you can close this and search for existing foods.
-              </div>
-              <Button 
-                variant="outline" 
-                onClick={() => setShowCreateForm(false)}
-              >
-                Cancel
-              </Button>
-            </Card>
-          )}
+        {/* Create custom food form */}
+        {showCreateForm && (
+  <div className="mt-4 border-2 border-red-500 p-4">
+    <p>Debug: showCreateForm is true</p>
+    <div className="border border-blue-500 p-2">
+      <p>About to render FoodCreator...</p>
+      {(() => {
+        try {
+          return (
+            <FoodCreator
+              onSave={handleCreateFood}
+              onCancel={() => setShowCreateForm(false)}
+            />
+          );
+        } catch (error) {
+          return <p>FoodCreator crashed: {String(error)}</p>;
+        }
+      })()}
+    </div>
+  </div>
+)}
         </div>
 
         {/* Footer actions */}
