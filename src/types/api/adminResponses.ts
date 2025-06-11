@@ -1,5 +1,6 @@
 // src/types/api/adminResponses.ts
-import { ApiResponse, PaginatedResponse } from './common'
+import { ApiResponse } from './common'
+import type { PaginatedResponse } from './pagination'
 
 // User types already exist in userResponses.ts, just re-export what we need
 export interface AdminUser {
@@ -10,4 +11,4 @@ export interface AdminUser {
   createdAt: string
 }
 
-export interface AdminUsersResponse extends PaginatedResponse<AdminUser> {}
+export type AdminUsersResponse = PaginatedResponse<AdminUser>

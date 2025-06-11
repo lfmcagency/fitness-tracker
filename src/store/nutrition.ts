@@ -1,248 +1,320 @@
 // src/store/nutrition.ts
 import { create } from 'zustand';
-import { ApiResponse, ApiSuccessResponse, ApiErrorResponse } from '@/types/api/common';
-import type { Meal, Food, FoodDB, MacroGoals } from '@/types';
-import { FoodResponse, FoodListResponse } from '@/types/api/foodResponses';
-import { MealResponse, MealListResponse } from '@/types/api/mealResponses';
+import { FoodData } from '@/types/api/foodResponses';
+import { MealData, MealFoodData } from '@/types/api/mealResponses';
+import { CreateMealRequest, AddFoodToMealRequest } from '@/types/api/mealRequests';
+import { CreateFoodRequest } from '@/types/api/foodRequests';
 
 interface NutritionState {
-  meals: Meal[];
-  foods: FoodDB[];
-  foodCategories: string[];
-  goals: MacroGoals;
-  isLoading: boolean;
-  foodsLoading: boolean;
-  error: string | null;
-  fetchMeals: (date?: string) => Promise<void>;
-  fetchFoods: (options?: {search?: string; category?: string; page?: number; limit?: number}) => Promise<void>;
-  getFoodById: (id: string) => Promise<FoodDB | null>;
-  addFood: (food: Omit<FoodDB, '_id'>) => Promise<FoodDB | null>;
-  updateFood: (id: string, food: Partial<FoodDB>) => Promise<FoodDB | null>;
-  deleteFood: (id: string) => Promise<boolean>;
-  addMeal: (meal: Omit<Meal, 'id' | '_id'>) => Promise<void>;
-  addFoodToMeal: (mealId: string, food: Food) => Promise<void>;
-  removeFoodFromMeal: (mealId: string, foodIndex: number) => Promise<void>;
-  updateGoals: (goals: Partial<MacroGoals>) => void;
-  foodDbToMealFood: (foodDb: FoodDB, amount?: number) => Food;
+  // Core state (simple)
+  meals: MealData[]
+  foods: FoodData[]
+  selectedDate: string
+  isLoading: boolean
+  error: string | null
+  
+  // User goals (loaded from profile)
+  macroGoals: {
+    protein: number
+    carbs: number
+    fat: number
+    calories: number
+  }
+  
+  // Actions (mirror task store pattern)
+  setSelectedDate: (date: string) => void
+  fetchMealsForDate: (date: string) => Promise<void>
+  fetchFoods: (search?: string) => Promise<void>
+  createMeal: (meal: CreateMealRequest) => Promise<MealData | null>
+  updateMeal: (id: string, updates: Partial<MealData>) => Promise<MealData | null>
+  deleteMeal: (id: string) => Promise<boolean>
+  addFoodToMeal: (mealId: string, food: AddFoodToMealRequest) => Promise<void>
+  removeFoodFromMeal: (mealId: string, foodIndex: number) => Promise<void>
+  createFood: (food: CreateFoodRequest) => Promise<FoodData | null>
+  updateFood: (id: string, updates: Partial<FoodData>) => Promise<FoodData | null>
+  deleteFood: (id: string) => Promise<boolean>
+  
+  // Helpers
+  getMealsForTimeBlock: (timeBlock: 'morning' | 'afternoon' | 'evening') => MealData[]
+  getDailyTotals: () => { protein: number, carbs: number, fat: number, calories: number }
+  getGoalProgress: () => { protein: number, carbs: number, fat: number, calories: number } // as percentages
 }
 
-// Helper function to handle API errors
-const handleApiError = (error: unknown): string => {
-  if (error instanceof Error) return error.message;
-  return String(error);
-};
-
 export const useNutritionStore = create<NutritionState>((set, get) => ({
+  // Initial state
   meals: [],
   foods: [],
-  foodCategories: [],
-  goals: {
-    protein: 140,
-    carbs: 350,
-    fat: 90,
-    calories: 3000
-  },
+  selectedDate: new Date().toISOString().split('T')[0],
   isLoading: false,
-  foodsLoading: false,
   error: null,
+  macroGoals: {
+    protein: 140,
+    carbs: 200,
+    fat: 70,
+    calories: 2200
+  },
 
-  fetchMeals: async (date) => {
+  // Actions
+  setSelectedDate: (date: string) => {
+    set({ selectedDate: date });
+    get().fetchMealsForDate(date);
+  },
+
+  fetchMealsForDate: async (date: string) => {
     set({ isLoading: true, error: null });
     try {
-      const queryParams = date ? `?date=${date}` : '';
-      const response = await fetch(`/api/meals${queryParams}`);
+      const response = await fetch(`/api/meals?date=${date}`);
       
       if (!response.ok) {
-        throw new Error(`Failed to fetch meals: ${response.status} ${response.statusText}`);
+        throw new Error(`Failed to fetch meals: ${response.statusText}`);
       }
       
-      const data = await response.json() as MealListResponse;
+      const data = await response.json();
       
       if (data.success) {
-        // Transform API response to match frontend state structure
-        const transformedMeals = data.data.meals.map(meal => ({
-          ...meal,
-          // Ensure backward compatibility by using _id as id if needed
-          id: typeof meal.id === 'number' ? meal.id : meal.id ? parseInt(meal.id, 36) : 0
-        }));
-        
         set({ 
-          meals: transformedMeals,
+          meals: data.data.meals || [],
           isLoading: false
         });
       } else {
-        // Handle API error
-        const errorData = data as ApiErrorResponse;
-        throw new Error(errorData.error.message || 'Failed to fetch meals');
+        throw new Error(data.error?.message || 'Failed to fetch meals');
       }
     } catch (error) {
       console.error('Error fetching meals:', error);
       set({
         isLoading: false,
-        error: handleApiError(error)
+        error: error instanceof Error ? error.message : 'Unknown error'
       });
-      
-      // If in development, provide some mock data for testing
-      if (process.env.NODE_ENV === 'development') {
-        set({
-          meals: [
-            {
-              id: 1,
-              _id: '605c79d2a4c8f32af8abd5d1',
-              name: "Breakfast",
-              time: "08:00",
-              foods: [
-                { name: "Oatmeal", amount: 100, unit: 'g', protein: 13, carbs: 68, fat: 7, calories: 389 },
-                { name: "Protein Shake", amount: 30, unit: 'g', protein: 24, carbs: 3, fat: 2, calories: 120 }
-              ],
-              totals: { protein: 37, carbs: 71, fat: 9, calories: 509 }
-            },
-            {
-              id: 2,
-              _id: '605c79d2a4c8f32af8abd5d2',
-              name: "Lunch",
-              time: "13:00",
-              foods: [
-                { name: "Chicken Breast", amount: 200, unit: 'g', protein: 62, carbs: 0, fat: 7, calories: 330 }
-              ],
-              totals: { protein: 62, carbs: 0, fat: 7, calories: 330 }
-            }
-          ]
-        });
-      }
     }
   },
 
-  fetchFoods: async (options = {}) => {
-    set({ foodsLoading: true, error: null });
+  fetchFoods: async (search?: string) => {
+    set({ isLoading: true, error: null });
     try {
-      // Build query string from options
-      const params = new URLSearchParams();
-      if (options.search) params.append('search', options.search);
-      if (options.category) params.append('category', options.category);
-      if (options.page) params.append('page', options.page.toString());
-      if (options.limit) params.append('limit', options.limit.toString());
-      
-      const queryString = params.toString() ? `?${params.toString()}` : '';
-      const response = await fetch(`/api/foods${queryString}`);
+      const url = search ? `/api/foods?search=${encodeURIComponent(search)}` : '/api/foods';
+      const response = await fetch(url);
       
       if (!response.ok) {
-        throw new Error(`Failed to fetch foods: ${response.status} ${response.statusText}`);
+        throw new Error(`Failed to fetch foods: ${response.statusText}`);
       }
       
-      const data = await response.json() as FoodListResponse;
+      const data = await response.json();
       
       if (data.success) {
         set({ 
-          foods: data.data.foods,
-          foodCategories: (data.data as any).categories || [],
-          foodsLoading: false
+          foods: data.data.foods || [],
+          isLoading: false
         });
       } else {
-        // Handle API error
-        const errorData = data as ApiErrorResponse;
-        throw new Error(errorData.error.message || 'Failed to fetch foods');
+        throw new Error(data.error?.message || 'Failed to fetch foods');
       }
     } catch (error) {
       console.error('Error fetching foods:', error);
       set({
-        foodsLoading: false,
-        error: handleApiError(error)
+        isLoading: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
       });
     }
   },
 
-  getFoodById: async (id: string) => {
+  createMeal: async (meal: CreateMealRequest) => {
     try {
-      // Check if we already have the food in state
-      const cachedFood = get().foods.find(f => f._id === id);
-      if (cachedFood) return cachedFood;
-      
-      // Otherwise fetch it from the API
-      const response = await fetch(`/api/foods/${id}`);
-      
+      const response = await fetch('/api/meals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(meal)
+      });
+
       if (!response.ok) {
-        throw new Error(`Failed to fetch food: ${response.status} ${response.statusText}`);
+        throw new Error(`Failed to create meal: ${response.statusText}`);
       }
-      
-      const data = await response.json() as FoodResponse;
-      
+
+      const data = await response.json();
+
       if (data.success) {
+        // Add to state
+        set(state => ({
+          meals: [...state.meals, data.data]
+        }));
         return data.data;
       } else {
-        // Handle API error
-        const errorData = data as ApiErrorResponse;
-        throw new Error(errorData.error.message || 'Failed to fetch food');
+        throw new Error(data.error?.message || 'Failed to create meal');
       }
     } catch (error) {
-      console.error('Error fetching food:', error);
-      set({ error: handleApiError(error) });
+      console.error('Error creating meal:', error);
+      set({ error: error instanceof Error ? error.message : 'Unknown error' });
       return null;
     }
   },
 
-  addFood: async (food: Omit<FoodDB, '_id'>) => {
+  updateMeal: async (id: string, updates: Partial<MealData>) => {
+    try {
+      const response = await fetch(`/api/meals/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to update meal: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Update in state
+        set(state => ({
+          meals: state.meals.map(meal => 
+            meal.id === id ? data.data : meal
+          )
+        }));
+        return data.data;
+      } else {
+        throw new Error(data.error?.message || 'Failed to update meal');
+      }
+    } catch (error) {
+      console.error('Error updating meal:', error);
+      set({ error: error instanceof Error ? error.message : 'Unknown error' });
+      return null;
+    }
+  },
+
+  deleteMeal: async (id: string) => {
+    try {
+      const response = await fetch(`/api/meals/${id}`, {
+        method: 'DELETE'
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to delete meal: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Remove from state
+        set(state => ({
+          meals: state.meals.filter(meal => meal.id !== id)
+        }));
+        return true;
+      } else {
+        throw new Error(data.error?.message || 'Failed to delete meal');
+      }
+    } catch (error) {
+      console.error('Error deleting meal:', error);
+      set({ error: error instanceof Error ? error.message : 'Unknown error' });
+      return false;
+    }
+  },
+
+  addFoodToMeal: async (mealId: string, food: AddFoodToMealRequest) => {
+    try {
+      const response = await fetch(`/api/meals/${mealId}/foods`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(food)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to add food to meal: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Refresh meals to get updated totals
+        await get().fetchMealsForDate(get().selectedDate);
+      } else {
+        throw new Error(data.error?.message || 'Failed to add food to meal');
+      }
+    } catch (error) {
+      console.error('Error adding food to meal:', error);
+      set({ error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  },
+
+  removeFoodFromMeal: async (mealId: string, foodIndex: number) => {
+    try {
+      const response = await fetch(`/api/meals/${mealId}/foods/${foodIndex}`, {
+        method: 'DELETE'
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to remove food from meal: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Refresh meals to get updated totals  
+        await get().fetchMealsForDate(get().selectedDate);
+      } else {
+        throw new Error(data.error?.message || 'Failed to remove food from meal');
+      }
+    } catch (error) {
+      console.error('Error removing food from meal:', error);
+      set({ error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  },
+
+  createFood: async (food: CreateFoodRequest) => {
     try {
       const response = await fetch('/api/foods', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(food)
       });
-      
+
       if (!response.ok) {
-        throw new Error(`Error adding food: ${response.status} ${response.statusText}`);
+        throw new Error(`Failed to create food: ${response.statusText}`);
       }
-      
-      const data = await response.json() as FoodResponse;
-      
+
+      const data = await response.json();
+
       if (data.success) {
-        // Add new food to state
-        set((state) => ({
+        // Add to foods
+        set(state => ({
           foods: [...state.foods, data.data]
         }));
-        
         return data.data;
       } else {
-        // Handle API error
-        const errorData = data as ApiErrorResponse;
-        throw new Error(errorData.error.message || 'Failed to add food');
+        throw new Error(data.error?.message || 'Failed to create food');
       }
     } catch (error) {
-      console.error('Error adding food:', error);
-      set({ error: handleApiError(error) });
+      console.error('Error creating food:', error);
+      set({ error: error instanceof Error ? error.message : 'Unknown error' });
       return null;
     }
   },
 
-  updateFood: async (id: string, food: Partial<FoodDB>) => {
+  updateFood: async (id: string, updates: Partial<FoodData>) => {
     try {
       const response = await fetch(`/api/foods/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(food)
+        body: JSON.stringify(updates)
       });
-      
+
       if (!response.ok) {
-        throw new Error(`Error updating food: ${response.status} ${response.statusText}`);
+        throw new Error(`Failed to update food: ${response.statusText}`);
       }
-      
-      const data = await response.json() as FoodResponse;
-      
+
+      const data = await response.json();
+
       if (data.success) {
-        // Update food in state
-        set((state) => ({
-          foods: state.foods.map(f => f._id === id ? data.data : f)
+        // Update in foods array
+        set(state => ({
+          foods: state.foods.map(food => 
+            food.id === id ? data.data : food
+          )
         }));
-        
         return data.data;
       } else {
-        // Handle API error
-        const errorData = data as ApiErrorResponse;
-        throw new Error(errorData.error.message || 'Failed to update food');
+        throw new Error(data.error?.message || 'Failed to update food');
       }
     } catch (error) {
       console.error('Error updating food:', error);
-      set({ error: handleApiError(error) });
+      set({ error: error instanceof Error ? error.message : 'Unknown error' });
       return null;
     }
   },
@@ -252,283 +324,68 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
       const response = await fetch(`/api/foods/${id}`, {
         method: 'DELETE'
       });
-      
+
       if (!response.ok) {
-        throw new Error(`Error deleting food: ${response.status} ${response.statusText}`);
+        throw new Error(`Failed to delete food: ${response.statusText}`);
       }
-      
-      const data = await response.json() as ApiResponse;
-      
+
+      const data = await response.json();
+
       if (data.success) {
-        // Remove food from state
-        set((state) => ({
-          foods: state.foods.filter(f => f._id !== id)
+        // Remove from foods array
+        set(state => ({
+          foods: state.foods.filter(food => food.id !== id)
         }));
-        
         return true;
       } else {
-        // Handle API error
-        const errorData = data as ApiErrorResponse;
-        throw new Error(errorData.error.message || 'Failed to delete food');
+        throw new Error(data.error?.message || 'Failed to delete food');
       }
     } catch (error) {
       console.error('Error deleting food:', error);
-      set({ error: handleApiError(error) });
+      set({ error: error instanceof Error ? error.message : 'Unknown error' });
       return false;
     }
   },
 
-  addMeal: async (meal) => {
-    // Generate temporary ID for optimistic update
-    const tempId = Date.now();
-    const tempMeal: Meal = { 
-      ...meal, 
-      id: tempId, 
-      foods: meal.foods || [],
-      totals: meal.totals || { protein: 0, carbs: 0, fat: 0, calories: 0 }
+  // Helpers
+  getMealsForTimeBlock: (timeBlock: 'morning' | 'afternoon' | 'evening') => {
+    const timeRanges = {
+      morning: { start: '00:00', end: '11:59' },
+      afternoon: { start: '12:00', end: '17:59' },
+      evening: { start: '18:00', end: '23:59' }
     };
+
+    const range = timeRanges[timeBlock];
     
-    // Optimistic update
-    set((state) => ({
-      meals: [...state.meals, tempMeal]
-    }));
-    
-    try {
-      // Send to API
-      const response = await fetch('/api/meals', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(meal)
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Error adding meal: ${response.status} ${response.statusText}`);
-      }
-      
-      const data = await response.json() as MealResponse;
-      
-      if (data.success) {
-        // Replace temp meal with real one from server
-        const serverMeal = {
-          ...data.data,
-          id: typeof data.data.id === 'string' ? parseInt(data.data.id, 36) % 100000 : data.data.id
-        };
-        
-        set((state) => ({
-          meals: state.meals.map(m => 
-            m.id === tempId ? { ...serverMeal, id: Number(serverMeal.id) } : m
-          )
-        }));
-      } else {
-        // Handle API error
-        const errorData = data as ApiErrorResponse;
-        throw new Error(errorData.error.message || 'Failed to add meal');
-      }
-    } catch (error) {
-      console.error('Error adding meal:', error);
-      // Remove the meal on error (revert optimistic update)
-      set((state) => ({
-        meals: state.meals.filter(m => m.id !== tempId),
-        error: handleApiError(error)
-      }));
-    }
+    return get().meals.filter(meal => {
+      if (!meal.time) return timeBlock === 'morning'; // Default to morning
+      return meal.time >= range.start && meal.time <= range.end;
+    });
   },
 
-  addFoodToMeal: async (mealId, food) => {
-    // Find the meal to update
-    const meal = get().meals.find(m => m._id === mealId || m.id?.toString() === mealId);
-    if (!meal) {
-      set({ error: `Meal with ID ${mealId} not found` });
-      return;
-    }
+  getDailyTotals: () => {
+    const meals = get().meals;
     
-    // Generate a temporary food object
-    const tempFood = { ...food };
-    
-    // Optimistic update
-    set((state) => ({
-      meals: state.meals.map(meal => {
-        if (meal._id === mealId || meal.id?.toString() === mealId) {
-          // Calculate new totals
-          const newTotals = {
-            protein: (meal.totals?.protein || 0) + (food.protein || 0),
-            carbs: (meal.totals?.carbs || 0) + (food.carbs || 0),
-            fat: (meal.totals?.fat || 0) + (food.fat || 0),
-            calories: (meal.totals?.calories || 0) + (food.calories || 0)
-          };
-          
-          return {
-            ...meal,
-            foods: [...meal.foods, tempFood],
-            totals: newTotals
-          };
-        }
-        return meal;
-      })
-    }));
-    
-    try {
-      // Call API to add food to meal
-      const response = await fetch(`/api/meals/${mealId}/foods`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(food)
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Error adding food: ${response.status} ${response.statusText}`);
+    return meals.reduce((totals, meal) => {
+      if (meal.totals) {
+        totals.protein += meal.totals.protein || 0;
+        totals.carbs += meal.totals.carbs || 0;
+        totals.fat += meal.totals.fat || 0;
+        totals.calories += meal.totals.calories || 0;
       }
-      
-      const data = await response.json() as MealResponse;
-      
-      if (data.success) {
-        // Update with server data to ensure everything is in sync
-        const serverMeal = {
-          ...data.data,
-          id: typeof data.data.id === 'string' ? parseInt(data.data.id, 36) % 100000 : data.data.id
-        };
-        
-        set((state: NutritionState) => ({
-  meals: state.meals.map(m => 
-    (m._id === mealId || m.id?.toString() === mealId) ? { ...serverMeal, id: Number(serverMeal.id) } : m
-  )
-}));
-      } else {
-        throw new Error(data.error?.message || 'Failed to add food to meal');
-      }
-    } catch (error) {
-      console.error('Error adding food to meal:', error);
-      // Revert optimistic update on error
-      set((state) => ({
-        meals: state.meals.map(meal => {
-          if (meal._id === mealId || meal.id?.toString() === mealId) {
-            return {
-              ...meal,
-              foods: meal.foods.filter(f => f !== tempFood)
-            };
-          }
-          return meal;
-        }),
-        error: handleApiError(error)
-      }));
-    }
+      return totals;
+    }, { protein: 0, carbs: 0, fat: 0, calories: 0 });
   },
 
-  removeFoodFromMeal: async (mealId, foodIndex) => {
-    // Find the meal to update
-    const meal = get().meals.find(m => m._id === mealId || m.id?.toString() === mealId);
-    if (!meal) {
-      set({ error: `Meal with ID ${mealId} not found` });
-      return;
-    }
-    
-    // Store the food before removing for potential rollback
-    const foodToRemove = meal.foods[foodIndex];
-    if (!foodToRemove) {
-      set({ error: `Food at index ${foodIndex} not found in meal ${mealId}` });
-      return;
-    }
-    
-    // Calculate totals that will be removed
-    const removedTotals = {
-      protein: foodToRemove.protein || 0,
-      carbs: foodToRemove.carbs || 0,
-      fat: foodToRemove.fat || 0,
-      calories: foodToRemove.calories || 0
-    };
-    
-    // Optimistic update
-    set((state) => ({
-      meals: state.meals.map(meal => {
-        if (meal._id === mealId || meal.id?.toString() === mealId) {
-          // Calculate new totals
-          const newTotals = {
-            protein: Math.max(0, (meal.totals?.protein || 0) - removedTotals.protein),
-            carbs: Math.max(0, (meal.totals?.carbs || 0) - removedTotals.carbs),
-            fat: Math.max(0, (meal.totals?.fat || 0) - removedTotals.fat),
-            calories: Math.max(0, (meal.totals?.calories || 0) - removedTotals.calories)
-          };
-          
-          return {
-            ...meal,
-            foods: meal.foods.filter((_, idx) => idx !== foodIndex),
-            totals: newTotals
-          };
-        }
-        return meal;
-      })
-    }));
-    
-    try {
-      // Call API to remove food from meal
-      const response = await fetch(`/api/meals/${mealId}/foods/${foodIndex}`, {
-        method: 'DELETE'
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Error removing food: ${response.status} ${response.statusText}`);
-      }
-      
-      const data = await response.json() as MealResponse;
-      
-      if (data.success) {
-        // Update with server data to ensure everything is in sync
-        const serverMeal = {
-          ...data.data,
-          id: typeof data.data.id === 'string' ? parseInt(data.data.id, 36) % 100000 : data.data.id
-        };
-        
-        set((state: NutritionState) => ({
-          meals: state.meals.map(m => 
-            (m._id === mealId || m.id?.toString() === mealId) ? { ...serverMeal, id: Number(serverMeal.id) } : m
-          )
-        }));
-      } else {
-        throw new Error(typeof data.error === 'string' ? data.error : 'Failed to remove food from meal');
-      }
-    } catch (error) {
-      console.error('Error removing food from meal:', error);
-      // Revert optimistic update on error
-      set((state) => ({
-        meals: state.meals.map(meal => {
-          if (meal._id === mealId || meal.id?.toString() === mealId) {
-            const updatedFoods = [...meal.foods];
-            updatedFoods.splice(foodIndex, 0, foodToRemove);
-            
-            return {
-              ...meal,
-              foods: updatedFoods
-            };
-          }
-          return meal;
-        }),
-        error: handleApiError(error)
-      }));
-    }
-  },
-
-  updateGoals: (goals) => {
-    // Optimistic update
-    set((state) => ({
-      goals: { ...state.goals, ...goals }
-    }));
-    
-    // We could add API integration for saving goals in the future
-  },
-  
-  foodDbToMealFood: (foodDb: FoodDB, amount?: number): Food => {
-    // Calculate the scaling factor based on the amount
-    const scaleFactor = amount ? amount / foodDb.servingSize : 1;
+  getGoalProgress: () => {
+    const totals = get().getDailyTotals();
+    const goals = get().macroGoals;
     
     return {
-      name: foodDb.name,
-      amount: amount || foodDb.servingSize,
-      unit: foodDb.servingUnit,
-      protein: Math.round((foodDb.protein * scaleFactor) * 10) / 10,
-      carbs: Math.round((foodDb.carbs * scaleFactor) * 10) / 10,
-      fat: Math.round((foodDb.fat * scaleFactor) * 10) / 10,
-      calories: Math.round(foodDb.calories * scaleFactor),
-      foodId: foodDb._id
+      protein: goals.protein > 0 ? Math.round((totals.protein / goals.protein) * 100) : 0,
+      carbs: goals.carbs > 0 ? Math.round((totals.carbs / goals.carbs) * 100) : 0,
+      fat: goals.fat > 0 ? Math.round((totals.fat / goals.fat) * 100) : 0,
+      calories: goals.calories > 0 ? Math.round((totals.calories / goals.calories) * 100) : 0
     };
   }
 }));

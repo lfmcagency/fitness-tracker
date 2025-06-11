@@ -1,26 +1,47 @@
+// src/types/index.ts
+
+// Core API types
 export * from './api/common';
 export * from './api/databaseResponses';
-export * from './dbUtils';
 export * from './api/healthResponses';
-export * from './middleware';
-export type { PaginationParams, PaginationInfo } from './api/pagination';
-export type { PaginatedResponse } from './api/pagination';
-export * from './validation';
+export * from './api/pagination';
+
+// Authentication & User types
+export type {
+  UserProfile as AuthUserProfile,
+  LoginRequest,
+  RegisterRequest,
+  AuthResponse,
+  SessionUser
+} from './api/authResponses';
+export type * from './api/userResponses';
+export type * from './models/user';
+export * from './converters/userConverters';
+
+// Task types
 export type * from './api/taskResponses';
 export type * from './api/taskRequests';
+
+// Exercise types
 export * from './api/exerciseResponses';
 export * from './api/exerciseRequests';
-export type * from './api/userResponses';
-export type * from './models/progress';
-export type * from './models/food';
-export type * from './models/meal';
-export  * from './converters/userConverters';
+
+// Nutrition types (API ONLY - no legacy types)
 export * from './api/foodResponses';
 export * from './api/foodRequests';
 export * from './api/mealResponses';
 export * from './api/mealRequests';
 export * from './converters/foodConverters';
 export * from './converters/mealConverters';
+
+// Progress types
+export type * from './models/progress';
+
+// Utils
+export * from './dbUtils';
+export * from './middleware';
+export * from './validation';
+
 /**
  * Format bytes to human-readable format
  * @param bytes Number of bytes
@@ -39,21 +60,7 @@ export function formatBytes(bytes: number, decimals = 2): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 }
 
-export type {
-  UserProfile as AuthUserProfile,
-  LoginRequest,
-  RegisterRequest,
-  AuthResponse,
-  SessionUser
-} from './api/authResponses';
-
-export type {
-  IWeightEntry,
-  IUserSettings,
-  IUser
-} from './models/user';
-
-// Legacy Daily Routine Types
+// Task-related types (keep these for compatibility)
 export type RecurrencePattern = 'once' | 'daily' | 'weekdays' | 'weekends' | 'weekly' | 'custom';
 export type TaskPriority = 'low' | 'medium' | 'high';
 
@@ -132,63 +139,6 @@ export interface Exercise {
   sets: ExerciseSet[];
   lastSession: LastSession;
   restTime: number;
-}
-
-// Nutrition Types
-export interface MacroGoals {
-  protein: number;
-  carbs: number;
-  fat: number;
-  calories: number;
-}
-
-export interface Food {
-  name: string;
-  amount: number;
-  unit?: string;
-  protein: number;
-  carbs: number;
-  fat: number;
-  calories: number;
-  foodId?: string; // Reference to a FoodDB item
-}
-
-export interface FoodDB {
-  _id?: string;
-  name: string;
-  description?: string;
-  servingSize: number;
-  servingUnit: string;
-  protein: number;
-  carbs: number;
-  fat: number;
-  calories: number;
-  category?: string;
-  isSystemFood: boolean;
-  userId?: string;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export interface Totals {
-  protein: number;
-  carbs: number;
-  fat: number;
-  calories: number;
-}
-
-export interface Meal {
-  _id?: string;
-  id?: number; // For backward compatibility
-  userId?: string;
-  name: string;
-  time: string;
-  date?: Date | string;
-  foods: Food[];
-  totals?: Totals;
-  notes?: string;
-  createdAt?: string;
-  updatedAt?: string;
 }
 
 // Progress Dashboard Types

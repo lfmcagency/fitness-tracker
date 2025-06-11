@@ -22,22 +22,8 @@ export interface ApiErrorResponse {
   };
   timestamp?: string;
 }
+
 /**
  * Standard API response format (union of success and error)
  */
 export type ApiResponse<T = void> = ApiSuccessResponse<T> | ApiErrorResponse; // Default T to void if no data
-
-/**
- * Paginated response wrapper (If used elsewhere)
- */
-export interface PaginatedMetaData {
-  total: number;
-  page: number;
-  limit: number;
-  pages: number;
-}
-
-export interface PaginatedResponse<T> {
-  items: T[];
-  meta: PaginatedMetaData;
-}
