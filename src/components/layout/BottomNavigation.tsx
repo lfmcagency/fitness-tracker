@@ -27,7 +27,7 @@ export default function BottomNavigation({ onQuickAddClick }: BottomNavigationPr
 
   const navItems = [
     {
-      href: "/progress",
+      href: "/dashboard",
       label: "Arete",
       icon: <SisyphusIcon />, // Using the Sisyphus icon for Arete/Progress
       active: isActive("/progress")
