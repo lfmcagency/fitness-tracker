@@ -6,15 +6,16 @@ import { CreateMealRequest, AddFoodToMealRequest } from '@/types/api/mealRequest
 import { CreateFoodRequest } from '@/types/api/foodRequests';
 
 interface NutritionState {
-  // Core state (simple)
+  // Core state
   meals: MealData[]
   foods: FoodData[]
   selectedDate: string
   isLoading: boolean
   error: string | null
   isCurrentUserAdmin: boolean
+  hasCheckedRole: boolean  // Track if we've attempted role check
   
-  // User goals (loaded from profile)
+  // User goals
   macroGoals: {
     protein: number
     carbs: number
@@ -22,7 +23,7 @@ interface NutritionState {
     calories: number
   }
   
-  // Actions (mirror task store pattern)
+  // Actions
   setSelectedDate: (date: string) => void
   fetchMealsForDate: (date: string) => Promise<void>
   fetchFoods: (search?: string) => Promise<void>
@@ -39,7 +40,7 @@ interface NutritionState {
   // Helpers
   getMealsForTimeBlock: (timeBlock: 'morning' | 'afternoon' | 'evening') => MealData[]
   getDailyTotals: () => { protein: number, carbs: number, fat: number, calories: number }
-  getGoalProgress: () => { protein: number, carbs: number, fat: number, calories: number } // as percentages
+  getGoalProgress: () => { protein: number, carbs: number, fat: number, calories: number }
 }
 
 export const useNutritionStore = create<NutritionState>((set, get) => ({
@@ -48,6 +49,7 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
   foods: [],
   selectedDate: new Date().toISOString().split('T')[0],
   isCurrentUserAdmin: false,
+  hasCheckedRole: false,
   isLoading: false,
   error: null,
   macroGoals: {
@@ -57,7 +59,6 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
     calories: 2200
   },
 
-  // Actions
   setSelectedDate: (date: string) => {
     set({ selectedDate: date });
     get().fetchMealsForDate(date);
@@ -93,10 +94,12 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
 
   fetchFoods: async (search?: string) => {
     set({ isLoading: true, error: null });
-    // Fetch user role if we haven't yet
-  if (!get().isCurrentUserAdmin) {
-    await get().fetchUserRole();
-  }
+    
+    // Check user role if we haven't yet
+    if (!get().hasCheckedRole) {
+      await get().fetchUserRole();
+    }
+    
     try {
       const url = search ? `/api/foods?search=${encodeURIComponent(search)}` : '/api/foods';
       const response = await fetch(url);
@@ -124,6 +127,26 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
     }
   },
 
+  fetchUserRole: async () => {
+    set({ hasCheckedRole: true }); // Set this first to prevent infinite loops
+    
+    try {
+      const response = await fetch('/api/user/profile');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          // Fix: role is a string, not an array
+          const isAdmin = data.data.role === 'admin';
+          set({ isCurrentUserAdmin: isAdmin });
+          console.log('User role check:', data.data.role, 'isAdmin:', isAdmin);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching user role:', error);
+      set({ isCurrentUserAdmin: false });
+    }
+  },
+
   createMeal: async (meal: CreateMealRequest) => {
     try {
       const response = await fetch('/api/meals', {
@@ -139,7 +162,6 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
       const data = await response.json();
 
       if (data.success) {
-        // Add to state
         set(state => ({
           meals: [...state.meals, data.data]
         }));
@@ -169,7 +191,6 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
       const data = await response.json();
 
       if (data.success) {
-        // Update in state
         set(state => ({
           meals: state.meals.map(meal => 
             meal.id === id ? data.data : meal
@@ -199,7 +220,6 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
       const data = await response.json();
 
       if (data.success) {
-        // Remove from state
         set(state => ({
           meals: state.meals.filter(meal => meal.id !== id)
         }));
@@ -229,7 +249,6 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
       const data = await response.json();
 
       if (data.success) {
-        // Refresh meals to get updated totals
         await get().fetchMealsForDate(get().selectedDate);
       } else {
         throw new Error(data.error?.message || 'Failed to add food to meal');
@@ -253,7 +272,6 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
       const data = await response.json();
 
       if (data.success) {
-        // Refresh meals to get updated totals  
         await get().fetchMealsForDate(get().selectedDate);
       } else {
         throw new Error(data.error?.message || 'Failed to remove food from meal');
@@ -279,7 +297,6 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
       const data = await response.json();
 
       if (data.success) {
-        // Add to foods
         set(state => ({
           foods: [...state.foods, data.data]
         }));
@@ -309,7 +326,6 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
       const data = await response.json();
 
       if (data.success) {
-        // Update in foods array
         set(state => ({
           foods: state.foods.map(food => 
             food.id === id ? data.data : food
@@ -339,7 +355,6 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
       const data = await response.json();
 
       if (data.success) {
-        // Remove from foods array
         set(state => ({
           foods: state.foods.filter(food => food.id !== id)
         }));
@@ -353,21 +368,6 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
       return false;
     }
   },
-  fetchUserRole: async () => {
-  try {
-    const response = await fetch('/api/user/profile');
-    if (response.ok) {
-      const data = await response.json();
-      if (data.success) {
-        const isAdmin = data.data.role?.includes('admin') || false;
-        set({ isCurrentUserAdmin: isAdmin });
-      }
-    }
-  } catch (error) {
-    console.error('Error fetching user role:', error);
-    set({ isCurrentUserAdmin: false });
-  }
-},
 
   // Helpers
   getMealsForTimeBlock: (timeBlock: 'morning' | 'afternoon' | 'evening') => {
@@ -380,7 +380,7 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
     const range = timeRanges[timeBlock];
     
     return get().meals.filter(meal => {
-      if (!meal.time) return timeBlock === 'morning'; // Default to morning
+      if (!meal.time) return timeBlock === 'morning';
       return meal.time >= range.start && meal.time <= range.end;
     });
   },
