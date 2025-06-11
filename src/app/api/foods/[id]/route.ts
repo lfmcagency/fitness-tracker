@@ -10,6 +10,7 @@ import { FoodData } from "@/types/api/foodResponses"; // Import FoodData, not Fo
 import { UpdateFoodRequest } from "@/types/api/foodRequests";
 import { convertFoodToResponse } from "@/types/converters/foodConverters";
 import { IFood } from "@/types/models/food";
+import User from "@/models/User";
 
 /**
  * GET /api/foods/[id]
@@ -112,9 +113,12 @@ export const PUT = withAuth<FoodData, { id: string }>(
       
       // Check if user has permission to update this food
       // Users can only update their own foods, not system foods
-      if (!food.userId || food.userId.toString() !== userId) {
-        return apiError('You do not have permission to update this food', 403, 'ERR_FORBIDDEN');
-      }
+      const user = await User.findById(userId);
+const isAdmin = user?.role?.includes('admin');
+
+if (!isAdmin && (!food.userId || food.userId.toString() !== userId)) {
+  return apiError('You do not have permission to update this food', 403, 'ERR_FORBIDDEN');
+}
       
       // Create update object with validated fields
       const updates: any = {};
@@ -331,9 +335,11 @@ export const DELETE = withAuth<{ id: string }, { id: string }>(
       
       // Check if user has permission to delete this food
       // Users can only delete their own foods, not system foods
-      if (!food.userId || food.userId.toString() !== userId) {
-        return apiError('You do not have permission to delete this food', 403, 'ERR_FORBIDDEN');
-      }
+      const user = await User.findById(userId);
+      const isAdmin = user?.role?.includes('admin');
+      if (!isAdmin && (!food.userId || food.userId.toString() !== userId)) {
+  return apiError('You do not have permission to delete this food', 403, 'ERR_FORBIDDEN');
+}
       
       // Delete food with defensive error handling
       try {

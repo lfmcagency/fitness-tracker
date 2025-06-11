@@ -12,6 +12,7 @@ interface NutritionState {
   selectedDate: string
   isLoading: boolean
   error: string | null
+  isCurrentUserAdmin: boolean
   
   // User goals (loaded from profile)
   macroGoals: {
@@ -33,6 +34,7 @@ interface NutritionState {
   createFood: (food: CreateFoodRequest) => Promise<FoodData | null>
   updateFood: (id: string, updates: Partial<FoodData>) => Promise<FoodData | null>
   deleteFood: (id: string) => Promise<boolean>
+  fetchUserRole: () => Promise<void>
   
   // Helpers
   getMealsForTimeBlock: (timeBlock: 'morning' | 'afternoon' | 'evening') => MealData[]
@@ -45,6 +47,7 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
   meals: [],
   foods: [],
   selectedDate: new Date().toISOString().split('T')[0],
+  isCurrentUserAdmin: false,
   isLoading: false,
   error: null,
   macroGoals: {
@@ -90,6 +93,10 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
 
   fetchFoods: async (search?: string) => {
     set({ isLoading: true, error: null });
+    // Fetch user role if we haven't yet
+  if (!get().isCurrentUserAdmin) {
+    await get().fetchUserRole();
+  }
     try {
       const url = search ? `/api/foods?search=${encodeURIComponent(search)}` : '/api/foods';
       const response = await fetch(url);
@@ -346,6 +353,21 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
       return false;
     }
   },
+  fetchUserRole: async () => {
+  try {
+    const response = await fetch('/api/user/profile');
+    if (response.ok) {
+      const data = await response.json();
+      if (data.success) {
+        const isAdmin = data.data.role?.includes('admin') || false;
+        set({ isCurrentUserAdmin: isAdmin });
+      }
+    }
+  } catch (error) {
+    console.error('Error fetching user role:', error);
+    set({ isCurrentUserAdmin: false });
+  }
+},
 
   // Helpers
   getMealsForTimeBlock: (timeBlock: 'morning' | 'afternoon' | 'evening') => {

@@ -20,10 +20,14 @@ export interface FoodData {
   createdAt: string;
 }
 
+// Individual food response (still uses ApiResponse wrapper for API calls)
 export type FoodResponse = ApiResponse<FoodData>;
 
-export type FoodListResponse = ApiResponse<{
-  categories: never[];
+// Food list data (direct interface - no wrapper)
+export interface FoodListData {
   foods: FoodData[];
   pagination: PaginationInfo;
-}>;
+}
+
+// Food list response (for API calls)
+export type FoodListResponse = ApiResponse<FoodListData>;

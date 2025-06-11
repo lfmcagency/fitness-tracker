@@ -2,16 +2,23 @@
 export const dynamic = 'force-dynamic';
 
 import { NextRequest } from "next/server";
-import { withRoleProtection } from "@/lib/auth-utils";
+import { withAuth } from "@/lib/auth-utils";
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { dbConnect } from '@/lib/db';
 import Papa from 'papaparse';
 import Food from "@/models/Food";
 import { ImportResult } from '@/types/api/importResponses';
+import User from "@/models/User";
 
-export const POST = withRoleProtection(['admin'])(async (req: NextRequest) => {
+export const POST = withAuth(async (req: NextRequest, userId: string) => {
   try {
     await dbConnect();
+    
+    // Check if user is admin
+    const user = await User.findById(userId);
+    if (!user || !user.role || !user.role.includes('admin')) {
+      return apiError('Admin access required', 403, 'ERR_FORBIDDEN');
+    }
 
     // Get file from FormData
     const formData = await req.formData();
@@ -62,20 +69,21 @@ export const POST = withRoleProtection(['admin'])(async (req: NextRequest) => {
         }
 
         // Transform the data
-        const foodData = {
-  name: row.name,
-  brand: row.brand || undefined,
-  description: row.description || undefined,
-  category: row.category || 'Other',
-  servingSize: parseFloat(row.servingSize || row.serving_size) || 100,
-  servingUnit: row.servingUnit || 'g',
-  protein: parseFloat(row.protein) || 0,
-  carbs: parseFloat(row.carbs) || 0,
-  fat: parseFloat(row.fat) || 0,
-  calories: parseFloat(row.calories) || 0,
-  barcode: row.barcode || undefined,
-  isSystemFood: false  // Mark as custom food
-};
+         const foodData = {
+      name: row.name,
+      brand: row.brand || undefined,
+      description: row.description || undefined,
+      category: row.category || 'Other',
+      servingSize: parseFloat(row.servingSize || row.serving_size) || 100,
+      servingUnit: row.servingUnit || 'g',
+      protein: parseFloat(row.protein) || 0,
+      carbs: parseFloat(row.carbs) || 0,
+      fat: parseFloat(row.fat) || 0,
+      calories: parseFloat(row.calories) || 0,
+      barcode: row.barcode || undefined,
+      userId: null,  // Import as system foods
+      isSystemFood: true  // Make these system foods
+    };
 
         // Check if food already exists
         const existing = await Food.findOne({ name: foodData.name });
