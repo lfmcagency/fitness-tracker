@@ -386,18 +386,26 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
   },
 
   getDailyTotals: () => {
-    const meals = get().meals;
-    
-    return meals.reduce((totals, meal) => {
-      if (meal.totals) {
-        totals.protein += meal.totals.protein || 0;
-        totals.carbs += meal.totals.carbs || 0;
-        totals.fat += meal.totals.fat || 0;
-        totals.calories += meal.totals.calories || 0;
-      }
-      return totals;
-    }, { protein: 0, carbs: 0, fat: 0, calories: 0 });
-  },
+  const meals = get().meals;
+  
+  const totals = meals.reduce((totals, meal) => {
+    if (meal.totals) {
+      totals.protein += meal.totals.protein || 0;
+      totals.carbs += meal.totals.carbs || 0;
+      totals.fat += meal.totals.fat || 0;
+      totals.calories += meal.totals.calories || 0;
+    }
+    return totals;
+  }, { protein: 0, carbs: 0, fat: 0, calories: 0 });
+
+  // Round to 1 decimal place
+  return {
+    protein: Math.round(totals.protein * 10) / 10,
+    carbs: Math.round(totals.carbs * 10) / 10,
+    fat: Math.round(totals.fat * 10) / 10,
+    calories: Math.round(totals.calories)  // Keep calories as whole numbers
+  };
+},
 
   getGoalProgress: () => {
     const totals = get().getDailyTotals();
