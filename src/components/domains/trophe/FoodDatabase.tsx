@@ -13,7 +13,7 @@ import { FoodCreator } from './FoodCreator'
 import { FoodEditor } from './FoodEditor'
 
 export function FoodDatabase() {
-  const { foods, fetchFoods, isLoading } = useNutritionStore()
+  const { foods, fetchFoods, isLoading, isCurrentUserAdmin } = useNutritionStore()
   const [searchQuery, setSearchQuery] = useState('')
   const [isCreating, setIsCreating] = useState(false)
   const [editingFood, setEditingFood] = useState<FoodData | null>(null)
@@ -155,11 +155,11 @@ export function FoodDatabase() {
                   size="sm"
                   onClick={() => handleEditFood(food)}
                   className="h-8 w-8 p-0"
-                  disabled={food.isSystemFood} // Can't edit system foods
+                  disabled={food.isSystemFood && !isCurrentUserAdmin} // admin can edit system foods
                 >
                   <Edit className="w-4 h-4" />
                 </Button>
-                {!food.isSystemFood && (
+               {(!food.isSystemFood || isCurrentUserAdmin) && (
                   <Button
                     variant="ghost"
                     size="sm"
