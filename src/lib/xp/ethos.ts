@@ -1,112 +1,121 @@
-import { Types } from 'mongoose';
-import UserProgress from '@/models/UserProgress';
-import { HydratedDocument } from 'mongoose';
-import { IUserProgress } from '@/types/models/progress';
-
 /**
- * Task completion XP logic for the Ethos domain
- * Handles XP awards for completing tasks and maintaining streaks
+ * Task completion XP calculation rules for the Ethos domain
+ * NO MORE DIRECT XP AWARDING - just calculation logic
  */
 
 /**
  * XP reward configuration for tasks
  */
-export const TASK_XP_REWARDS = {
+export const TASK_XP_RULES = {
   BASE_COMPLETION: 10,
   STREAK_BONUS_PER_DAY: 2,
   MAX_STREAK_BONUS: 50,
-  MILESTONE_7_DAYS: 25,
-  MILESTONE_30_DAYS: 100,
-  MILESTONE_100_DAYS: 500,
-};
-
-/**
- * Result from XP award operations
- */
-export interface TaskXpAwardResult {
-  xpAdded: number;
-  currentLevel: number;
-  previousLevel: number;
-  leveledUp: boolean;
-  totalXp: number;
-}
-
-/**
- * Awards XP for completing a task with streak bonuses
- * @param userId User ID (string or ObjectId)
- * @param taskName Name of the completed task
- * @param streakCount Current streak count (optional)
- * @returns XP award result with level information
- */
-export async function awardTaskCompletionXp(
-  userId: string | Types.ObjectId,
-  taskName: string,
-  streakCount?: number
-): Promise<TaskXpAwardResult> {
-  const userObjectId = typeof userId === 'string' ? new Types.ObjectId(userId) : userId;
-  
-  // Get or create user progress
-  let userProgress = await getUserProgress(userObjectId);
-  
-  // Store previous values
-  const previousXp = userProgress.totalXp;
-  const previousLevel = userProgress.level;
-  
-  // Calculate XP amount
-  const xpAmount = calculateTaskXp(streakCount || 0);
-  
-  // Award XP
-  const leveledUp = await userProgress.addXp(
-    xpAmount,
-    'task_completion',
-    undefined, // No category for tasks
-    `Completed task: ${taskName}${streakCount ? ` (${streakCount} day streak)` : ''}`
-  );
-  
-  return {
-    xpAdded: xpAmount,
-    currentLevel: userProgress.level,
-    previousLevel: previousLevel,
-    leveledUp: leveledUp,
-    totalXp: userProgress.totalXp
-  };
-}
-
-/**
- * Calculates XP amount based on task completion and streak
- * @param streakCount Current streak count
- * @returns Total XP to award
- */
-export function calculateTaskXp(streakCount: number = 0): number {
-  let xpAmount = TASK_XP_REWARDS.BASE_COMPLETION;
-  
-  // Streak bonus: +2 XP per day in streak, max 50 bonus
-  const streakBonus = Math.min(streakCount * TASK_XP_REWARDS.STREAK_BONUS_PER_DAY, TASK_XP_REWARDS.MAX_STREAK_BONUS);
-  xpAmount += streakBonus;
   
   // Milestone bonuses
-  if (streakCount === 7) {
-    xpAmount += TASK_XP_REWARDS.MILESTONE_7_DAYS;
-  } else if (streakCount === 30) {
-    xpAmount += TASK_XP_REWARDS.MILESTONE_30_DAYS;
-  } else if (streakCount === 100) {
-    xpAmount += TASK_XP_REWARDS.MILESTONE_100_DAYS;
+  MILESTONES: {
+    '7_day_streak': 25,
+    '30_day_streak': 100,
+    '100_day_streak': 500,
+    '50_completions': 75,
+    '100_completions': 200,
+    '250_completions': 300,
+    '500_completions': 500,
+  },
+  
+  // Nutrition-specific bonuses
+  NUTRITION: {
+    'meal_logged': 5,
+    'macro_80_percent': 15,
+    'macro_100_percent': 25,
+  },
+} as const;
+
+/**
+ * Calculate XP amount for task completion
+ * Used by the main XP coordinator when processing events
+ */
+export function calculateTaskCompletionXp(
+  baseSource: string,
+  streakCount: number = 0,
+  milestoneHit?: string,
+  currentMetric?: string
+): number {
+  // Get base XP
+  let xpAmount: number = TASK_XP_RULES.BASE_COMPLETION;
+  
+  // Check for nutrition-specific base amounts
+  if (baseSource in TASK_XP_RULES.NUTRITION) {
+    xpAmount = TASK_XP_RULES.NUTRITION[baseSource as keyof typeof TASK_XP_RULES.NUTRITION];
   }
   
-  return xpAmount;
+  // Streak bonus: +2 XP per day in streak, max 50 bonus
+  const streakBonus = Math.min(
+    streakCount * TASK_XP_RULES.STREAK_BONUS_PER_DAY, 
+    TASK_XP_RULES.MAX_STREAK_BONUS
+  );
+  xpAmount += streakBonus;
+  
+  // Milestone bonus
+  if (milestoneHit && milestoneHit in TASK_XP_RULES.MILESTONES) {
+    xpAmount += TASK_XP_RULES.MILESTONES[milestoneHit as keyof typeof TASK_XP_RULES.MILESTONES];
+  }
+  
+  // Current metric bonus (nutrition goals)
+  if (currentMetric && currentMetric in TASK_XP_RULES.NUTRITION) {
+    xpAmount += TASK_XP_RULES.NUTRITION[currentMetric as keyof typeof TASK_XP_RULES.NUTRITION];
+  }
+  
+  return Math.max(1, xpAmount);
 }
 
 /**
- * Get user's progress document, creating it if it doesn't exist
- * @param userId MongoDB ObjectId of the user
- * @returns UserProgress document
+ * Check if a streak count hits a milestone threshold
  */
-async function getUserProgress(userId: Types.ObjectId): Promise<HydratedDocument<IUserProgress>> {
-  let userProgress = await UserProgress.findOne({ userId });
+export function checkStreakMilestone(streakCount: number): string | null {
+  const milestones = [7, 30, 100];
   
-  if (!userProgress) {
-    userProgress = await UserProgress.createInitialProgress(userId);
+  for (const milestone of milestones) {
+    if (streakCount === milestone) {
+      return `${milestone}_day_streak`;
+    }
   }
   
-  return userProgress;
+  return null;
+}
+
+/**
+ * Check if total completions hit a milestone threshold
+ */
+export function checkCompletionMilestone(totalCompletions: number): string | null {
+  const milestones = [50, 100, 250, 500];
+  
+  for (const milestone of milestones) {
+    if (totalCompletions === milestone) {
+      return `${milestone}_completions`;
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Determine XP adjustments for same-day metric changes (80% → 100% macros)
+ */
+export function calculateMetricAdjustment(
+  previousMetric: string | undefined,
+  currentMetric: string
+): { baseXp: number; adjustment: number } {
+  const currentXp = TASK_XP_RULES.NUTRITION[currentMetric as keyof typeof TASK_XP_RULES.NUTRITION] || 0;
+  
+  if (!previousMetric) {
+    return { baseXp: currentXp, adjustment: 0 };
+  }
+  
+  const previousXp = TASK_XP_RULES.NUTRITION[previousMetric as keyof typeof TASK_XP_RULES.NUTRITION] || 0;
+  
+  // Return the difference (could be positive or negative)
+  return { 
+    baseXp: currentXp, 
+    adjustment: currentXp - previousXp 
+  };
 }

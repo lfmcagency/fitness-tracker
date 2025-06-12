@@ -1,18 +1,15 @@
+// src/store/progress.ts
 import { create } from 'zustand';
 import { ProgressCategory } from '@/lib/category-progress';
 import { 
-  ProgressResponseData, 
-  CategoryProgressData, 
-  AddXpResponseData,
-  HistoryResponseData 
+  ProgressOverviewData,
+  WeightEntryData,
+  ProgressHistoryData,
+  ProgressEventContract,
+  XpAwardResult
 } from '@/types/api/progressResponses';
-import { 
-  WeightHistoryPayload, 
-  AddedWeightEntryPayload 
-} from '@/types/api/weightResponses';
-import { ApiWeightEntry } from '@/types/api/userResponses';
 
-// Base section interface for consistent error isolation
+// Clean data section interface
 interface DataSection<T> {
   data: T | null;
   isLoading: boolean;
@@ -20,53 +17,45 @@ interface DataSection<T> {
   lastFetched: Date | null;
 }
 
-// Weight trends calculation
-interface WeightTrends {
-  totalChange: number;
-  period: number;
-  weeklyRate: number;
-  direction: 'gain' | 'loss' | 'maintain';
-}
-
-// Store state interface - ACHIEVEMENTS REMOVED
+// Store state - achievements removed, events added
 interface ProgressState {
-  // Main progress overview
-  progress: DataSection<ProgressResponseData>;
+  // Core progress data
+  overview: DataSection<ProgressOverviewData>;
   
-  // Category progress for Soma domain
-  categoryProgress: DataSection<{
-    core: CategoryProgressData;
-    push: CategoryProgressData;
-    pull: CategoryProgressData;
-    legs: CategoryProgressData;
-  }>;
-  
-  // Weight tracking
+  // Weight tracking  
   weight: DataSection<{
-    history: ApiWeightEntry[];
-    trends: WeightTrends | null;
-    unit: 'kg' | 'lbs';
+    entries: WeightEntryData[];
+    trends: {
+      totalChange: number;
+      period: number;
+      weeklyRate: number;
+      direction: 'gain' | 'loss' | 'maintain';
+    } | null;
+    unit: 'kg' | 'lb';
   }>;
   
-  // History/analytics
-  history: DataSection<HistoryResponseData> & {
-    timeRange: 'day' | 'week' | 'month' | 'year' | 'all';
+  // History for charts
+  history: DataSection<ProgressHistoryData> & {
+    timeRange: 'day' | 'week' | 'month' | 'year';
     groupBy: 'day' | 'week' | 'month';
     category: string;
   };
   
-  // Actions
-  fetchProgress: () => Promise<void>;
-  fetchCategoryProgress: () => Promise<void>;
-  addXp: (amount: number, source: string, category?: ProgressCategory, details?: string) => Promise<AddXpResponseData | null>;
+  // Event firing methods (what other domains call)
+  fireProgressEvent: (contract: Omit<ProgressEventContract, 'userId'>) => Promise<XpAwardResult | null>;
+  
+  // Data fetching (for dashboard display)
+  fetchOverview: () => Promise<void>;
   fetchWeightHistory: () => Promise<void>;
-  addWeightEntry: (weight: number, date?: Date) => Promise<void>;
-  deleteWeightEntry: (entryId: string) => Promise<void>;
   fetchHistory: (timeRange?: string, groupBy?: string, category?: string) => Promise<void>;
   
-  // Utility actions
+  // Weight management
+  addWeightEntry: (weight: number, date?: Date) => Promise<void>;
+  deleteWeightEntry: (entryId: string) => Promise<void>;
+  
+  // Utilities
   refreshAll: () => Promise<void>;
-  clearError: (section: keyof Pick<ProgressState, 'progress' | 'categoryProgress' | 'weight' | 'history'>) => void;
+  clearError: (section: keyof Pick<ProgressState, 'overview' | 'weight' | 'history'>) => void;
 }
 
 // Helper to create empty data section
@@ -77,34 +66,61 @@ const createDataSection = <T>(): DataSection<T> => ({
   lastFetched: null,
 });
 
-// API base URL helper
 const API_BASE = '/api';
 
 export const useProgressStore = create<ProgressState>((set, get) => ({
-  // Initial state - NO ACHIEVEMENTS
-  progress: createDataSection<ProgressResponseData>(),
-  categoryProgress: createDataSection<{
-    core: CategoryProgressData;
-    push: CategoryProgressData;
-    pull: CategoryProgressData;
-    legs: CategoryProgressData;
-  }>(),
+  // Initial state - clean and simple
+  overview: createDataSection<ProgressOverviewData>(),
   weight: createDataSection<{
-    history: ApiWeightEntry[];
-    trends: WeightTrends | null;
-    unit: 'kg' | 'lbs';
+    entries: WeightEntryData[];
+    trends: any;
+    unit: 'kg' | 'lb';
   }>(),
   history: {
-    ...createDataSection<HistoryResponseData>(),
+    ...createDataSection<ProgressHistoryData>(),
     timeRange: 'month',
     groupBy: 'day',
     category: 'all',
   },
 
-  // Main progress data
-  fetchProgress: async () => {
+  // ==========================================
+  // EVENT FIRING (what other domains call)
+  // ==========================================
+  
+  fireProgressEvent: async (contractData) => {
+    try {
+      console.log('[Progress Store] Firing progress event:', contractData);
+      
+      const response = await fetch(`${API_BASE}/progress/add-xp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(contractData),
+      });
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to process progress event');
+      }
+
+      // Auto-refresh overview after XP award
+      get().fetchOverview();
+      
+      console.log('[Progress Store] Progress event complete:', result.data);
+      return result.data;
+    } catch (error) {
+      console.error('[Progress Store] Failed to fire progress event:', error);
+      return null;
+    }
+  },
+
+  // ==========================================
+  // DATA FETCHING (for display)
+  // ==========================================
+
+  fetchOverview: async () => {
     set((state) => ({
-      progress: { ...state.progress, isLoading: true, error: null }
+      overview: { ...state.overview, isLoading: true, error: null }
     }));
 
     try {
@@ -112,102 +128,25 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
       const result = await response.json();
 
       if (!result.success) {
-        throw new Error(result.message || 'Failed to fetch progress');
+        throw new Error(result.message || 'Failed to fetch progress overview');
       }
 
-      set((state) => ({
-        progress: {
+      set({
+        overview: {
           data: result.data,
           isLoading: false,
           error: null,
           lastFetched: new Date(),
         }
-      }));
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Failed to fetch progress';
-      set((state) => ({
-        progress: { ...state.progress, isLoading: false, error: errorMsg }
-      }));
-    }
-  },
-
-  // Category progress for all categories
-  fetchCategoryProgress: async () => {
-    set((state) => ({
-      categoryProgress: { ...state.categoryProgress, isLoading: true, error: null }
-    }));
-
-    try {
-      const response = await fetch(`${API_BASE}/progress/categories`);
-      const result = await response.json();
-
-      if (!result.success) {
-        throw new Error(result.message || 'Failed to fetch category progress');
-      }
-
-      // Extract individual category data from the categories array
-      const categoriesData = result.data.categories.reduce((acc: any, cat: any) => {
-        acc[cat.category] = { level: cat.level, xp: cat.xp };
-        return acc;
-      }, {});
-
-      set((state) => ({
-        categoryProgress: {
-          data: {
-            core: categoriesData.core || { level: 1, xp: 0 },
-            push: categoriesData.push || { level: 1, xp: 0 },
-            pull: categoriesData.pull || { level: 1, xp: 0 },
-            legs: categoriesData.legs || { level: 1, xp: 0 },
-          },
-          isLoading: false,
-          error: null,
-          lastFetched: new Date(),
-        }
-      }));
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Failed to fetch category progress';
-      set((state) => ({
-        categoryProgress: { ...state.categoryProgress, isLoading: false, error: errorMsg }
-      }));
-    }
-  },
-
-  // XP awarding - THE BIG ONE that other domains call
-  addXp: async (amount: number, source: string, category?: ProgressCategory, details?: string) => {
-    try {
-      const response = await fetch(`${API_BASE}/progress/add-xp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          xpAmount: amount,
-          source,
-          category,
-          details,
-        }),
       });
-
-      const result = await response.json();
-
-      if (!result.success) {
-        throw new Error(result.message || 'Failed to add XP');
-      }
-
-      // Refresh main progress after XP award
-      get().fetchProgress();
-      
-      // If category XP was awarded, refresh category progress too
-      if (category) {
-        get().fetchCategoryProgress();
-      }
-
-      return result.data;
     } catch (error) {
-      console.error('Failed to add XP:', error);
-      return null;
+      const errorMsg = error instanceof Error ? error.message : 'Failed to fetch overview';
+      set((state) => ({
+        overview: { ...state.overview, isLoading: false, error: errorMsg }
+      }));
     }
   },
 
-  // Weight history
   fetchWeightHistory: async () => {
     set((state) => ({
       weight: { ...state.weight, isLoading: true, error: null }
@@ -221,14 +160,12 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
         throw new Error(result.message || 'Failed to fetch weight history');
       }
 
-      const payload: WeightHistoryPayload = result.data;
-
       set({
         weight: {
           data: {
-            history: payload.history,
-            trends: payload.trends as WeightTrends | null,
-            unit: payload.unit,
+            entries: result.data.history || [],
+            trends: result.data.trends || null,
+            unit: result.data.unit || 'kg',
           },
           isLoading: false,
           error: null,
@@ -243,58 +180,6 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
     }
   },
 
-  // Add weight entry
-  addWeightEntry: async (weight: number, date?: Date) => {
-    try {
-      const response = await fetch(`${API_BASE}/progress/weight`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          weight,
-          date: date?.toISOString(),
-        }),
-      });
-
-      const result = await response.json();
-
-      if (!result.success) {
-        throw new Error(result.message || 'Failed to add weight entry');
-      }
-
-      // Refresh weight history after adding
-      get().fetchWeightHistory();
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Failed to add weight entry';
-      set((state) => ({
-        weight: { ...state.weight, error: errorMsg }
-      }));
-    }
-  },
-
-  // Delete weight entry
-  deleteWeightEntry: async (entryId: string) => {
-    try {
-      const response = await fetch(`${API_BASE}/progress/weight/${entryId}`, {
-        method: 'DELETE',
-      });
-
-      const result = await response.json();
-
-      if (!result.success) {
-        throw new Error(result.message || 'Failed to delete weight entry');
-      }
-
-      // Refresh weight history after deleting
-      get().fetchWeightHistory();
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Failed to delete weight entry';
-      set((state) => ({
-        weight: { ...state.weight, error: errorMsg }
-      }));
-    }
-  },
-
-  // Progress history
   fetchHistory: async (timeRange = 'month', groupBy = 'day', category = 'all') => {
     set((state) => ({
       history: { 
@@ -338,19 +223,73 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
     }
   },
 
-  // Utility: refresh all data (NO MORE ACHIEVEMENTS)
+  // ==========================================
+  // WEIGHT MANAGEMENT
+  // ==========================================
+
+  addWeightEntry: async (weight: number, date?: Date) => {
+    try {
+      const response = await fetch(`${API_BASE}/progress/weight`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          weight,
+          date: date?.toISOString(),
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to add weight entry');
+      }
+
+      // Refresh weight history
+      get().fetchWeightHistory();
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Failed to add weight entry';
+      set((state) => ({
+        weight: { ...state.weight, error: errorMsg }
+      }));
+    }
+  },
+
+  deleteWeightEntry: async (entryId: string) => {
+    try {
+      const response = await fetch(`${API_BASE}/progress/weight/${entryId}`, {
+        method: 'DELETE',
+      });
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to delete weight entry');
+      }
+
+      // Refresh weight history
+      get().fetchWeightHistory();
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Failed to delete weight entry';
+      set((state) => ({
+        weight: { ...state.weight, error: errorMsg }
+      }));
+    }
+  },
+
+  // ==========================================
+  // UTILITIES
+  // ==========================================
+
   refreshAll: async () => {
-    const { fetchProgress, fetchCategoryProgress, fetchWeightHistory, fetchHistory } = get();
+    const { fetchOverview, fetchWeightHistory, fetchHistory } = get();
     
     await Promise.allSettled([
-      fetchProgress(),
-      fetchCategoryProgress(),
+      fetchOverview(),
       fetchWeightHistory(),
       fetchHistory(),
     ]);
   },
 
-  // Utility: clear specific section error
   clearError: (section) => {
     set((state) => ({
       [section]: { ...state[section], error: null }

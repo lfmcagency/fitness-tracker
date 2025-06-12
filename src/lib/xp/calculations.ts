@@ -3,7 +3,7 @@ import UserProgress from '@/models/UserProgress';
 import { IUserProgress } from '@/types/models/progress';
 
 /**
- * Shared XP calculation utilities
+ * Shared XP calculation utilities - just math, no awarding
  */
 
 /**

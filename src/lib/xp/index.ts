@@ -1,163 +1,230 @@
+// src/lib/xp/index.ts
 import { Types } from 'mongoose';
-import { checkAchievements, awardAchievements } from '@/lib/achievements';
-import { checkCategoryMilestone, ProgressCategory } from '@/lib/category-progress';
 import { getUserProgress } from './calculations';
-import { HydratedDocument } from 'mongoose';
-import { IUserProgress } from '@/types/models/progress';
+import { ProgressEventContract, XpAwardResult, AchievementEventContract } from '@/types/api/progressResponses';
+import { ProgressCategory } from '@/lib/category-progress';
 
 /**
- * Main XP coordinator for all domains
- * Handles cross-domain XP awards, achievements, and progress tracking
+ * Main Progress domain event handler
+ * Receives events from Ethos, awards XP, checks thresholds, fires Achievement events
  */
+
+// XP calculation rules based on task context
+const XP_RULES = {
+  // Base amounts by source
+  BASE_XP: {
+    'task_completion': 10 as number,
+    'meal_logged': 5 as number,
+    'workout_completion': 50 as number,
+    'exercise_progression': 25 as number,
+  },
+  
+  // Streak multipliers
+  STREAK_BONUS: 2, // +2 XP per day in streak
+  MAX_STREAK_BONUS: 50,
+  
+  // Milestone bonuses
+  MILESTONES: {
+    '7_day_streak': 25,
+    '30_day_streak': 100,
+    '100_day_streak': 500,
+    '50_completions': 75,
+    '100_completions': 200,
+    'macro_80_percent': 15,
+    'macro_100_percent': 25,
+  },
+} as const;
+
+// Achievement thresholds Progress monitors
+const ACHIEVEMENT_THRESHOLDS = {
+  XP: [1000, 5000, 10000, 25000, 50000],
+  LEVEL: [10, 20, 30, 50, 75, 100],
+} as const;
 
 /**
- * Comprehensive result from XP award operations
+ * Main event handler - receives contract from Ethos
  */
-export interface XpAwardResult {
-  previousXp: number;
-  previousLevel: number;
-  totalXp: number;
-  currentLevel: number;
-  xpAdded: number;
-  leveledUp: boolean;
-  xpToNextLevel: number;
-  progressPercent: number;
-  achievements?: {
-    unlocked: Array<any>;
-    count: number;
-    totalXpAwarded: number;
-  };
-  category?: {
-    name: ProgressCategory;
-    previousXp: number;
-    currentXp: number;
-    previousLevel: number;
-    currentLevel: number;
-    leveledUp: boolean;
-    milestone: any | null;
-  };
-}
-
-/**
- * Main XP award function - coordinates all XP awards across domains
- * @param userId User ID (string or ObjectId)
- * @param amount Amount of XP to award
- * @param source Source of the XP (e.g., 'task_completion', 'workout_completion')
- * @param category Optional category for exercise-related XP
- * @param details Optional description/details
- * @returns Comprehensive XP award result
- */
-export async function awardXp(
-  userId: string | Types.ObjectId,
-  amount: number,
-  source: string,
-  category?: ProgressCategory,
-  details?: string
-): Promise<XpAwardResult> {
-  const userObjectId = typeof userId === 'string' ? new Types.ObjectId(userId) : userId;
-
-  let userProgress = await getUserProgress(userObjectId);
-
+export async function handleProgressEvent(contract: ProgressEventContract): Promise<XpAwardResult> {
+  console.log(`[Progress] Handling event ${contract.eventId}:`, contract);
+  
+  const userId = new Types.ObjectId(contract.userId);
+  const userProgress = await getUserProgress(userId);
+  
+  // Store previous values for comparison
   const previousXp = userProgress.totalXp;
   const previousLevel = userProgress.level;
-  let previousCategoryLevel: number | undefined;
-  let previousCategoryXp: number | undefined;
-
-  // Store category progress if category is provided
-  if (category && 
-    userProgress.categoryProgress && 
-    userProgress.categoryProgress[category]) {
-    previousCategoryLevel = userProgress.categoryProgress[category].level;
-    previousCategoryXp = userProgress.categoryXp?.[category] || 0;
-  } else {
-    previousCategoryLevel = 1;
-    previousCategoryXp = 0;
-  }
-
-  // Award XP using the model method
-  const leveledUp = await userProgress.addXp(amount, source, category, details || '');
-
-  // Check for newly unlocked achievements
-  const unlockedAchievements = await checkAndAwardAchievements(userProgress);
-
-  // Calculate next level info
-  const nextLevelXp = userProgress.getNextLevelXp();
-  const xpToNextLevel = userProgress.getXpToNextLevel();
-  const progressPercent = Math.min(
-    100,
-    Math.floor(((userProgress.totalXp - (nextLevelXp - xpToNextLevel)) / xpToNextLevel) * 100)
+  const previousCategoryXp = contract.category ? userProgress.categoryXp[contract.category] : 0;
+  
+  // Calculate XP amount based on contract
+  const xpAmount = calculateXpFromContract(contract);
+  
+  // Award XP to user
+  const leveledUp = await userProgress.addXp(
+    xpAmount,
+    contract.source,
+    contract.category,
+    buildDescription(contract)
   );
-
+  
+  // Build result
   const result: XpAwardResult = {
-    previousXp,
-    previousLevel,
+    xpAwarded: xpAmount,
     totalXp: userProgress.totalXp,
     currentLevel: userProgress.level,
-    xpAdded: amount,
     leveledUp,
-    xpToNextLevel,
-    progressPercent,
+    xpToNextLevel: userProgress.getXpToNextLevel(),
   };
-
-  // Add achievement info if any were unlocked
-  if (unlockedAchievements.achievements.length > 0) {
-    result.achievements = {
-      unlocked: unlockedAchievements.achievements,
-      count: unlockedAchievements.achievements.length,
-      totalXpAwarded: unlockedAchievements.totalXpAwarded,
-    };
-  }
-
-  // Add category info if category was provided
-  if (category && previousCategoryLevel !== undefined && previousCategoryXp !== undefined) {
-    const categoryLeveledUp = userProgress.categoryProgress[category].level > previousCategoryLevel;
-    const currentCategoryXp = userProgress.categoryXp[category];
-
-    const milestone = checkCategoryMilestone(category, previousCategoryXp, currentCategoryXp);
-
-    result.category = {
-      name: category,
-      previousXp: previousCategoryXp,
-      currentXp: currentCategoryXp,
-      previousLevel: previousCategoryLevel,
-      currentLevel: userProgress.categoryProgress[category].level,
+  
+  // Add category progress if applicable
+  if (contract.category) {
+    const categoryLeveledUp = userProgress.categoryProgress[contract.category].level > 
+      userProgress.calculateLevel(previousCategoryXp);
+    
+    result.categoryProgress = {
+      category: contract.category,
+      xp: userProgress.categoryXp[contract.category],
+      level: userProgress.categoryProgress[contract.category].level,
       leveledUp: categoryLeveledUp,
-      milestone,
     };
   }
-
+  
+  // Check for achievement thresholds and fire events
+  const achievementEvents = checkAchievementThresholds(
+    userId.toString(),
+    previousXp,
+    userProgress.totalXp,
+    previousLevel,
+    userProgress.level
+  );
+  
+  if (achievementEvents.length > 0) {
+    result.achievementsUnlocked = achievementEvents.map(e => e.achievementId);
+    // Fire achievement events (async, don't wait)
+    achievementEvents.forEach(event => fireAchievementEvent(event));
+  }
+  
+  console.log(`[Progress] Event ${contract.eventId} complete: +${xpAmount} XP`);
   return result;
 }
 
 /**
- * Check for and award newly unlocked achievements
- * @param userProgress User progress document
- * @returns Object containing awarded achievements and XP
+ * Calculate XP amount from contract context
  */
-async function checkAndAwardAchievements(userProgress: HydratedDocument<IUserProgress>) {
-  const newlyUnlockedAchievements = await checkAchievements(userProgress);
-
-  if (newlyUnlockedAchievements.length === 0) {
-    return {
-      achievements: [],
-      totalXpAwarded: 0,
-    };
+function calculateXpFromContract(contract: ProgressEventContract): number {
+  let xp = XP_RULES.BASE_XP[contract.source as keyof typeof XP_RULES.BASE_XP] || 10;
+  
+  // Streak bonus
+  if (contract.streakCount > 0) {
+    const streakBonus = Math.min(
+      contract.streakCount * XP_RULES.STREAK_BONUS,
+      XP_RULES.MAX_STREAK_BONUS
+    );
+    xp += streakBonus;
   }
+  
+  // Milestone bonus
+  if (contract.milestoneHit) {
+    const milestoneBonus = XP_RULES.MILESTONES[contract.milestoneHit as keyof typeof XP_RULES.MILESTONES];
+    if (milestoneBonus) xp += milestoneBonus;
+  }
+  
+  // Current metric bonus (80% vs 100% macros)
+  if (contract.currentMetric) {
+    const metricBonus = XP_RULES.MILESTONES[contract.currentMetric as keyof typeof XP_RULES.MILESTONES];
+    if (metricBonus) xp += metricBonus;
+  }
+  
+  // Previous metric adjustment (80% → 100% same day)
+  if (contract.previousMetric && contract.currentMetric) {
+    const prevBonus = XP_RULES.MILESTONES[contract.previousMetric as keyof typeof XP_RULES.MILESTONES] || 0;
+    xp -= prevBonus; // Remove previous bonus, current metric bonus already added
+  }
+  
+  // Soma-specific bonuses
+  if (contract.metadata?.difficulty) {
+    const difficultyMultiplier = {
+      'easy': 0.75,
+      'medium': 1.0,
+      'hard': 1.5,
+    }[contract.metadata.difficulty];
+    xp = Math.floor(xp * difficultyMultiplier);
+  }
+  
+  return Math.max(1, xp); // Minimum 1 XP
+}
 
-  const { updatedProgress, totalXpAwarded } = await awardAchievements(userProgress, newlyUnlockedAchievements);
+/**
+ * Check if XP/level thresholds were crossed and create achievement events
+ */
+function checkAchievementThresholds(
+  userId: string,
+  previousXp: number,
+  newXp: number,
+  previousLevel: number,
+  newLevel: number
+): AchievementEventContract[] {
+  const events: AchievementEventContract[] = [];
+  
+  // Check XP thresholds
+  for (const threshold of ACHIEVEMENT_THRESHOLDS.XP) {
+    if (previousXp < threshold && newXp >= threshold) {
+      events.push({
+        userId,
+        achievementId: `xp_milestone_${threshold}`,
+        achievementType: 'progress',
+        triggeredBy: 'xp_threshold',
+        currentValue: newXp,
+      });
+    }
+  }
+  
+  // Check level thresholds
+  for (const threshold of ACHIEVEMENT_THRESHOLDS.LEVEL) {
+    if (previousLevel < threshold && newLevel >= threshold) {
+      events.push({
+        userId,
+        achievementId: `level_milestone_${threshold}`,
+        achievementType: 'progress',
+        triggeredBy: 'level_threshold',
+        currentValue: newLevel,
+      });
+    }
+  }
+  
+  return events;
+}
 
-  const formattedAchievements = newlyUnlockedAchievements.map((achievement: any) => ({
-    id: achievement.id,
-    title: achievement.title,
-    description: achievement.description,
-    icon: achievement.icon,
-    xpReward: achievement.xpReward,
-    type: achievement.type,
-    badgeColor: achievement.badgeColor,
-  }));
+/**
+ * Fire achievement event (async, fire-and-forget)
+ */
+async function fireAchievementEvent(event: AchievementEventContract): Promise<void> {
+  try {
+    console.log(`[Progress] Firing achievement event:`, event);
+    // TODO: Call achievement system when it's built
+    // await fetch('/api/achievements/unlock', { method: 'POST', body: JSON.stringify(event) });
+  } catch (error) {
+    console.error(`[Progress] Failed to fire achievement event:`, error);
+    // Log for reconstruction later
+  }
+}
 
-  return {
-    achievements: formattedAchievements,
-    totalXpAwarded,
-  };
+/**
+ * Build description for XP transaction
+ */
+function buildDescription(contract: ProgressEventContract): string {
+  let desc = contract.source.replace('_', ' ');
+  
+  if (contract.streakCount > 0) {
+    desc += ` (${contract.streakCount} day streak)`;
+  }
+  
+  if (contract.milestoneHit) {
+    desc += ` - ${contract.milestoneHit.replace('_', ' ')} milestone!`;
+  }
+  
+  if (contract.currentMetric) {
+    desc += ` - ${contract.currentMetric.replace('_', ' ')}`;
+  }
+  
+  return desc;
 }
