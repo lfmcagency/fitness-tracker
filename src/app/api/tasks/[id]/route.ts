@@ -3,11 +3,12 @@ export const dynamic = 'force-dynamic';
 import { NextRequest } from 'next/server';
 import { dbConnect } from '@/lib/db';
 import Task from '@/models/Task';
+import TaskLog from '@/models/TaskLog';
 import { ITask } from '@/types/models/tasks';
 import { withAuth, AuthLevel } from '@/lib/auth-utils';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
-import { convertTaskToTaskData, handleTaskXpAward } from '@/lib/task-utils';
-import { checkTaskStreakMilestones } from '@/lib/achievements/unlock';
+import { convertTaskToTaskData, convertToTaskEventData } from '@/lib/task-utils';
+import { processTaskEvent } from '@/lib/ethos/coordinator';
 import { TaskData } from '@/types';
 import { UpdateTaskRequest } from '@/types/api/taskRequests';
 import { isValidObjectId } from 'mongoose';
@@ -28,7 +29,7 @@ function validateTaskUpdates(updates: Partial<UpdateTaskRequest>): string | unde
   }
   
   if (updates.recurrencePattern !== undefined) {
-    const validPatterns = ['once', 'daily', 'weekdays', 'weekends', 'weekly', 'custom'];
+    const validPatterns = ['once', 'daily', 'custom']; // UPDATED: Only 3 patterns
     if (!validPatterns.includes(updates.recurrencePattern)) {
       return 'Invalid recurrence pattern';
     }
@@ -38,6 +39,24 @@ function validateTaskUpdates(updates: Partial<UpdateTaskRequest>): string | unde
     const validPriorities = ['low', 'medium', 'high'];
     if (!validPriorities.includes(updates.priority)) {
       return 'Invalid priority level';
+    }
+  }
+  
+  // NEW: Validate domain category
+  if (updates.domainCategory !== undefined) {
+    const validCategories = ['ethos', 'trophe', 'soma'];
+    if (!validCategories.includes(updates.domainCategory)) {
+      return 'Invalid domain category';
+    }
+  }
+  
+  // NEW: Validate labels
+  if (updates.labels !== undefined) {
+    if (!Array.isArray(updates.labels)) {
+      return 'Labels must be an array of strings';
+    }
+    if (updates.labels.some(label => typeof label !== 'string' || label.trim().length === 0)) {
+      return 'All labels must be non-empty strings';
     }
   }
   
@@ -62,9 +81,9 @@ function parseCompletionDate(dateString?: string): Date {
 
 /**
  * PATCH /api/tasks/[id]
- * Updates a task with validation and proper streak handling + achievement unlocks
+ * Updates a task with simplified event-driven logic
  */
-export const PATCH = withAuth<TaskData | { task: TaskData; xpAward: any; achievements?: any }, { id: string }>(
+export const PATCH = withAuth<TaskData | { task: TaskData; achievements?: any }, { id: string }>(
   async (req: NextRequest, userId: string, context) => {
     try {
       await dbConnect();
@@ -112,33 +131,22 @@ export const PATCH = withAuth<TaskData | { task: TaskData; xpAward: any; achieve
       const completionDate = parseCompletionDate(updates.completionDate);
       console.log('📅 [TASK] Using completion date:', completionDate.toISOString());
       
-      // Handle completion status changes
+      // Handle completion status changes - SIMPLIFIED
       if (updates.hasOwnProperty('completed')) {
         console.log('🎯 [TASK] Processing completion status change:', updates.completed);
         
         try {
+          // Store previous state for event creation
+          const previousState = {
+            streak: existingTask.currentStreak,
+            totalCompletions: existingTask.totalCompletions
+          };
+          
           if (updates.completed === true) {
             // Mark as completed
             console.log('✅ [TASK] Marking task as completed for date:', completionDate.toISOString());
             existingTask.completeTask(completionDate);
-            console.log('📊 [TASK] After completeTask - completion history:', existingTask.completionHistory.map(d => d.toISOString()));
-            console.log('🔥 [TASK] Current streak:', existingTask.currentStreak);
-            
-            // 🆕 CHECK ACHIEVEMENT MILESTONES 🆕
-            let achievementResult;
-            try {
-              console.log('🏆 [TASK] Checking achievement milestones...');
-              achievementResult = await checkTaskStreakMilestones(userId, existingTask.currentStreak);
-              
-              if (achievementResult.unlockedCount > 0) {
-                console.log(`🎉 [TASK] Unlocked ${achievementResult.unlockedCount} achievements!`, 
-                  achievementResult.achievements.map(a => a.title));
-              }
-            } catch (achievementError) {
-              console.error('💥 [TASK] Error checking achievement milestones:', achievementError);
-              // Continue without failing the task completion
-              achievementResult = { unlockedCount: 0, achievements: [] };
-            }
+            console.log('📊 [TASK] After completeTask - streak:', existingTask.currentStreak, 'total:', existingTask.totalCompletions);
             
             // Apply other updates (except completion-related fields)
             const otherUpdates = { ...updates };
@@ -153,49 +161,54 @@ export const PATCH = withAuth<TaskData | { task: TaskData; xpAward: any; achieve
             await existingTask.save();
             console.log('💾 [TASK] Task saved successfully');
             
-            // Award XP for task completion
+            // Log the completion
+            await TaskLog.logCompletion(
+              existingTask._id,
+              existingTask.user,
+              'completed',
+              completionDate,
+              existingTask,
+              'api'
+            );
+            
+            // 🆕 FIRE EVENT TO COORDINATOR 🆕
             try {
-              const xpResult = await handleTaskXpAward(userId, existingTask);
-              console.log('⚡ [TASK] XP awarded:', xpResult);
+              const eventData = convertToTaskEventData(existingTask, 'completed', completionDate, previousState);
+              const coordinatorResult = await processTaskEvent(eventData);
+              
+              console.log('🎉 [TASK] Coordinator processing complete:', coordinatorResult);
               
               const taskData = convertTaskToTaskData(existingTask, completionDate);
               
               // Build response with achievement info if any were unlocked
-              let message = 'Task marked as completed and streak updated';
-              if (xpResult.leveledUp && achievementResult.unlockedCount > 0) {
-                message = `Task completed! Level up to ${xpResult.newLevel} and ${achievementResult.unlockedCount} achievement(s) unlocked!`;
-              } else if (xpResult.leveledUp) {
-                message = `Task completed! Level up to ${xpResult.newLevel}!`;
-              } else if (achievementResult.unlockedCount > 0) {
-                message = `Task completed and ${achievementResult.unlockedCount} achievement(s) unlocked!`;
+              let message = 'Task marked as completed';
+              if (coordinatorResult.achievementsNotified.length > 0) {
+                message = `Task completed and ${coordinatorResult.achievementsNotified.length} achievement(s) unlocked!`;
               }
               
               return apiResponse({
                 task: taskData,
-                xpAward: xpResult,
-                achievements: achievementResult.unlockedCount > 0 ? achievementResult : undefined
+                achievements: coordinatorResult.achievementsNotified.length > 0 ? {
+                  unlockedCount: coordinatorResult.achievementsNotified.length,
+                  achievements: coordinatorResult.achievementsNotified
+                } : undefined
               }, true, message);
-            } catch (xpError) {
-              console.error('💥 [TASK] Error awarding XP:', xpError);
+              
+            } catch (coordinatorError) {
+              console.error('💥 [TASK] Error processing coordinator event:', coordinatorError);
               
               const taskData = convertTaskToTaskData(existingTask, completionDate);
-              const message = achievementResult.unlockedCount > 0 
-                ? `Task completed and ${achievementResult.unlockedCount} achievement(s) unlocked, but XP could not be awarded`
-                : 'Task marked as completed, but XP could not be awarded';
-                
               return apiResponse({
                 task: taskData,
-                xpAward: null,
-                achievements: achievementResult.unlockedCount > 0 ? achievementResult : undefined
-              }, true, message);
+                achievements: undefined
+              }, true, 'Task completed, but event processing failed');
             }
             
           } else if (updates.completed === false) {
             // Mark as uncompleted
             console.log('❌ [TASK] Marking task as incomplete for date:', completionDate.toISOString());
             existingTask.uncompleteTask(completionDate);
-            console.log('📊 [TASK] After uncompleteTask - completion history:', existingTask.completionHistory.map(d => d.toISOString()));
-            console.log('🔥 [TASK] Current streak:', existingTask.currentStreak);
+            console.log('📊 [TASK] After uncompleteTask - streak:', existingTask.currentStreak, 'total:', existingTask.totalCompletions);
             
             // Apply other updates (except completion-related fields)
             const otherUpdates = { ...updates };
@@ -209,6 +222,26 @@ export const PATCH = withAuth<TaskData | { task: TaskData; xpAward: any; achieve
             // Save the task
             await existingTask.save();
             console.log('💾 [TASK] Task saved successfully');
+            
+            // Log the uncompletion
+            await TaskLog.logCompletion(
+              existingTask._id,
+              existingTask.user,
+              'uncompleted',
+              completionDate,
+              existingTask,
+              'api'
+            );
+            
+            // 🆕 FIRE EVENT TO COORDINATOR (for uncompleted too) 🆕
+            try {
+              const eventData = convertToTaskEventData(existingTask, 'uncompleted', completionDate, previousState);
+              await processTaskEvent(eventData);
+              console.log('✅ [TASK] Uncomplete event processed by coordinator');
+            } catch (coordinatorError) {
+              console.error('💥 [TASK] Error processing coordinator uncomplete event:', coordinatorError);
+              // Continue - uncompletion still succeeded
+            }
             
             const taskData = convertTaskToTaskData(existingTask, completionDate);
             return apiResponse(taskData, true, 'Task marked as incomplete');
@@ -219,7 +252,7 @@ export const PATCH = withAuth<TaskData | { task: TaskData; xpAward: any; achieve
         }
       }
       
-      // Handle other updates (non-completion related)
+      // Handle other updates (non-completion related) - SIMPLIFIED
       try {
         const updatedTask = await Task.findOneAndUpdate(
           { _id: taskId, user: userId },
@@ -331,8 +364,16 @@ export const DELETE = withAuth<{ id: string }, { id: string }>(
         return apiError('Task not found or you do not have permission to delete it', 404, 'ERR_NOT_FOUND');
       }
       
+      // Prevent deletion of system tasks via API
+      if (existingTask.isSystemTask) {
+        return apiError('System tasks cannot be deleted via API', 403, 'ERR_FORBIDDEN');
+      }
+      
       // Delete the task
       await Task.findOneAndDelete({ _id: taskId, user: userId });
+      
+      // NOTE: No need to fire coordinator events for deletions
+      // The task is gone, so no progress implications
       
       return apiResponse({ id: taskId }, true, 'Task deleted successfully');
     } catch (error) {

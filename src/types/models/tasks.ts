@@ -1,10 +1,11 @@
 import mongoose from 'mongoose';
 
-// Define type for recurrence patterns
+// SIMPLIFIED: Only 3 recurrence patterns now
 export type RecurrencePattern = 'once' | 'daily' | 'custom';
 export type TaskPriority = 'low' | 'medium' | 'high';
+export type DomainCategory = 'ethos' | 'trophe' | 'soma';
 
-// Define interface for task methods
+// Define interface for task instance methods
 export interface ITaskMethods {
   calculateStreak(): number;
   completeTask(date: Date): void;
@@ -14,7 +15,13 @@ export interface ITaskMethods {
   resetStreak(): void;
 }
 
-// Define the main task interface
+// Define interface for task static methods
+export interface ITaskStatics {
+  getTotalCompletionsForLabel(userId: mongoose.Types.ObjectId, label: string): Promise<number>;
+  getCurrentStreakForLabel(userId: mongoose.Types.ObjectId, label: string): Promise<number>;
+}
+
+// Define the main task interface with new fields
 export interface ITask extends mongoose.Document {
   _id: mongoose.Types.ObjectId;
   user: mongoose.Types.ObjectId;
@@ -25,12 +32,21 @@ export interface ITask extends mongoose.Document {
   date: Date;
   recurrencePattern: RecurrencePattern;
   customRecurrenceDays: number[];
+  
+  // SIMPLIFIED: Simple counters instead of complex calculations
   currentStreak: number;
-  bestStreak: number;
+  totalCompletions: number;
   lastCompletedDate: Date | null;
+  
+  // NEW: Organization and identification
+  domainCategory: DomainCategory;
+  labels: string[];
+  isSystemTask: boolean;
+  
+  // Existing fields
   category: string;
   priority: TaskPriority;
-  completionHistory: Date[];
+  completionHistory: Date[]; // Kept for backup/recovery only
   createdAt: Date;
   updatedAt: Date;
   
@@ -43,5 +59,5 @@ export interface ITask extends mongoose.Document {
   resetStreak: () => void;
 }
 
-// Define the task model interface
-export interface ITaskModel extends mongoose.Model<ITask, {}, ITaskMethods> {}
+// Define the task model interface with static methods
+export interface ITaskModel extends mongoose.Model<ITask, {}, ITaskMethods>, ITaskStatics {}

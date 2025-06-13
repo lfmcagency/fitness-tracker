@@ -6,7 +6,7 @@ import Task from '@/models/Task';
 import { ITask } from '@/types/models/tasks';
 import { withAuth, AuthLevel } from '@/lib/auth-utils';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
-import { TaskData, PaginationInfo, RecurrencePattern, TaskPriority } from '@/types';
+import { TaskData, PaginationInfo, RecurrencePattern, TaskPriority, DomainCategory } from '@/types';
 import { CreateTaskRequest, TaskQueryParams } from '@/types/api/taskRequests';
 import { convertTaskToTaskData } from '@/lib/task-utils';
 
@@ -35,6 +35,11 @@ export const GET = withAuth<{ data: TaskData[]; pagination: PaginationInfo }>(
       const fromDateParam = url.searchParams.get('from');
       const toDateParam = url.searchParams.get('to');
       const patternParam = url.searchParams.get('pattern') as RecurrencePattern;
+      
+      // NEW: Organization filters
+      const domainCategory = url.searchParams.get('domainCategory') as DomainCategory;
+      const labelsParam = url.searchParams.get('labels'); // Comma-separated
+      const isSystemTaskParam = url.searchParams.get('isSystemTask');
       
       // Parse date parameters
       const fromDate = fromDateParam ? new Date(fromDateParam) : null;
@@ -84,7 +89,7 @@ export const GET = withAuth<{ data: TaskData[]; pagination: PaginationInfo }>(
       let sort = 'date';
       const sortParam = url.searchParams.get('sort');
       if (sortParam && typeof sortParam === 'string' && 
-          ['date', 'name', 'priority', 'category', 'completed'].includes(sortParam)) {
+          ['date', 'name', 'priority', 'category', 'completed', 'currentStreak', 'totalCompletions'].includes(sortParam)) {
         sort = sortParam;
       }
       
@@ -108,8 +113,25 @@ export const GET = withAuth<{ data: TaskData[]; pagination: PaginationInfo }>(
       }
       
       if (patternParam && typeof patternParam === 'string' && 
-          ['once','daily', 'weekdays', 'weekends', 'weekly', 'custom'].includes(patternParam)) {
+          ['once', 'daily', 'custom'].includes(patternParam)) {
         query.recurrencePattern = patternParam;
+      }
+      
+      // NEW: Organization filters
+      if (domainCategory && typeof domainCategory === 'string' && 
+          ['ethos', 'trophe', 'soma'].includes(domainCategory)) {
+        query.domainCategory = domainCategory;
+      }
+      
+      if (labelsParam && typeof labelsParam === 'string') {
+        const labels = labelsParam.split(',').map(l => l.trim()).filter(l => l.length > 0);
+        if (labels.length > 0) {
+          query.labels = { $in: labels };
+        }
+      }
+      
+      if (isSystemTaskParam !== null) {
+        query.isSystemTask = isSystemTaskParam === 'true';
       }
       
       // Date range filter with defensive null checks
@@ -167,11 +189,14 @@ export const GET = withAuth<{ data: TaskData[]; pagination: PaginationInfo }>(
             date: task.date?.toISOString() || new Date().toISOString(),
             recurrencePattern: task.recurrencePattern || 'once',
             currentStreak: task.currentStreak || 0,
-            bestStreak: task.bestStreak || 0,
+            totalCompletions: task.totalCompletions || 0, // NEW
             category: task.category || 'general',
             priority: task.priority || 'medium',
             scheduledTime: task.scheduledTime || '00:00',
-            description: undefined
+            domainCategory: task.domainCategory || 'ethos', // NEW
+            labels: task.labels || [], // NEW
+            isSystemTask: task.isSystemTask || false, // NEW
+            description: task.description || undefined
           });
         }
       }
@@ -198,7 +223,7 @@ export const GET = withAuth<{ data: TaskData[]; pagination: PaginationInfo }>(
 
 /**
  * POST /api/tasks
- * Creates a new task
+ * Creates a new task (simplified for event-driven architecture)
  */
 export const POST = withAuth<TaskData>(
   async (req: NextRequest, userId: string) => {
@@ -235,7 +260,7 @@ export const POST = withAuth<TaskData>(
       // Validate recurrence pattern if provided
       if (taskData.recurrencePattern) {
         if (typeof taskData.recurrencePattern !== 'string' ||
-            !['once','daily', 'weekdays', 'weekends', 'weekly', 'custom'].includes(taskData.recurrencePattern)) {
+            !['once', 'daily', 'custom'].includes(taskData.recurrencePattern)) {
           return apiError('Invalid recurrence pattern', 400, 'ERR_VALIDATION');
         }
         
@@ -260,6 +285,23 @@ export const POST = withAuth<TaskData>(
         return apiError('Invalid priority. Must be low, medium, or high.', 400, 'ERR_VALIDATION');
       }
       
+      // NEW: Validate domain category
+      if (taskData.domainCategory && 
+          (typeof taskData.domainCategory !== 'string' || 
+          !['ethos', 'trophe', 'soma'].includes(taskData.domainCategory))) {
+        return apiError('Invalid domain category. Must be ethos, trophe, or soma.', 400, 'ERR_VALIDATION');
+      }
+      
+      // NEW: Validate labels
+      if (taskData.labels && !Array.isArray(taskData.labels)) {
+        return apiError('Labels must be an array of strings', 400, 'ERR_VALIDATION');
+      }
+      
+      if (taskData.labels && taskData.labels.some((label: any) => 
+          typeof label !== 'string' || label.trim().length === 0)) {
+        return apiError('All labels must be non-empty strings', 400, 'ERR_VALIDATION');
+      }
+      
       // Validate date if provided
       if (taskData.date) {
         const date = new Date(taskData.date);
@@ -277,8 +319,11 @@ export const POST = withAuth<TaskData>(
           user: userId,
           completed: false,
           currentStreak: 0,
-          bestStreak: 0,
+          totalCompletions: 0, // NEW: Initialize counter
           date: taskData.date ? new Date(taskData.date) : new Date(),
+          domainCategory: taskData.domainCategory || 'ethos', // NEW: Default to ethos
+          labels: taskData.labels || [], // NEW: Default to empty array
+          isSystemTask: taskData.isSystemTask || false, // NEW: Default to false
         };
         
         newTask = await Task.create(taskToCreate) as ITask;
@@ -288,6 +333,8 @@ export const POST = withAuth<TaskData>(
       
       // Convert to TaskData format with defensive error handling
       const taskData_result = convertTaskToTaskData(newTask);
+      
+      // NOTE: No event firing for task creation - only completion events matter
       
       return apiResponse(taskData_result, true, 'Task created successfully', 201);
     } catch (error) {

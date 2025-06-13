@@ -31,11 +31,12 @@ export interface ProgressEventContract {
   
   // Additional context for XP calculation
   metadata?: {
-    difficulty?: 'easy' | 'medium' | 'hard';
-    bodyweight?: number;
-    reps?: number;
-    exerciseName?: string;
-  };
+  difficulty?: 'easy' | 'medium' | 'hard';
+  bodyweight?: number;
+  reps?: number;
+  exerciseName?: string;
+  isSystemTask?: boolean;
+}
 }
 
 /**

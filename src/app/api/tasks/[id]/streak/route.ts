@@ -3,17 +3,19 @@ export const dynamic = 'force-dynamic';
 import { NextRequest } from 'next/server';
 import { dbConnect } from '@/lib/db';
 import Task from '@/models/Task';
+import TaskLog from '@/models/TaskLog';
 import { ITask } from '@/types/models/tasks';
 import { withAuth, AuthLevel } from '@/lib/auth-utils';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
-import { checkTaskStreakMilestones } from '@/lib/achievements/unlock';
-import { TaskData, StreakInfo } from '@/types';
+import { convertToTaskEventData } from '@/lib/task-utils';
+import { processTaskEvent } from '@/lib/ethos/coordinator';
+import { StreakInfo } from '@/types';
 import { TaskStreakRequest } from '@/types/api/taskRequests';
 import { isValidObjectId } from 'mongoose';
 
 /**
  * GET /api/tasks/[id]/streak
- * Get streak information for a task
+ * Get streak information for a task (simplified)
  */
 export const GET = withAuth<StreakInfo, { id: string }>(
   async (req: NextRequest, userId: string, context) => {
@@ -26,19 +28,18 @@ export const GET = withAuth<StreakInfo, { id: string }>(
         return apiError('Invalid task ID', 400, 'ERR_INVALID_ID');
       }
       
-      // Additional validation for ObjectId format
       if (!isValidObjectId(taskId)) {
         return apiError('Invalid task ID format', 400, 'ERR_INVALID_ID');
       }
       
-      // Find task by ID with defensive error handling
+      // Find task by ID
       const task = await Task.findOne({ _id: taskId, user: userId }) as ITask | null;
       
       if (!task) {
         return apiError('Task not found', 404, 'ERR_NOT_FOUND');
       }
       
-      // Calculate if the task is due today with defensive date handling
+      // Calculate if the task is due today
       let isDueToday = false;
       try {
         isDueToday = task.isTaskDueToday(new Date());
@@ -51,8 +52,8 @@ export const GET = withAuth<StreakInfo, { id: string }>(
       const streakInfo: StreakInfo = {
         taskId: task._id?.toString() || taskId,
         name: task.name || 'Unknown task',
-        currentStreak: task.currentStreak || 0,
-        bestStreak: task.bestStreak || 0,
+        currentStreak: task.currentStreak || 0, // SIMPLIFIED: Direct from model
+        bestStreak: Math.max(task.currentStreak || 0, task.totalCompletions || 0), // Rough estimate
         lastCompletedDate: task.lastCompletedDate ? task.lastCompletedDate.toISOString() : null,
         isDueToday,
         completionHistory: Array.isArray(task.completionHistory) 
@@ -70,7 +71,7 @@ export const GET = withAuth<StreakInfo, { id: string }>(
 
 /**
  * POST /api/tasks/[id]/streak
- * Update streak for a task + check achievement milestones
+ * Complete a task for streak purposes (simplified - just calls main completion logic)
  */
 export const POST = withAuth<StreakInfo & { achievements?: any }, { id: string }>(
   async (req: NextRequest, userId: string, context) => {
@@ -83,12 +84,11 @@ export const POST = withAuth<StreakInfo & { achievements?: any }, { id: string }
         return apiError('Invalid task ID', 400, 'ERR_INVALID_ID');
       }
       
-      // Additional validation for ObjectId format
       if (!isValidObjectId(taskId)) {
         return apiError('Invalid task ID format', 400, 'ERR_INVALID_ID');
       }
       
-      // Defensive request body parsing
+      // Parse request body
       let body: TaskStreakRequest;
       try {
         body = await req.json();
@@ -96,7 +96,7 @@ export const POST = withAuth<StreakInfo & { achievements?: any }, { id: string }
         return apiError('Invalid JSON in request body', 400, 'ERR_INVALID_JSON');
       }
       
-      // Defensive date parsing
+      // Parse date
       let date = new Date();
       if (body?.date) {
         const parsedDate = new Date(body.date);
@@ -106,14 +106,14 @@ export const POST = withAuth<StreakInfo & { achievements?: any }, { id: string }
         date = parsedDate;
       }
       
-      // Find task by ID with defensive error handling
+      // Find task by ID
       const task = await Task.findOne({ _id: taskId, user: userId }) as ITask | null;
       
       if (!task) {
         return apiError('Task not found', 404, 'ERR_NOT_FOUND');
       }
       
-      // Check if task is due on the specified date with defensive error handling
+      // Check if task is due on the specified date
       let isDue = false;
       try {
         isDue = task.isTaskDueToday(date);
@@ -127,36 +127,48 @@ export const POST = withAuth<StreakInfo & { achievements?: any }, { id: string }
       
       console.log(`🎯 [STREAK] Completing task "${task.name}" for date: ${date.toISOString()}`);
       
+      // Store previous state for event creation
+      const previousState = {
+        streak: task.currentStreak,
+        totalCompletions: task.totalCompletions
+      };
+      
       // Complete the task using the method that handles streak calculation
       try {
         task.completeTask(date);
-        console.log(`🔥 [STREAK] New streak: ${task.currentStreak}`);
-        
-        // 🆕 CHECK ACHIEVEMENT MILESTONES 🆕
-        let achievementResult;
-        try {
-          console.log('🏆 [STREAK] Checking achievement milestones...');
-          achievementResult = await checkTaskStreakMilestones(userId, task.currentStreak);
-          
-          if (achievementResult.unlockedCount > 0) {
-            console.log(`🎉 [STREAK] Unlocked ${achievementResult.unlockedCount} achievements!`, 
-              achievementResult.achievements.map(a => a.title));
-          }
-        } catch (achievementError) {
-          console.error('💥 [STREAK] Error checking achievement milestones:', achievementError);
-          // Continue without failing the streak update
-          achievementResult = { unlockedCount: 0, achievements: [] };
-        }
+        console.log(`🔥 [STREAK] New streak: ${task.currentStreak}, total: ${task.totalCompletions}`);
         
         await task.save();
         console.log('💾 [STREAK] Task saved successfully');
+        
+        // Log the completion
+        await TaskLog.logCompletion(
+          task._id,
+          task.user,
+          'completed',
+          date,
+          task,
+          'api'
+        );
+        
+        // 🆕 FIRE EVENT TO COORDINATOR 🆕
+        let coordinatorResult = { achievementsNotified: [] as string[] };
+        try {
+          const eventData = convertToTaskEventData(task, 'completed', date, previousState);
+          coordinatorResult = await processTaskEvent(eventData);
+          
+          console.log('🎉 [STREAK] Coordinator processing complete:', coordinatorResult);
+        } catch (coordinatorError) {
+          console.error('💥 [STREAK] Error processing coordinator event:', coordinatorError);
+          // Continue - streak update still succeeded
+        }
         
         // Create streak info response
         const streakInfo: StreakInfo & { achievements?: any } = {
           taskId: task._id?.toString() || taskId,
           name: task.name || 'Unknown task',
           currentStreak: task.currentStreak || 0,
-          bestStreak: task.bestStreak || 0,
+          bestStreak: Math.max(task.currentStreak || 0, task.totalCompletions || 0),
           lastCompletedDate: task.lastCompletedDate ? task.lastCompletedDate.toISOString() : null,
           isDueToday: true, // We've just verified it's due
           completionHistory: Array.isArray(task.completionHistory) 
@@ -165,12 +177,15 @@ export const POST = withAuth<StreakInfo & { achievements?: any }, { id: string }
         };
         
         // Add achievement info if any were unlocked
-        if (achievementResult.unlockedCount > 0) {
-          streakInfo.achievements = achievementResult;
+        if (coordinatorResult.achievementsNotified.length > 0) {
+          streakInfo.achievements = {
+            unlockedCount: coordinatorResult.achievementsNotified.length,
+            achievements: coordinatorResult.achievementsNotified
+          };
         }
         
-        const message = achievementResult.unlockedCount > 0
-          ? `Streak updated successfully and ${achievementResult.unlockedCount} achievement(s) unlocked!`
+        const message = coordinatorResult.achievementsNotified.length > 0
+          ? `Streak updated successfully and ${coordinatorResult.achievementsNotified.length} achievement(s) unlocked!`
           : 'Streak updated successfully';
         
         return apiResponse(streakInfo, true, message);
@@ -186,7 +201,7 @@ export const POST = withAuth<StreakInfo & { achievements?: any }, { id: string }
 
 /**
  * DELETE /api/tasks/[id]/streak
- * Reset streak for a task
+ * Reset streak for a task (simplified)
  */
 export const DELETE = withAuth<StreakInfo, { id: string }>(
   async (req: NextRequest, userId: string, context) => {
@@ -199,27 +214,28 @@ export const DELETE = withAuth<StreakInfo, { id: string }>(
         return apiError('Invalid task ID', 400, 'ERR_INVALID_ID');
       }
       
-      // Additional validation for ObjectId format
       if (!isValidObjectId(taskId)) {
         return apiError('Invalid task ID format', 400, 'ERR_INVALID_ID');
       }
       
-      // Find task by ID with defensive error handling
+      // Find task by ID
       const task = await Task.findOne({ _id: taskId, user: userId }) as ITask | null;
       
       if (!task) {
         return apiError('Task not found', 404, 'ERR_NOT_FOUND');
       }
       
-      // Reset the streak with error handling
+      // Prevent resetting system task streaks
+      if (task.isSystemTask) {
+        return apiError('Cannot reset streak for system tasks', 403, 'ERR_FORBIDDEN');
+      }
+      
+      // Reset the streak
       try {
-        if (typeof task.resetStreak === 'function') {
-          task.resetStreak();
-        } else {
-          // Fallback if method doesn't exist
-          task.currentStreak = 0;
-        }
+        task.resetStreak();
         await task.save();
+        
+        console.log(`🔄 [STREAK] Reset streak for task: ${task.name}`);
       } catch (error) {
         return handleApiError(error, 'Error resetting task streak');
       }
@@ -229,10 +245,10 @@ export const DELETE = withAuth<StreakInfo, { id: string }>(
         taskId: task._id?.toString() || taskId,
         name: task.name || 'Unknown task',
         currentStreak: 0,
-        bestStreak: task.bestStreak || 0,
-        lastCompletedDate: null,
-        isDueToday: false,
-        completionHistory: []
+        bestStreak: Math.max(0, task.totalCompletions || 0),
+        lastCompletedDate: task.lastCompletedDate ? task.lastCompletedDate.toISOString() : null,
+        isDueToday: false, // Assuming not due after reset
+        completionHistory: [] // Reset completion history display
       };
       
       return apiResponse(streakInfo, true, 'Streak reset successfully');

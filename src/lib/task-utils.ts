@@ -1,43 +1,60 @@
-import { TaskData } from '@/types';
+import { TaskData, DomainCategory } from '@/types';
 import { ITask } from '@/types/models/tasks';
 
 /**
- * Pure task utilities - no XP awarding, just task logic
- * XP is now handled by the event system (Ethos -> Progress)
+ * SIMPLIFIED Task utilities for event-driven architecture
+ * 
+ * NO XP COORDINATION - that's handled by the coordinator now
+ * Just pure task logic, conversions, and validation
  */
 
 /**
- * Convert database task to API format
- * Clean converter with defensive programming
+ * Convert database task to API format with new architecture fields
  */
-export function convertTaskToTaskData(task: ITask): TaskData {
+export function convertTaskToTaskData(task: ITask, checkDate?: Date): TaskData {
   if (!task) {
     throw new Error('Task is required for conversion');
   }
 
   // Defensive access to nested properties
   const completionHistory = Array.isArray(task.completionHistory) ? task.completionHistory : [];
-  const lastCompletion = completionHistory.length > 0 ? completionHistory[completionHistory.length - 1] : null;
+  const lastCompleted = task.lastCompletedDate?.toISOString() || null;
+  
+  // NEW: Handle date-specific completion checking if checkDate provided
+  const isCompletedForDate = checkDate ? task.isCompletedOnDate(checkDate) : task.completed;
   
   return {
     id: task._id.toString(),
     name: task.name || '',
-    scheduledTime: task.scheduledTime || '',
-    completed: task.completed || false,
-    date: task.date ? task.date.toISOString() : new Date().toISOString(),
-    completionHistory: completionHistory.map(date => date.toISOString()),
-    lastCompleted: lastCompletion?.toISOString() || null,
-    streak: task.streak || 0,
-    totalCompletions: task.totalCompletions || 0,
-    user: task.user.toString(),
-    recurrencePattern: task.recurrencePattern || 'once',
-    priority: task.priority || 'medium',
-    timeBlock: task.timeBlock || 'morning',
-    isSystemTask: task.isSystemTask || false,
     description: task.description || '',
-    labels: Array.isArray(task.labels) ? task.labels : [],
+    scheduledTime: task.scheduledTime || '00:00',
+    completed: isCompletedForDate || false,
+    date: task.date ? task.date.toISOString() : new Date().toISOString(),
+    recurrencePattern: task.recurrencePattern || 'once',
+    customRecurrenceDays: task.customRecurrenceDays || [],
+    
+    // NEW: Simple counters from model (no calculations here)
+    currentStreak: task.currentStreak || 0,
+    totalCompletions: task.totalCompletions || 0,
+    lastCompleted,
+    
+    // NEW: Organization fields
+    domainCategory: task.domainCategory || 'ethos',
+    labels: Array.isArray(task.labels) ? [...task.labels] : [],
+    isSystemTask: task.isSystemTask || false,
+    
+    // Existing fields
+    category: task.category || 'general',
+    priority: task.priority || 'medium',
+    timeBlock: getTaskTimeBlock(task.scheduledTime),
+    user: task.user?.toString(),
     createdAt: task.createdAt ? task.createdAt.toISOString() : new Date().toISOString(),
     updatedAt: task.updatedAt ? task.updatedAt.toISOString() : new Date().toISOString(),
+    
+    // DEPRECATED: Keep for compatibility but not used for calculations
+    bestStreak: Math.max(task.currentStreak || 0, task.totalCompletions || 0), // Rough estimate
+    completionHistory: completionHistory.map(date => date.toISOString()),
+    lastCompletedDate: lastCompleted, // Alias for lastCompleted
   };
 }
 
@@ -48,174 +65,34 @@ export function convertTaskToTaskData(task: ITask): TaskData {
 export function isTaskDueOnDate(task: ITask, targetDate: Date): boolean {
   if (!task || !targetDate) return false;
   
-  const taskDate = new Date(task.date);
-  const target = new Date(targetDate);
-  
-  // Normalize dates to midnight UTC for comparison
-  taskDate.setUTCHours(0, 0, 0, 0);
-  target.setUTCHours(0, 0, 0, 0);
-  
-  switch (task.recurrencePattern) {
-    case 'once':
-      return taskDate.getTime() === target.getTime();
-      
-    case 'daily':
-      return target >= taskDate;
-      
-    case 'weekdays':
-      if (target < taskDate) return false;
-      const weekday = target.getUTCDay();
-      return weekday >= 1 && weekday <= 5; // Monday-Friday
-      
-    case 'weekends':
-      if (target < taskDate) return false;
-      const weekend = target.getUTCDay();
-      return weekend === 0 || weekend === 6; // Sunday or Saturday
-      
-    case 'weekly':
-      if (target < taskDate) return false;
-      const daysDiff = Math.floor((target.getTime() - taskDate.getTime()) / (1000 * 60 * 60 * 24));
-      return daysDiff % 7 === 0;
-      
-    case 'custom':
-      // For custom patterns, check if target date matches any completion pattern
-      // This is a simplified version - you might want more complex logic
-      return target >= taskDate;
-      
-    default:
-      return false;
+  try {
+    return task.isTaskDueToday(targetDate);
+  } catch (error) {
+    console.error('Error checking if task is due:', error);
+    return false;
   }
-}
-
-/**
- * Calculate streak count for a task on a specific date
- * Pure calculation, no database updates
- */
-export function calculateTaskStreak(task: ITask, targetDate: Date): number {
-  if (!task || !task.completionHistory || task.completionHistory.length === 0) {
-    return 0;
-  }
-  
-  const completions = [...task.completionHistory]
-    .map(date => new Date(date))
-    .sort((a, b) => b.getTime() - a.getTime()); // Newest first
-  
-  const target = new Date(targetDate);
-  target.setUTCHours(0, 0, 0, 0);
-  
-  let streak = 0;
-  let currentDate = new Date(target);
-  
-  for (const completion of completions) {
-    const completionDate = new Date(completion);
-    completionDate.setUTCHours(0, 0, 0, 0);
-    
-    if (completionDate.getTime() === currentDate.getTime()) {
-      streak++;
-      // Move to previous expected completion date based on pattern
-      currentDate = getPreviousExpectedDate(currentDate, task.recurrencePattern);
-    } else {
-      break; // Streak broken
-    }
-  }
-  
-  return streak;
-}
-
-/**
- * Get the previous expected completion date based on recurrence pattern
- * Helper for streak calculation
- */
-function getPreviousExpectedDate(currentDate: Date, pattern: string): Date {
-  const prevDate = new Date(currentDate);
-  
-  switch (pattern) {
-    case 'daily':
-      prevDate.setUTCDate(prevDate.getUTCDate() - 1);
-      break;
-      
-    case 'weekdays':
-      // Skip to previous weekday
-      do {
-        prevDate.setUTCDate(prevDate.getUTCDate() - 1);
-      } while (prevDate.getUTCDay() === 0 || prevDate.getUTCDay() === 6);
-      break;
-      
-    case 'weekends':
-      // Skip to previous weekend day
-      do {
-        prevDate.setUTCDate(prevDate.getUTCDate() - 1);
-      } while (prevDate.getUTCDay() !== 0 && prevDate.getUTCDay() !== 6);
-      break;
-      
-    case 'weekly':
-      prevDate.setUTCDate(prevDate.getUTCDate() - 7);
-      break;
-      
-    default:
-      // For 'once' and 'custom', just go back one day
-      prevDate.setUTCDate(prevDate.getUTCDate() - 1);
-      break;
-  }
-  
-  return prevDate;
-}
-
-/**
- * Check if a task completion hits a milestone threshold
- * Pure calculation for milestone detection
- */
-export function checkTaskMilestone(totalCompletions: number, streakCount: number): {
-  completionMilestone: string | null;
-  streakMilestone: string | null;
-} {
-  const completionMilestones = [50, 100, 250, 500, 1000];
-  const streakMilestones = [7, 30, 100, 365];
-  
-  let completionMilestone: string | null = null;
-  let streakMilestone: string | null = null;
-  
-  // Check completion milestones
-  for (const milestone of completionMilestones) {
-    if (totalCompletions === milestone) {
-      completionMilestone = `${milestone}_completions`;
-      break;
-    }
-  }
-  
-  // Check streak milestones
-  for (const milestone of streakMilestones) {
-    if (streakCount === milestone) {
-      streakMilestone = `${milestone}_day_streak`;
-      break;
-    }
-  }
-  
-  return { completionMilestone, streakMilestone };
-}
-
-/**
- * Determine if a task is a system task (connected to other domains)
- * Helper for identifying cross-domain tasks
- */
-export function isSystemTask(task: ITask): boolean {
-  return task.isSystemTask || false;
 }
 
 /**
  * Get the appropriate time block for a task
  * Helper for task organization
  */
-export function getTaskTimeBlock(task: ITask): 'morning' | 'afternoon' | 'evening' {
-  if (!task.timeBlock) return 'morning';
+export function getTaskTimeBlock(scheduledTime: string): 'morning' | 'afternoon' | 'evening' {
+  if (!scheduledTime) return 'morning';
   
-  const validTimeBlocks = ['morning', 'afternoon', 'evening'];
-  return validTimeBlocks.includes(task.timeBlock) ? task.timeBlock as any : 'morning';
+  const [hoursStr] = scheduledTime.split(':');
+  const hours = parseInt(hoursStr, 10);
+  
+  if (isNaN(hours)) return 'morning';
+  
+  if (hours >= 6 && hours < 12) return 'morning';
+  if (hours >= 12 && hours < 18) return 'afternoon';
+  return 'evening';
 }
 
 /**
  * Validate task data for creation/updates
- * Pure validation logic
+ * Enhanced for new architecture fields
  */
 export function validateTaskData(data: Partial<TaskData>): string[] {
   const errors: string[] = [];
@@ -242,10 +119,254 @@ export function validateTaskData(data: Partial<TaskData>): string[] {
     errors.push('Time block must be morning, afternoon, or evening');
   }
   
-  const validPatterns = ['once', 'daily', 'weekdays', 'weekends', 'weekly', 'custom'];
+  const validPatterns = ['once', 'daily', 'custom']; // UPDATED: Only 3 patterns
   if (data.recurrencePattern && !validPatterns.includes(data.recurrencePattern)) {
     errors.push('Invalid recurrence pattern');
   }
   
+  // NEW: Validate domain category
+  const validDomainCategories = ['ethos', 'trophe', 'soma'];
+  if (data.domainCategory && !validDomainCategories.includes(data.domainCategory)) {
+    errors.push('Domain category must be ethos, trophe, or soma');
+  }
+  
+  // NEW: Validate labels
+  if (data.labels && !Array.isArray(data.labels)) {
+    errors.push('Labels must be an array of strings');
+  }
+  
+  if (data.labels && data.labels.some(label => 
+    typeof label !== 'string' || label.trim().length === 0 || label.length > 50)) {
+    errors.push('All labels must be non-empty strings less than 50 characters');
+  }
+  
+  // Custom recurrence validation
+  if (data.recurrencePattern === 'custom') {
+    if (!data.customRecurrenceDays || !Array.isArray(data.customRecurrenceDays) || 
+        data.customRecurrenceDays.length === 0) {
+      errors.push('Custom recurrence days are required for custom pattern');
+    }
+    
+    if (data.customRecurrenceDays && 
+        !data.customRecurrenceDays.every(day => 
+          typeof day === 'number' && day >= 0 && day <= 6)) {
+      errors.push('Custom recurrence days must be numbers 0-6 (Sunday to Saturday)');
+    }
+  }
+  
   return errors;
+}
+
+/**
+ * Generate default labels for a task based on its name
+ * Helper for automatic labeling
+ */
+export function generateDefaultLabels(taskName: string, domainCategory?: DomainCategory): string[] {
+  if (!taskName) return [];
+  
+  // Sanitize task name to create a label
+  const sanitizedName = taskName.toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '') // Remove special characters
+    .replace(/\s+/g, '_') // Replace spaces with underscores
+    .substring(0, 30); // Limit length
+  
+  const labels = [sanitizedName];
+  
+  // Add domain-specific default labels
+  if (domainCategory) {
+    switch (domainCategory) {
+      case 'ethos':
+        labels.push('productivity', 'habit');
+        break;
+      case 'trophe':
+        labels.push('nutrition', 'health');
+        break;
+      case 'soma':
+        labels.push('exercise', 'fitness');
+        break;
+    }
+  }
+  
+  return labels.filter(label => label.length > 0);
+}
+
+/**
+ * Check if a task is a system task (connected to other domains)
+ */
+export function isSystemTask(task: ITask | TaskData): boolean {
+  return !!(task.isSystemTask);
+}
+
+/**
+ * Get user-friendly recurrence pattern description
+ */
+export function getRecurrenceDescription(pattern: string, customDays?: number[]): string {
+  switch (pattern) {
+    case 'once':
+      return 'One time only';
+    case 'daily':
+      return 'Every day';
+    case 'custom':
+      if (!customDays || customDays.length === 0) return 'Custom schedule';
+      
+      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const selectedDays = customDays.map(day => dayNames[day]).join(', ');
+      return `${selectedDays}`;
+    default:
+      return 'Unknown pattern';
+  }
+}
+
+/**
+ * Calculate completion percentage for a task based on its total completions and streak
+ * Simple heuristic for UI progress indicators
+ */
+export function getTaskCompletionScore(task: TaskData | ITask): number {
+  const totalCompletions = task.totalCompletions || 0;
+  const currentStreak = task.currentStreak || 0;
+  
+  // Simple scoring: combination of total completions and current streak
+  // Scale: 0-100 where 100 is very active task
+  const completionScore = Math.min(totalCompletions * 2, 50); // Max 50 from completions
+  const streakScore = Math.min(currentStreak * 3, 50); // Max 50 from streak
+  
+  return Math.min(completionScore + streakScore, 100);
+}
+
+/**
+ * Get task status for UI display
+ */
+export function getTaskStatus(task: TaskData | ITask): {
+  status: 'active' | 'inactive' | 'new' | 'system';
+  description: string;
+  color: 'green' | 'yellow' | 'gray' | 'blue';
+} {
+  if (task.isSystemTask) {
+    return {
+      status: 'system',
+      description: 'System managed',
+      color: 'blue'
+    };
+  }
+  
+  const totalCompletions = task.totalCompletions || 0;
+  const currentStreak = task.currentStreak || 0;
+  
+  if (totalCompletions === 0) {
+    return {
+      status: 'new',
+      description: 'Not started',
+      color: 'gray'
+    };
+  }
+  
+  if (currentStreak >= 3) {
+    return {
+      status: 'active',
+      description: `${currentStreak} day streak`,
+      color: 'green'
+    };
+  }
+  
+  return {
+    status: 'inactive',
+    description: `${totalCompletions} completions`,
+    color: 'yellow'
+  };
+}
+
+/**
+ * Sort tasks by priority and activity for UI display
+ */
+export function sortTasksByPriority(tasks: TaskData[]): TaskData[] {
+  return [...tasks].sort((a, b) => {
+    // System tasks first
+    if (a.isSystemTask && !b.isSystemTask) return -1;
+    if (!a.isSystemTask && b.isSystemTask) return 1;
+    
+    // Then by priority
+    const priorityOrder = { high: 3, medium: 2, low: 1 };
+    const aPriority = priorityOrder[a.priority] || 2;
+    const bPriority = priorityOrder[b.priority] || 2;
+    
+    if (aPriority !== bPriority) {
+      return bPriority - aPriority; // Higher priority first
+    }
+    
+    // Then by current streak (active tasks first)
+    const aStreak = a.currentStreak || 0;
+    const bStreak = b.currentStreak || 0;
+    
+    if (aStreak !== bStreak) {
+      return bStreak - aStreak; // Higher streak first
+    }
+    
+    // Finally by name
+    return a.name.localeCompare(b.name);
+  });
+}
+
+/**
+ * Filter tasks by various criteria for UI
+ */
+export function filterTasks(tasks: TaskData[], filters: {
+  domainCategory?: DomainCategory;
+  labels?: string[];
+  isSystemTask?: boolean;
+  priority?: string;
+  hasStreak?: boolean;
+}): TaskData[] {
+  return tasks.filter(task => {
+    if (filters.domainCategory && task.domainCategory !== filters.domainCategory) {
+      return false;
+    }
+    
+    if (filters.labels && filters.labels.length > 0) {
+      const hasLabel = filters.labels.some(label => task.labels.includes(label));
+      if (!hasLabel) return false;
+    }
+    
+    if (filters.isSystemTask !== undefined && task.isSystemTask !== filters.isSystemTask) {
+      return false;
+    }
+    
+    if (filters.priority && task.priority !== filters.priority) {
+      return false;
+    }
+    
+    if (filters.hasStreak && (task.currentStreak || 0) === 0) {
+      return false;
+    }
+    
+    return true;
+  });
+}
+
+/**
+ * Get tasks grouped by time block for daily view
+ */
+export function groupTasksByTimeBlock(tasks: TaskData[]): {
+  morning: TaskData[];
+  afternoon: TaskData[];
+  evening: TaskData[];
+} {
+  const grouped = {
+    morning: [] as TaskData[],
+    afternoon: [] as TaskData[],
+    evening: [] as TaskData[]
+  };
+  
+  tasks.forEach(task => {
+    const timeBlock = getTaskTimeBlock(task.scheduledTime);
+    grouped[timeBlock].push(task);
+  });
+  
+  // Sort each time block by scheduled time
+  Object.keys(grouped).forEach(timeBlock => {
+    grouped[timeBlock as keyof typeof grouped].sort((a, b) => 
+      a.scheduledTime.localeCompare(b.scheduledTime)
+    );
+  });
+  
+  return grouped;
 }

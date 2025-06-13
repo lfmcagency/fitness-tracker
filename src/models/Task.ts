@@ -37,7 +37,7 @@ const TaskSchema = new mongoose.Schema({
   },
   recurrencePattern: {
     type: String,
-    enum: ['once', 'daily', 'custom'], // Simplified: removed weekdays, weekends, weekly
+    enum: ['once', 'daily', 'custom'],
     default: 'once'
   },
   customRecurrenceDays: {
@@ -51,17 +51,40 @@ const TaskSchema = new mongoose.Schema({
     },
     default: []
   },
+  // NEW: Simple counters for event-driven architecture
   currentStreak: {
     type: Number,
     default: 0
   },
-  bestStreak: {
+  totalCompletions: {
     type: Number,
     default: 0
   },
   lastCompletedDate: {
     type: Date,
     default: null
+  },
+  // NEW: Organization fields
+  domainCategory: {
+    type: String,
+    required: true,
+    enum: ['ethos', 'trophe', 'soma'], // Add more domains as needed
+    default: 'ethos'
+  },
+  labels: {
+    type: [String],
+    default: [],
+    validate: {
+      validator: function(v: string[]) {
+        return v.every(label => label.length > 0 && label.length <= 50);
+      },
+      message: 'Labels must be non-empty and less than 50 characters'
+    }
+  },
+  // NEW: System task indicator
+  isSystemTask: {
+    type: Boolean,
+    default: false
   },
   category: {
     type: String,
@@ -73,6 +96,7 @@ const TaskSchema = new mongoose.Schema({
     enum: ['low', 'medium', 'high'],
     default: 'medium'
   },
+  // Keep completion history for backup/recovery only
   completionHistory: {
     type: [Date],
     default: []
@@ -92,12 +116,27 @@ function getDateKey(date: Date): string {
   return normalized.toISOString().split('T')[0]; // YYYY-MM-DD format
 }
 
-// Helper function to calculate days between two dates
-function daysBetween(date1: Date, date2: Date): number {
-  const normalized1 = normalizeDate(date1);
-  const normalized2 = normalizeDate(date2);
-  const diffTime = Math.abs(normalized2.getTime() - normalized1.getTime());
-  return Math.floor(diffTime / (1000 * 60 * 60 * 24));
+// Helper function to find previous pattern day for custom recurrence
+function getPreviousPatternDay(currentDate: Date, patternDays: number[]): Date | null {
+  if (!patternDays || patternDays.length === 0) return null;
+  
+  const current = normalizeDate(currentDate);
+  let daysBack = 1;
+  let checkDate = new Date(current);
+  
+  // Look back up to 7 days to find previous pattern day
+  while (daysBack <= 7) {
+    checkDate.setUTCDate(current.getUTCDate() - daysBack);
+    const dayOfWeek = checkDate.getUTCDay();
+    
+    if (patternDays.includes(dayOfWeek)) {
+      return checkDate;
+    }
+    
+    daysBack++;
+  }
+  
+  return null; // No previous pattern day found
 }
 
 // Check if task is completed on a specific date
@@ -112,7 +151,7 @@ TaskSchema.methods.isCompletedOnDate = function(date: Date): boolean {
   });
 };
 
-// SIMPLIFIED: Check if task is due on a specific date (only 3 patterns now)
+// Check if task is due on a specific date
 TaskSchema.methods.isTaskDueToday = function(date: Date): boolean {
   const taskId = this._id?.toString() || 'unknown';
   const checkDate = normalizeDate(date);
@@ -171,13 +210,15 @@ TaskSchema.methods.isTaskDueToday = function(date: Date): boolean {
   }
 };
 
-// OPTIMIZED: Calculate current streak with early termination and pattern-specific logic
+// SIMPLIFIED: Calculate current streak with new event-driven logic
 TaskSchema.methods.calculateStreak = function(): number {
-  if (!this.completionHistory || this.completionHistory.length === 0) return 0;
-  
-  // For "once" tasks, streak is just 0 or 1
+  // For "once" tasks, no streak logic
   if (this.recurrencePattern === 'once') {
-    return this.completionHistory.length > 0 ? 1 : 0;
+    return this.totalCompletions > 0 ? 1 : 0;
+  }
+  
+  if (!this.completionHistory || this.completionHistory.length === 0) {
+    return 0;
   }
   
   // Convert completion history to Set for O(1) lookups
@@ -186,105 +227,176 @@ TaskSchema.methods.calculateStreak = function(): number {
   );
   
   const today = normalizeDate(new Date());
-  const MAX_DAYS_TO_CHECK = 90; // Reasonable limit
-  
   let streak = 0;
   let checkDate = new Date(today);
-  let daysChecked = 0;
   
-  // Pattern-specific streak calculation with early termination
-  while (daysChecked < MAX_DAYS_TO_CHECK) {
-    const checkKey = getDateKey(checkDate);
-    const isDueOnThisDate = this.isTaskDueToday(checkDate);
-    
-    if (isDueOnThisDate) {
-      const isCompleted = completionKeySet.has(checkKey);
-      
-      if (isCompleted) {
-        streak++;
-      } else {
-        // Gap found - task was due but not completed, streak ends
-        break;
+  // Pattern-specific streak calculation
+  switch (this.recurrencePattern) {
+    case 'daily': {
+      // Simple 1-day lookback for daily tasks
+      while (streak < 365) { // Reasonable limit
+        const checkKey = getDateKey(checkDate);
+        const isDueOnThisDate = this.isTaskDueToday(checkDate);
+        
+        if (isDueOnThisDate) {
+          const isCompleted = completionKeySet.has(checkKey);
+          
+          if (isCompleted) {
+            streak++;
+          } else {
+            break; // Gap found - streak ends
+          }
+        }
+        
+        // Move to previous day
+        checkDate.setUTCDate(checkDate.getUTCDate() - 1);
+        
+        // Stop if we go before task creation
+        const taskCreationDate = normalizeDate(new Date(this.date));
+        if (checkDate < taskCreationDate) {
+          break;
+        }
       }
+      break;
     }
     
-    // Move to previous day
-    checkDate.setUTCDate(checkDate.getUTCDate() - 1);
-    daysChecked++;
-    
-    // Early termination for daily tasks if we hit creation date
-    if (this.recurrencePattern === 'daily') {
-      const taskCreationDate = normalizeDate(new Date(this.date));
-      if (checkDate < taskCreationDate) {
-        break; // Can't go before task was created
+    case 'custom': {
+      // Smart gap calculation for custom patterns
+      const patternDays = this.customRecurrenceDays || [];
+      if (patternDays.length === 0) break;
+      
+      let currentPatternDate = new Date(today);
+      
+      while (streak < 52) { // Reasonable limit for weekly patterns
+        const checkKey = getDateKey(currentPatternDate);
+        const dayOfWeek = currentPatternDate.getUTCDay();
+        
+        // Only check if this date is in the pattern
+        if (patternDays.includes(dayOfWeek)) {
+          const isCompleted = completionKeySet.has(checkKey);
+          
+          if (isCompleted) {
+            streak++;
+            
+            // Find previous pattern day
+            const previousPatternDate = getPreviousPatternDay(currentPatternDate, patternDays);
+            if (!previousPatternDate) break;
+            
+            currentPatternDate = previousPatternDate;
+          } else {
+            break; // Gap found - streak ends
+          }
+        } else {
+          // This shouldn't happen, but if it does, find previous pattern day
+          const previousPatternDate = getPreviousPatternDay(currentPatternDate, patternDays);
+          if (!previousPatternDate) break;
+          
+          currentPatternDate = previousPatternDate;
+        }
+        
+        // Stop if we go before task creation
+        const taskCreationDate = normalizeDate(new Date(this.date));
+        if (currentPatternDate < taskCreationDate) {
+          break;
+        }
       }
+      break;
     }
   }
   
   return streak;
 };
 
-// Mark task as completed for a specific date
+// SIMPLIFIED: Mark task as completed for a specific date
 TaskSchema.methods.completeTask = function(date: Date): void {
   const completionDate = normalizeDate(date);
   const dateKey = getDateKey(completionDate);
   
-  // Check if this date already exists in history using date key comparison
+  // Check if this date already exists in history
   const dateExists = this.completionHistory.some((d: Date) => {
     return getDateKey(d) === dateKey;
   });
   
   if (!dateExists) {
+    // Add to completion history (for backup)
     this.completionHistory.push(completionDate);
     this.lastCompletedDate = completionDate;
     
-    // Update streak after adding completion
+    // Update simple counters
+    this.totalCompletions += 1;
+    
+    // Recalculate streak
     const newStreak = this.calculateStreak();
     this.currentStreak = newStreak;
-    
-    // Update best streak if current streak is better
-    if (newStreak > this.bestStreak) {
-      this.bestStreak = newStreak;
-    }
   }
   
   // Update global completed flag
-  this.completed = this.completionHistory.length > 0;
+  this.completed = this.totalCompletions > 0;
 };
 
-// Mark task as uncompleted for a specific date
+// SIMPLIFIED: Mark task as uncompleted for a specific date
 TaskSchema.methods.uncompleteTask = function(date: Date): void {
   const targetDateKey = getDateKey(date);
   
-  // Remove the date from completion history using date key comparison
-  this.completionHistory = this.completionHistory.filter((d: Date) => {
-    return getDateKey(d) !== targetDateKey;
+  // Check if the date exists in completion history
+  const dateExists = this.completionHistory.some((d: Date) => {
+    return getDateKey(d) === targetDateKey;
   });
   
-  // Update lastCompletedDate to the most recent completion
-  if (this.completionHistory.length > 0) {
-    const sortedDates = [...this.completionHistory].sort((a, b) => b.getTime() - a.getTime());
-    this.lastCompletedDate = sortedDates[0];
-  } else {
-    this.lastCompletedDate = null;
+  if (dateExists) {
+    // Remove the date from completion history
+    this.completionHistory = this.completionHistory.filter((d: Date) => {
+      return getDateKey(d) !== targetDateKey;
+    });
+    
+    // Update simple counters
+    this.totalCompletions = Math.max(0, this.totalCompletions - 1);
+    
+    // Update lastCompletedDate to the most recent completion
+    if (this.completionHistory.length > 0) {
+      const sortedDates = [...this.completionHistory].sort((a, b) => b.getTime() - a.getTime());
+      this.lastCompletedDate = sortedDates[0];
+    } else {
+      this.lastCompletedDate = null;
+    }
+    
+    // Recalculate streak
+    const newStreak = this.calculateStreak();
+    this.currentStreak = newStreak;
   }
   
-  // Update streak after removing completion
-  const newStreak = this.calculateStreak();
-  this.currentStreak = newStreak;
-  
   // Update global completed flag
-  this.completed = this.completionHistory.length > 0;
+  this.completed = this.totalCompletions > 0;
 };
 
-// Reset streak counter
+// Reset streak counter (for manual resets)
 TaskSchema.methods.resetStreak = function(): void {
   this.currentStreak = 0;
 };
 
+// NEW: Get total completions for a label across all tasks
+TaskSchema.statics.getTotalCompletionsForLabel = async function(userId: mongoose.Types.ObjectId, label: string): Promise<number> {
+  const tasks = await this.find({ 
+    user: userId, 
+    labels: label 
+  });
+  
+  return tasks.reduce((total: any, task: { totalCompletions: any; }) => total + (task.totalCompletions || 0), 0);
+};
+
+// NEW: Get current streak for a label (highest among tasks with this label)
+TaskSchema.statics.getCurrentStreakForLabel = async function(userId: mongoose.Types.ObjectId, label: string): Promise<number> {
+  const tasks = await this.find({ 
+    user: userId, 
+    labels: label 
+  });
+  
+  return Math.max(...tasks.map((task: { currentStreak: any; }) => task.currentStreak || 0), 0);
+};
+
 // Pre-save middleware to maintain data integrity
 TaskSchema.pre('save', function(this: any, next) {
-  // Ensure completionHistory dates are unique using date keys
+  // Ensure completionHistory dates are unique and sorted
   const uniqueDateKeys = new Set();
   const uniqueDates: Date[] = [];
   
@@ -298,8 +410,24 @@ TaskSchema.pre('save', function(this: any, next) {
   
   this.completionHistory = uniqueDates.sort((a, b) => a.getTime() - b.getTime());
   
+  // Ensure counters are never negative
+  this.totalCompletions = Math.max(0, this.totalCompletions || 0);
+  this.currentStreak = Math.max(0, this.currentStreak || 0);
+  
+  // Auto-generate labels if empty and not a system task
+  if (!this.isSystemTask && (!this.labels || this.labels.length === 0)) {
+    const sanitizedName = this.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    this.labels = [sanitizedName];
+  }
+  
   next();
 });
+
+// Create indexes for efficient queries
+TaskSchema.index({ user: 1, domainCategory: 1 });
+TaskSchema.index({ user: 1, labels: 1 });
+TaskSchema.index({ user: 1, isSystemTask: 1 });
+TaskSchema.index({ user: 1, recurrencePattern: 1 });
 
 // This maintains Mongoose model singleton pattern
 export default mongoose.models.Task as ITaskModel || 

@@ -1,5 +1,3 @@
-// src/types/index.ts
-
 // Core API types
 export * from './api/common';
 export * from './api/databaseResponses';
@@ -34,7 +32,7 @@ export * from './api/mealRequests';
 export * from './converters/foodConverters';
 export * from './converters/mealConverters';
 
-// Progress types
+// Progress types (PRESERVED - no changes)
 export type * from './models/progress';
 
 // Utils
@@ -60,11 +58,12 @@ export function formatBytes(bytes: number, decimals = 2): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 }
 
-// Task-related types (keep these for compatibility)
-export type RecurrencePattern = 'once' | 'daily' | 'weekdays' | 'weekends' | 'weekly' | 'custom';
+// UPDATED: Task-related types for event-driven architecture
+export type RecurrencePattern = 'once' | 'daily' | 'custom'; // SIMPLIFIED: Only 3 patterns
 export type TaskPriority = 'low' | 'medium' | 'high';
+export type DomainCategory = 'ethos' | 'trophe' | 'soma'; // NEW: Domain categories
 
-// Simple Task interface for UI/Store layer
+// Simple Task interface for UI/Store layer (PRESERVED)
 export interface TaskItem {
   id: number;
   name: string;
@@ -73,56 +72,103 @@ export interface TaskItem {
   streak: number;
 }
 
+// UPDATED: CreateTaskParams for new architecture
 export interface CreateTaskParams {
   name: string;
   scheduledTime: string;
   recurrencePattern?: RecurrencePattern;
   customRecurrenceDays?: number[];
+  domainCategory?: DomainCategory; // NEW
+  labels?: string[]; // NEW
   category?: string;
   priority?: TaskPriority;
   description?: string;
+  isSystemTask?: boolean; // NEW
 }
 
-// Comprehensive Task interface for API/Database layer
+// UPDATED: Comprehensive Task interface for API/Database layer
 export interface TaskData {
-  description: any;
   id?: string | number;
   _id?: string;
   name: string;
+  description?: string;
   scheduledTime: string;
   completed: boolean;
   date?: Date | string;
   recurrencePattern: RecurrencePattern;
   customRecurrenceDays?: number[];
+  
+  // UPDATED: Simple counters instead of complex calculations
   currentStreak: number;
-  bestStreak: number;
-  lastCompletedDate?: Date | string | null;
+  totalCompletions: number; // NEW: Replaces complex completion counting
+  lastCompleted?: Date | string | null; // RENAMED from lastCompletedDate
+  
+  // NEW: Organization fields
+  domainCategory: DomainCategory;
+  labels: string[];
+  isSystemTask: boolean;
+  
+  // EXISTING: Keep these for compatibility
   category: string;
   priority: TaskPriority;
+  timeBlock?: string; // 'morning' | 'afternoon' | 'evening'
   user?: string;
   createdAt?: string;
   updatedAt?: string;
-  completionHistory?: string[];
-  isNew?: boolean;        // Flag for new tasks being created inline
-  timeBlock?: string;     // Time block: 'morning' | 'afternoon' | 'evening'
-  completionDate?: string;
+  
+  // DEPRECATED: Keep for compatibility but not used for calculations
+  bestStreak?: number; // Can be calculated from totalCompletions if needed
+  completionHistory?: string[]; // Backup only, not used for counters
+  lastCompletedDate?: Date | string | null; // Alias for lastCompleted
+  
+  // UI-only flags
+  isNew?: boolean; // Flag for new tasks being created inline
+  completionDate?: string; // For completion operations
 }
 
+// UPDATED: TaskWithHistory for statistics (now simpler)
 export interface TaskWithHistory extends TaskData {
-  completionHistory: string[];
+  completionHistory: string[]; // Required for statistics calculations
 }
 
+// UPDATED: StreakInfo interface
 export interface StreakInfo {
   taskId: string | number;
   name: string;
   currentStreak: number;
-  bestStreak: number;
+  bestStreak: number; // Deprecated but kept for compatibility
   lastCompletedDate?: Date | string | null;
   isDueToday: boolean;
   completionHistory?: Array<Date | string>;
 }
 
-// Training Types
+// NEW: Event data for coordinator communication
+export interface TaskEventData {
+  taskId: string;
+  userId: string;
+  action: 'completed' | 'uncompleted';
+  completionDate: string; // ISO string
+  
+  // Task context for coordinator
+  taskName: string;
+  domainCategory: DomainCategory;
+  labels: string[];
+  isSystemTask: boolean;
+  
+  // Current metrics after the action
+  newStreak: number;
+  totalCompletions: number;
+  
+  // For milestone detection
+  previousStreak?: number;
+  previousTotalCompletions?: number;
+  
+  // Source of the event
+  source: 'api' | 'system';
+  timestamp: Date;
+}
+
+// Training Types (PRESERVED - no changes)
 export interface ExerciseSet {
   reps: number;
   completed: boolean;
@@ -141,7 +187,7 @@ export interface Exercise {
   restTime: number;
 }
 
-// Progress Dashboard Types
+// Progress Dashboard Types (PRESERVED - no changes)
 export interface PerformanceData {
   date: string;
   pushups: number;

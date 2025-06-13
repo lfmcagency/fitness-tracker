@@ -1,18 +1,28 @@
 import { create } from 'zustand';
-import type { TaskData, RecurrencePattern, TaskPriority } from '@/types';
+import type { TaskData, RecurrencePattern, TaskPriority, DomainCategory } from '@/types';
 
-// Simple creation parameters
+// UPDATED: Creation parameters with new architecture fields
 export interface CreateTaskParams {
   name: string;
   scheduledTime: string;
   recurrencePattern?: RecurrencePattern;
   customRecurrenceDays?: number[];
+  domainCategory?: DomainCategory; // NEW
+  labels?: string[]; // NEW
   category?: string;
   priority?: TaskPriority;
   description?: string;
+  isSystemTask?: boolean; // NEW (usually false for user-created tasks)
 }
 
-// Dead simple state
+// NEW: Achievement notification interface
+export interface AchievementNotification {
+  unlockedCount: number;
+  achievements: string[];
+  message?: string;
+}
+
+// UPDATED: Enhanced state with achievement handling
 interface TaskState {
   // Core state
   tasks: TaskData[];
@@ -20,16 +30,26 @@ interface TaskState {
   isLoading: boolean;
   error: string | null;
   
-  // Actions - simple and focused
+  // NEW: Achievement notifications
+  recentAchievements: AchievementNotification | null;
+  
+  // Actions - enhanced for new architecture
   setSelectedDate: (date: string) => void;
   fetchTasksForDate: (date: string) => Promise<void>;
   createTask: (taskData: CreateTaskParams) => Promise<TaskData | null>;
   updateTask: (taskId: string, updates: Partial<TaskData>) => Promise<TaskData | null>;
-  completeTask: (taskId: string, completed: boolean, date?: string) => Promise<TaskData | null>;
+  completeTask: (taskId: string, completed: boolean, date?: string) => Promise<{ task: TaskData | null; achievements?: AchievementNotification }>;
   deleteTask: (taskId: string) => Promise<boolean>;
+  
+  // NEW: Organization helpers
+  getTasksByDomain: (domain: DomainCategory) => TaskData[];
+  getTasksByLabels: (labels: string[]) => TaskData[];
+  getSystemTasks: () => TaskData[];
+  getUserTasks: () => TaskData[];
   
   // Helpers
   clearError: () => void;
+  clearAchievements: () => void;
   getTasksForTimeBlock: (timeBlock: 'morning' | 'afternoon' | 'evening') => TaskData[];
 }
 
@@ -51,24 +71,37 @@ function getTodayString(): string {
   return `${year}-${month}-${day}`;
 }
 
+// Helper to extract achievement notifications from API response
+function extractAchievements(responseData: any): AchievementNotification | null {
+  if (responseData?.achievements?.unlockedCount > 0) {
+    return {
+      unlockedCount: responseData.achievements.unlockedCount,
+      achievements: responseData.achievements.achievements || [],
+      message: `🎉 ${responseData.achievements.unlockedCount} achievement(s) unlocked!`
+    };
+  }
+  return null;
+}
+
 export const useTaskStore = create<TaskState>((set, get) => ({
   // Initial state
   tasks: [],
   selectedDate: getTodayString(),
   isLoading: false,
   error: null,
+  recentAchievements: null,
 
   /**
    * Set the selected date and fetch tasks for it
    */
   setSelectedDate: (date: string) => {
     console.log('📅 [STORE] Setting selected date:', date);
-    set({ selectedDate: date });
+    set({ selectedDate: date, recentAchievements: null }); // Clear achievements on date change
     get().fetchTasksForDate(date);
   },
 
   /**
-   * Fetch tasks for a specific date - uses our bulletproof endpoint
+   * Fetch tasks for a specific date - enhanced with new fields
    */
   fetchTasksForDate: async (date: string) => {
     console.log('🔄 [STORE] Fetching tasks for date:', date);
@@ -88,10 +121,23 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         const tasks = data.data || [];
         console.log(`✅ [STORE] Loaded ${tasks.length} tasks for ${date}`);
         
+        // Log new fields for debugging
+        const systemTasks = tasks.filter((t: TaskData) => t.isSystemTask);
+        const domainBreakdown = tasks.reduce((acc: Record<string, number>, t: TaskData) => {
+          acc[t.domainCategory] = (acc[t.domainCategory] || 0) + 1;
+          return acc;
+        }, {});
+        
+        console.log('📊 [STORE] Task breakdown:', {
+          total: tasks.length,
+          systemTasks: systemTasks.length,
+          domains: domainBreakdown
+        });
+        
         set({ 
           tasks,
           isLoading: false,
-          selectedDate: date // Ensure date is synced
+          selectedDate: date
         });
       } else {
         throw new Error(data.error?.message || 'Failed to fetch tasks');
@@ -101,13 +147,13 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       set({ 
         error: error instanceof Error ? error.message : 'Failed to fetch tasks',
         isLoading: false,
-        tasks: [] // Clear tasks on error
+        tasks: []
       });
     }
   },
 
   /**
-   * Create a new task - no temp IDs, just wait for response
+   * Create a new task - enhanced with new fields
    */
   createTask: async (taskData: CreateTaskParams) => {
     console.log('➕ [STORE] Creating task:', taskData.name);
@@ -120,7 +166,10 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...taskData,
-          date: get().selectedDate // Use current selected date
+          date: get().selectedDate, // Use current selected date
+          domainCategory: taskData.domainCategory || 'ethos', // Default to ethos
+          labels: taskData.labels || [], // Default to empty array
+          isSystemTask: taskData.isSystemTask || false // Default to false
         })
       });
       
@@ -133,6 +182,11 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       if (data.success) {
         const newTask = data.data;
         console.log('✅ [STORE] Task created:', newTask.id);
+        console.log('🏷️ [STORE] Task details:', {
+          domainCategory: newTask.domainCategory,
+          labels: newTask.labels,
+          isSystemTask: newTask.isSystemTask
+        });
         
         // Add to current tasks if it's for the selected date
         const selectedDate = get().selectedDate;
@@ -142,7 +196,6 @@ export const useTaskStore = create<TaskState>((set, get) => ({
             isLoading: false
           }));
         } else {
-          // Task created for different date, just stop loading
           set({ isLoading: false });
         }
         
@@ -161,7 +214,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   },
 
   /**
-   * Update a task - wait for server response
+   * Update a task - enhanced for new fields
    */
   updateTask: async (taskId: string, updates: Partial<TaskData>) => {
     console.log('✏️ [STORE] Updating task:', taskId, updates);
@@ -186,12 +239,19 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         const updatedTask = 'task' in data.data ? data.data.task : data.data;
         console.log('✅ [STORE] Task updated:', updatedTask.id);
         
+        // Check for achievements from coordinator
+        const achievements = extractAchievements(data.data);
+        if (achievements) {
+          console.log('🏆 [STORE] Achievements unlocked:', achievements);
+        }
+        
         // Update in local state
         set((state) => ({
           tasks: state.tasks.map(task => 
             task.id === taskId ? updatedTask : task
           ),
-          isLoading: false
+          isLoading: false,
+          recentAchievements: achievements
         }));
         
         return updatedTask;
@@ -209,7 +269,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   },
 
   /**
-   * Complete/uncomplete a task for specific date
+   * Complete/uncomplete a task - enhanced with achievement handling
    */
   completeTask: async (taskId: string, completed: boolean, date?: string) => {
     const completionDate = date || get().selectedDate;
@@ -237,16 +297,27 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         // Handle both TaskData and { task: TaskData } response formats
         const updatedTask = 'task' in data.data ? data.data.task : data.data;
         console.log(`✅ [STORE] Task ${completed ? 'completed' : 'uncompleted'}:`, updatedTask.id);
+        console.log('📊 [STORE] Updated metrics:', {
+          currentStreak: updatedTask.currentStreak,
+          totalCompletions: updatedTask.totalCompletions
+        });
+        
+        // Check for achievements from coordinator
+        const achievements = extractAchievements(data.data);
+        if (achievements) {
+          console.log('🏆 [STORE] Achievements unlocked:', achievements);
+        }
         
         // Update in local state
         set((state) => ({
           tasks: state.tasks.map(task => 
             task.id === taskId ? updatedTask : task
           ),
-          isLoading: false
+          isLoading: false,
+          recentAchievements: achievements
         }));
         
-        return updatedTask;
+        return { task: updatedTask, achievements };
       } else {
         throw new Error(data.error?.message || `Failed to ${completed ? 'complete' : 'uncomplete'} task`);
       }
@@ -256,15 +327,22 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         error: error instanceof Error ? error.message : `Failed to ${completed ? 'complete' : 'uncomplete'} task`,
         isLoading: false 
       });
-      return null;
+      return { task: null, achievements: null };
     }
   },
 
   /**
-   * Delete a task
+   * Delete a task - enhanced with system task protection
    */
   deleteTask: async (taskId: string) => {
     console.log('🗑️ [STORE] Deleting task:', taskId);
+    
+    // Check if it's a system task first
+    const task = get().tasks.find(t => t.id === taskId);
+    if (task?.isSystemTask) {
+      set({ error: 'System tasks cannot be deleted' });
+      return false;
+    }
     
     set({ isLoading: true, error: null });
     
@@ -303,10 +381,51 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   },
 
   /**
+   * NEW: Get tasks by domain category
+   */
+  getTasksByDomain: (domain: DomainCategory) => {
+    const tasks = get().tasks;
+    return tasks.filter(task => task.domainCategory === domain);
+  },
+
+  /**
+   * NEW: Get tasks by labels
+   */
+  getTasksByLabels: (labels: string[]) => {
+    const tasks = get().tasks;
+    return tasks.filter(task => 
+      labels.some(label => task.labels.includes(label))
+    );
+  },
+
+  /**
+   * NEW: Get system tasks only
+   */
+  getSystemTasks: () => {
+    const tasks = get().tasks;
+    return tasks.filter(task => task.isSystemTask);
+  },
+
+  /**
+   * NEW: Get user tasks only (non-system)
+   */
+  getUserTasks: () => {
+    const tasks = get().tasks;
+    return tasks.filter(task => !task.isSystemTask);
+  },
+
+  /**
    * Clear error state
    */
   clearError: () => {
     set({ error: null });
+  },
+
+  /**
+   * NEW: Clear achievement notifications
+   */
+  clearAchievements: () => {
+    set({ recentAchievements: null });
   },
 
   /**

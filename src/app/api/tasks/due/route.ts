@@ -6,7 +6,7 @@ import Task from '@/models/Task';
 import { ITask } from '@/types/models/tasks';
 import { withAuth, AuthLevel } from '@/lib/auth-utils';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
-import { TaskData } from '@/types';
+import { TaskData, DomainCategory } from '@/types';
 import { convertTaskToTaskData } from '@/lib/task-utils';
 
 /**
@@ -60,10 +60,13 @@ function isTaskDueOnDate(task: ITask, checkDate: Date, dateKey: string): boolean
     console.log(`📋 [DUE] Task details:`, {
       recurrencePattern: task.recurrencePattern,
       createdDate: task.date?.toISOString(),
-      customRecurrenceDays: task.customRecurrenceDays
+      customRecurrenceDays: task.customRecurrenceDays,
+      domainCategory: task.domainCategory, // NEW
+      labels: task.labels, // NEW
+      isSystemTask: task.isSystemTask // NEW
     });
     
-    // Use the task's built-in method but with extra logging
+    // Use the task's built-in method
     const isDue = task.isTaskDueToday(checkDate);
     
     console.log(`${isDue ? '✅' : '❌'} [DUE] Task "${task.name}" is ${isDue ? 'DUE' : 'NOT DUE'} on ${dateKey}`);
@@ -94,7 +97,7 @@ function isTaskDueOnDate(task: ITask, checkDate: Date, dateKey: string): boolean
 
 /**
  * GET /api/tasks/due
- * Get all tasks due for the specified date with bulletproof date handling
+ * Get all tasks due for the specified date with enhanced filtering
  */
 export const GET = withAuth<TaskData[]>(
   async (req: NextRequest, userId: string) => {
@@ -104,13 +107,25 @@ export const GET = withAuth<TaskData[]>(
       await dbConnect();
       console.log('✅ [DUE] Database connected');
       
-      // Parse query parameters with defensive checks
+      // Parse query parameters
       const url = new URL(req.url);
       const dateParam = url.searchParams.get('date');
       const categoryParam = url.searchParams.get('category');
       const priorityParam = url.searchParams.get('priority');
       
-      console.log('📝 [DUE] Query parameters:', { dateParam, categoryParam, priorityParam });
+      // NEW: Organization filters
+      const domainCategoryParam = url.searchParams.get('domainCategory') as DomainCategory;
+      const labelsParam = url.searchParams.get('labels'); // Comma-separated
+      const isSystemTaskParam = url.searchParams.get('isSystemTask');
+      
+      console.log('📝 [DUE] Query parameters:', { 
+        dateParam, 
+        categoryParam, 
+        priorityParam,
+        domainCategoryParam,
+        labelsParam,
+        isSystemTaskParam
+      });
       
       // Parse and validate date
       const dateResult = parseDateParameter(dateParam);
@@ -134,6 +149,14 @@ export const GET = withAuth<TaskData[]>(
         return apiError('Invalid priority. Must be low, medium, or high.', 400, 'ERR_INVALID_PRIORITY');
       }
       
+      // NEW: Validate domain category parameter
+      if (domainCategoryParam && 
+          (typeof domainCategoryParam !== 'string' || 
+          !['ethos', 'trophe', 'soma'].includes(domainCategoryParam))) {
+        console.error('❌ [DUE] Invalid domain category parameter:', domainCategoryParam);
+        return apiError('Invalid domain category. Must be ethos, trophe, or soma.', 400, 'ERR_INVALID_DOMAIN_CATEGORY');
+      }
+      
       // Build database query
       const query: any = { user: userId };
       
@@ -143,6 +166,22 @@ export const GET = withAuth<TaskData[]>(
       
       if (priorityParam && ['low', 'medium', 'high'].includes(priorityParam)) {
         query.priority = priorityParam;
+      }
+      
+      // NEW: Organization filters
+      if (domainCategoryParam && ['ethos', 'trophe', 'soma'].includes(domainCategoryParam)) {
+        query.domainCategory = domainCategoryParam;
+      }
+      
+      if (labelsParam && typeof labelsParam === 'string') {
+        const labels = labelsParam.split(',').map(l => l.trim()).filter(l => l.length > 0);
+        if (labels.length > 0) {
+          query.labels = { $in: labels };
+        }
+      }
+      
+      if (isSystemTaskParam !== null) {
+        query.isSystemTask = isSystemTaskParam === 'true';
       }
       
       console.log('🔍 [DUE] Database query:', query);
@@ -203,11 +242,15 @@ export const GET = withAuth<TaskData[]>(
         return 0;
       });
       
+      // Log final results with more detail for debugging
       console.log('🏁 [DUE] Returning due tasks:', dueTasks.map(t => ({
         id: t.id,
         name: t.name,
         scheduledTime: t.scheduledTime,
-        pattern: t.recurrencePattern
+        pattern: t.recurrencePattern,
+        domainCategory: t.domainCategory, // NEW
+        labels: t.labels, // NEW
+        isSystemTask: t.isSystemTask // NEW
       })));
       
       return apiResponse(dueTasks);
