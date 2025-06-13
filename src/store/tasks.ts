@@ -308,7 +308,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
           console.log('🏆 [STORE] Achievements unlocked:', achievements);
         }
         
-        // Update in local state
+      // Update in local state
         set((state) => ({
           tasks: state.tasks.map(task => 
             task.id === taskId ? updatedTask : task
@@ -317,7 +317,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
           recentAchievements: achievements
         }));
         
-        return { task: updatedTask, achievements };
+        return { task: updatedTask, achievements: achievements || undefined };
       } else {
         throw new Error(data.error?.message || `Failed to ${completed ? 'complete' : 'uncomplete'} task`);
       }
@@ -327,7 +327,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         error: error instanceof Error ? error.message : `Failed to ${completed ? 'complete' : 'uncomplete'} task`,
         isLoading: false 
       });
-      return { task: null, achievements: null };
+      return { task: null };
     }
   },
 

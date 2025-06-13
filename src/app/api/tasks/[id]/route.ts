@@ -7,7 +7,7 @@ import TaskLog from '@/models/TaskLog';
 import { ITask } from '@/types/models/tasks';
 import { withAuth, AuthLevel } from '@/lib/auth-utils';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
-import { convertTaskToTaskData, convertToTaskEventData } from '@/lib/task-utils';
+import { convertTaskToTaskData, convertToTaskEventData } from '@/types/converters/taskConverters';
 import { processTaskEvent } from '@/lib/ethos/coordinator';
 import { TaskData } from '@/types';
 import { UpdateTaskRequest } from '@/types/api/taskRequests';
