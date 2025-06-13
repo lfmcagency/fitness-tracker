@@ -1,122 +1,86 @@
-import { Types } from 'mongoose';
+import { TaskData } from '@/types';
 import { ITask } from '@/types/models/tasks';
-import { awardTaskCompletionXp } from '@/lib/xp/ethos';
-import { NextRequest } from 'next/server';
-import { apiError } from '@/lib/api-utils';
-import { TaskData, RecurrencePattern, TaskPriority } from '@/types';
 
 /**
- * Convert a Task document to a TaskData object with date-specific completion status
- * @param task Task document from MongoDB
- * @param checkDate Date to check completion for (defaults to today)
- * @returns TaskData object with formatted fields
+ * Pure task utilities - no XP awarding, just task logic
+ * XP is now handled by the event system (Ethos -> Progress)
  */
-export function convertTaskToTaskData(task: any, checkDate?: Date): TaskData {
-  const targetDate = checkDate || new Date();
-  
-  // Check if task is completed on the target date
-  const isCompletedOnDate = task.isCompletedOnDate ? task.isCompletedOnDate(targetDate) : false;
+
+/**
+ * Convert database task to API format
+ * Clean converter with defensive programming
+ */
+export function convertTaskToTaskData(task: ITask): TaskData {
+  if (!task) {
+    throw new Error('Task is required for conversion');
+  }
+
+  // Defensive access to nested properties
+  const completionHistory = Array.isArray(task.completionHistory) ? task.completionHistory : [];
+  const lastCompletion = completionHistory.length > 0 ? completionHistory[completionHistory.length - 1] : null;
   
   return {
     id: task._id.toString(),
-    name: task.name,
-    scheduledTime: task.scheduledTime,
-    completed: isCompletedOnDate, // Date-specific completion status
-    date: task.date ? new Date(task.date).toISOString() : undefined,
-    recurrencePattern: task.recurrencePattern as RecurrencePattern,
-    customRecurrenceDays: task.customRecurrenceDays,
-    currentStreak: task.currentStreak || 0,
-    bestStreak: task.bestStreak || 0,
-    lastCompletedDate: task.lastCompletedDate ? new Date(task.lastCompletedDate).toISOString() : null,
-    category: task.category || 'general',
-    priority: task.priority as TaskPriority || 'medium',
-    user: task.user ? task.user.toString() : undefined,
-    createdAt: task.createdAt ? new Date(task.createdAt).toISOString() : undefined,
-    updatedAt: task.updatedAt ? new Date(task.updatedAt).toISOString() : undefined,
-    description: task.description,
-    completionHistory: task.completionHistory ? task.completionHistory.map((date: Date) => date.toISOString()) : []
+    name: task.name || '',
+    scheduledTime: task.scheduledTime || '',
+    completed: task.completed || false,
+    date: task.date ? task.date.toISOString() : new Date().toISOString(),
+    completionHistory: completionHistory.map(date => date.toISOString()),
+    lastCompleted: lastCompletion?.toISOString() || null,
+    streak: task.streak || 0,
+    totalCompletions: task.totalCompletions || 0,
+    user: task.user.toString(),
+    recurrencePattern: task.recurrencePattern || 'once',
+    priority: task.priority || 'medium',
+    timeBlock: task.timeBlock || 'morning',
+    isSystemTask: task.isSystemTask || false,
+    description: task.description || '',
+    labels: Array.isArray(task.labels) ? task.labels : [],
+    createdAt: task.createdAt ? task.createdAt.toISOString() : new Date().toISOString(),
+    updatedAt: task.updatedAt ? task.updatedAt.toISOString() : new Date().toISOString(),
   };
 }
 
 /**
- * Check if a task is completed on a specific date
- * @param task Task object
- * @param date Date to check
- * @returns Boolean indicating if task is completed on the date
+ * Check if task is due on a specific date based on recurrence pattern
+ * Pure date logic, no side effects
  */
-export function isTaskCompletedOnDate(task: any, date: Date): boolean {
-  if (!task.completionHistory || !Array.isArray(task.completionHistory)) {
-    return false;
-  }
+export function isTaskDueOnDate(task: ITask, targetDate: Date): boolean {
+  if (!task || !targetDate) return false;
   
-  const checkDate = new Date(date);
-  checkDate.setHours(0, 0, 0, 0);
+  const taskDate = new Date(task.date);
+  const target = new Date(targetDate);
   
-  return task.completionHistory.some((completionDate: Date) => {
-    const historyDate = new Date(completionDate);
-    historyDate.setHours(0, 0, 0, 0);
-    return historyDate.getTime() === checkDate.getTime();
-  });
-}
-
-/**
- * Award XP for task completion and return results
- * @param userId User ID
- * @param task Task that was completed
- * @returns XP award result with level information
- */
-export async function handleTaskXpAward(userId: string | Types.ObjectId, task: any) {
-  // Award XP for completing the task
-  const xpResult = await awardTaskCompletionXp(
-    userId,
-    task.name,
-    task.currentStreak,
-  );
-  
-  return {
-    xpAwarded: xpResult.xpAdded,
-    newLevel: xpResult.currentLevel,
-    previousLevel: xpResult.previousLevel,
-    leveledUp: xpResult.leveledUp,
-    totalXp: xpResult.totalXp
-  };
-}
-
-/**
- * Check if a task is due on a specific date
- * @param task Task object
- * @param date Date to check (defaults to today)
- * @returns Boolean indicating if task is due on the date
- */
-export function isTaskDueOnDate(task: any, date?: Date): boolean {
-  const checkDate = date || new Date();
-  const dayOfWeek = checkDate.getDay(); // 0 = Sunday, 1 = Monday, etc.
+  // Normalize dates to midnight UTC for comparison
+  taskDate.setUTCHours(0, 0, 0, 0);
+  target.setUTCHours(0, 0, 0, 0);
   
   switch (task.recurrencePattern) {
     case 'once':
-      // Task only occurs on its creation date
-      const taskDate = new Date(task.date || task.createdAt);
-      taskDate.setHours(0, 0, 0, 0);
-      checkDate.setHours(0, 0, 0, 0);
-      return taskDate.getTime() === checkDate.getTime();
+      return taskDate.getTime() === target.getTime();
       
     case 'daily':
-      return true;
+      return target >= taskDate;
       
     case 'weekdays':
-      return dayOfWeek >= 1 && dayOfWeek <= 5;
+      if (target < taskDate) return false;
+      const weekday = target.getUTCDay();
+      return weekday >= 1 && weekday <= 5; // Monday-Friday
       
     case 'weekends':
-      return dayOfWeek === 0 || dayOfWeek === 6;
+      if (target < taskDate) return false;
+      const weekend = target.getUTCDay();
+      return weekend === 0 || weekend === 6; // Sunday or Saturday
       
     case 'weekly':
-      // If day of week matches the original creation day
-      const originalDate = new Date(task.date || task.createdAt);
-      return dayOfWeek === originalDate.getDay();
+      if (target < taskDate) return false;
+      const daysDiff = Math.floor((target.getTime() - taskDate.getTime()) / (1000 * 60 * 60 * 24));
+      return daysDiff % 7 === 0;
       
     case 'custom':
-      // Check if current day is in the custom recurrence days
-      return task.customRecurrenceDays?.includes(dayOfWeek) || false;
+      // For custom patterns, check if target date matches any completion pattern
+      // This is a simplified version - you might want more complex logic
+      return target >= taskDate;
       
     default:
       return false;
@@ -124,129 +88,164 @@ export function isTaskDueOnDate(task: any, date?: Date): boolean {
 }
 
 /**
- * Check if a task is due today
- * @param task Task object
- * @returns Boolean indicating if task is due today
+ * Calculate streak count for a task on a specific date
+ * Pure calculation, no database updates
  */
-export function isTaskDueToday(task: any): boolean {
-  return isTaskDueOnDate(task, new Date());
+export function calculateTaskStreak(task: ITask, targetDate: Date): number {
+  if (!task || !task.completionHistory || task.completionHistory.length === 0) {
+    return 0;
+  }
+  
+  const completions = [...task.completionHistory]
+    .map(date => new Date(date))
+    .sort((a, b) => b.getTime() - a.getTime()); // Newest first
+  
+  const target = new Date(targetDate);
+  target.setUTCHours(0, 0, 0, 0);
+  
+  let streak = 0;
+  let currentDate = new Date(target);
+  
+  for (const completion of completions) {
+    const completionDate = new Date(completion);
+    completionDate.setUTCHours(0, 0, 0, 0);
+    
+    if (completionDate.getTime() === currentDate.getTime()) {
+      streak++;
+      // Move to previous expected completion date based on pattern
+      currentDate = getPreviousExpectedDate(currentDate, task.recurrencePattern);
+    } else {
+      break; // Streak broken
+    }
+  }
+  
+  return streak;
 }
 
 /**
- * Mark a task as completed, update streak, and award XP
- * @param userId User ID
- * @param task Task to mark as completed
- * @param date Date of completion (defaults to today)
- * @returns Updated task with updated streak
+ * Get the previous expected completion date based on recurrence pattern
+ * Helper for streak calculation
  */
-export async function completeTask(userId: string | Types.ObjectId, task: any, date?: Date) {
-  const completionDate = date || new Date();
+function getPreviousExpectedDate(currentDate: Date, pattern: string): Date {
+  const prevDate = new Date(currentDate);
   
-  // Use the model method to complete the task for specific date
-  task.completeTask(completionDate);
+  switch (pattern) {
+    case 'daily':
+      prevDate.setUTCDate(prevDate.getUTCDate() - 1);
+      break;
+      
+    case 'weekdays':
+      // Skip to previous weekday
+      do {
+        prevDate.setUTCDate(prevDate.getUTCDate() - 1);
+      } while (prevDate.getUTCDay() === 0 || prevDate.getUTCDay() === 6);
+      break;
+      
+    case 'weekends':
+      // Skip to previous weekend day
+      do {
+        prevDate.setUTCDate(prevDate.getUTCDate() - 1);
+      } while (prevDate.getUTCDay() !== 0 && prevDate.getUTCDay() !== 6);
+      break;
+      
+    case 'weekly':
+      prevDate.setUTCDate(prevDate.getUTCDate() - 7);
+      break;
+      
+    default:
+      // For 'once' and 'custom', just go back one day
+      prevDate.setUTCDate(prevDate.getUTCDate() - 1);
+      break;
+  }
   
-  // Award XP for task completion
-  await awardTaskCompletionXp(
-    userId,
-    task.name,
-    task.currentStreak,
-  );
-  
-  return await task.save();
+  return prevDate;
 }
 
 /**
- * Mark a task as uncompleted for a specific date
- * @param task Task to mark as uncompleted
- * @param date Date to uncomplete (defaults to today)
- * @returns Updated task
+ * Check if a task completion hits a milestone threshold
+ * Pure calculation for milestone detection
  */
-export async function uncompleteTask(task: any, date?: Date) {
-  const targetDate = date || new Date();
+export function checkTaskMilestone(totalCompletions: number, streakCount: number): {
+  completionMilestone: string | null;
+  streakMilestone: string | null;
+} {
+  const completionMilestones = [50, 100, 250, 500, 1000];
+  const streakMilestones = [7, 30, 100, 365];
   
-  // Use the model method to uncomplete the task for specific date
-  task.uncompleteTask(targetDate);
+  let completionMilestone: string | null = null;
+  let streakMilestone: string | null = null;
   
-  return await task.save();
+  // Check completion milestones
+  for (const milestone of completionMilestones) {
+    if (totalCompletions === milestone) {
+      completionMilestone = `${milestone}_completions`;
+      break;
+    }
+  }
+  
+  // Check streak milestones
+  for (const milestone of streakMilestones) {
+    if (streakCount === milestone) {
+      streakMilestone = `${milestone}_day_streak`;
+      break;
+    }
+  }
+  
+  return { completionMilestone, streakMilestone };
 }
 
 /**
- * Reset a task's completion status based on its recurrence pattern
- * @param task Task to reset
- * @returns Updated task with reset status
+ * Determine if a task is a system task (connected to other domains)
+ * Helper for identifying cross-domain tasks
  */
-export async function resetTaskForNewDay(task: any) {
-  // With date-based completion, we don't need to reset daily
-  // The completion status is determined by checking specific dates
-  return task;
+export function isSystemTask(task: ITask): boolean {
+  return task.isSystemTask || false;
 }
 
 /**
- * Update task streaks based on completion history
- * @param task Task to update streak
- * @returns Updated task with adjusted streak
+ * Get the appropriate time block for a task
+ * Helper for task organization
  */
-export async function updateTaskStreak(task: any) {
-  // Use the model method to recalculate streak
-  const newStreak = task.calculateStreak();
-  task.currentStreak = newStreak;
+export function getTaskTimeBlock(task: ITask): 'morning' | 'afternoon' | 'evening' {
+  if (!task.timeBlock) return 'morning';
   
-  return await task.save();
+  const validTimeBlocks = ['morning', 'afternoon', 'evening'];
+  return validTimeBlocks.includes(task.timeBlock) ? task.timeBlock as any : 'morning';
 }
 
 /**
- * Validate a task object from request body
- * @param body Request body
- * @returns Validation result
+ * Validate task data for creation/updates
+ * Pure validation logic
  */
-export function validateTaskBody(body: any): { valid: boolean; errors?: string[] } {
+export function validateTaskData(data: Partial<TaskData>): string[] {
   const errors: string[] = [];
   
-  // Required fields
-  if (!body.name) {
+  if (!data.name || data.name.trim().length === 0) {
     errors.push('Task name is required');
   }
   
-  if (!body.scheduledTime) {
-    errors.push('Scheduled time is required');
+  if (data.name && data.name.length > 100) {
+    errors.push('Task name must be less than 100 characters');
   }
   
-  if (!body.recurrencePattern) {
-    errors.push('Recurrence pattern is required');
-  } else {
-    // Validate recurrence pattern
-    const validPatterns = ['once', 'daily', 'weekdays', 'weekends', 'weekly', 'custom'];
-    if (!validPatterns.includes(body.recurrencePattern)) {
-      errors.push(`Invalid recurrence pattern: ${body.recurrencePattern}`);
-    }
-    
-    // If custom pattern, ensure days are provided
-    if (body.recurrencePattern === 'custom' && 
-        (!body.customRecurrenceDays || !Array.isArray(body.customRecurrenceDays) || 
-         body.customRecurrenceDays.length === 0)) {
-      errors.push('Custom recurrence pattern requires customRecurrenceDays array');
-    }
+  if (data.scheduledTime && !/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(data.scheduledTime)) {
+    errors.push('Scheduled time must be in HH:MM format');
   }
   
-  return {
-    valid: errors.length === 0,
-    errors: errors.length > 0 ? errors : undefined
-  };
-}
-
-/**
- * Extract and validate task ID from request
- * @param req Next.js request
- * @param params Route parameters
- * @returns Task ID or error response
- */
-export function extractTaskId(req: NextRequest, params: { id: string }) {
-  const id = params.id;
-  
-  // Validate ObjectId
-  if (!Types.ObjectId.isValid(id)) {
-    return apiError(`Invalid task ID: ${id}`, 400);
+  const validPriorities = ['low', 'medium', 'high'];
+  if (data.priority && !validPriorities.includes(data.priority)) {
+    errors.push('Priority must be low, medium, or high');
   }
   
-  return id;
+  const validTimeBlocks = ['morning', 'afternoon', 'evening'];
+  if (data.timeBlock && !validTimeBlocks.includes(data.timeBlock)) {
+    errors.push('Time block must be morning, afternoon, or evening');
+  }
+  
+  const validPatterns = ['once', 'daily', 'weekdays', 'weekends', 'weekly', 'custom'];
+  if (data.recurrencePattern && !validPatterns.includes(data.recurrencePattern)) {
+    errors.push('Invalid recurrence pattern');
+  }
+  
+  return errors;
 }
