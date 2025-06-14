@@ -8,7 +8,9 @@ import { ITask } from '@/types/models/tasks';
 import { withAuth, AuthLevel } from '@/lib/auth-utils';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { convertTaskToTaskData, convertToTaskEventData } from '@/types/converters/taskConverters';
-import { processTaskEvent } from '@/lib/ethos/coordinator';
+import { processEvent } from '@/lib/event-coordinator';
+import { EthosContracts } from '@/lib/event-coordinator/contracts';
+import { generateToken } from '@/lib/event-coordinator/logging';
 import { TaskData } from '@/types';
 import { BatchTaskRequest } from '@/types/api/taskRequests';
 import { isValidObjectId } from 'mongoose';
@@ -111,15 +113,17 @@ export const POST = withAuth<TaskData[] | { count: number; taskIds: string[]; ac
                     'api'
                   );
                   
-                  // 🆕 FIRE EVENT TO COORDINATOR FOR EACH TASK 🆕
+                  // 🆕 FIRE EVENT TO NEW COORDINATOR FOR EACH TASK 🆕
                   try {
-                    const eventData = convertToTaskEventData(task, 'completed', completionDate, previousState);
-                    const coordinatorResult = await processTaskEvent(eventData);
+                    const token = generateToken();
+                    const taskEventData = convertToTaskEventData(task, 'completed', completionDate, previousState);
+                    const eventData = EthosContracts.taskCompletion(token, userId, taskEventData);
+                    const coordinatorResult = await processEvent(eventData);
                     
-                    if (coordinatorResult.achievementsNotified.length > 0) {
-                      console.log(`🏆 [BATCH] Task "${task.name}" unlocked ${coordinatorResult.achievementsNotified.length} achievements!`);
-                      totalAchievementsUnlocked += coordinatorResult.achievementsNotified.length;
-                      allUnlockedAchievements.push(...coordinatorResult.achievementsNotified);
+                    if (coordinatorResult.achievementsUnlocked && coordinatorResult.achievementsUnlocked.length > 0) {
+                      console.log(`🏆 [BATCH] Task "${task.name}" unlocked ${coordinatorResult.achievementsUnlocked.length} achievements!`);
+                      totalAchievementsUnlocked += coordinatorResult.achievementsUnlocked.length;
+                      allUnlockedAchievements.push(...coordinatorResult.achievementsUnlocked);
                     }
                   } catch (coordinatorError) {
                     console.error(`💥 [BATCH] Error processing coordinator event for task ${taskId}:`, coordinatorError);

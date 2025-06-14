@@ -8,7 +8,9 @@ import { ITask } from '@/types/models/tasks';
 import { withAuth, AuthLevel } from '@/lib/auth-utils';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { convertToTaskEventData } from '@/types/converters/taskConverters';
-import { processTaskEvent } from '@/lib/ethos/coordinator';
+import { processEvent } from '@/lib/event-coordinator';
+import { EthosContracts } from '@/lib/event-coordinator/contracts';
+import { generateToken } from '@/lib/event-coordinator/logging';
 import { StreakInfo } from '@/types';
 import { TaskStreakRequest } from '@/types/api/taskRequests';
 import { isValidObjectId } from 'mongoose';
@@ -151,11 +153,16 @@ export const POST = withAuth<StreakInfo & { achievements?: any }, { id: string }
           'api'
         );
         
-        // 🆕 FIRE EVENT TO COORDINATOR 🆕
-        let coordinatorResult = { achievementsNotified: [] as string[] };
+        // 🆕 FIRE EVENT TO NEW COORDINATOR 🆕
+        let coordinatorResult = { achievementsUnlocked: [] as string[] };
         try {
-          const eventData = convertToTaskEventData(task, 'completed', date, previousState);
-          coordinatorResult = await processTaskEvent(eventData);
+          const token = generateToken();
+          const taskEventData = convertToTaskEventData(task, 'completed', date, previousState);
+          const eventData = EthosContracts.taskCompletion(token, userId, taskEventData);
+          const result = await processEvent(eventData);
+          coordinatorResult = { 
+            achievementsUnlocked: result.achievementsUnlocked || []
+          };
           
           console.log('🎉 [STREAK] Coordinator processing complete:', coordinatorResult);
         } catch (coordinatorError) {
@@ -177,15 +184,15 @@ export const POST = withAuth<StreakInfo & { achievements?: any }, { id: string }
         };
         
         // Add achievement info if any were unlocked
-        if (coordinatorResult.achievementsNotified.length > 0) {
+        if (coordinatorResult.achievementsUnlocked && coordinatorResult.achievementsUnlocked.length > 0) {
           streakInfo.achievements = {
-            unlockedCount: coordinatorResult.achievementsNotified.length,
-            achievements: coordinatorResult.achievementsNotified
+            unlockedCount: coordinatorResult.achievementsUnlocked.length,
+            achievements: coordinatorResult.achievementsUnlocked
           };
         }
         
-        const message = coordinatorResult.achievementsNotified.length > 0
-          ? `Streak updated successfully and ${coordinatorResult.achievementsNotified.length} achievement(s) unlocked!`
+        const message = coordinatorResult.achievementsUnlocked && coordinatorResult.achievementsUnlocked.length > 0
+          ? `Streak updated successfully and ${coordinatorResult.achievementsUnlocked.length} achievement(s) unlocked!`
           : 'Streak updated successfully';
         
         return apiResponse(streakInfo, true, message);

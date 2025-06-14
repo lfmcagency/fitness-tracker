@@ -8,7 +8,9 @@ import { ITask } from '@/types/models/tasks';
 import { withAuth, AuthLevel } from '@/lib/auth-utils';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { convertTaskToTaskData, convertToTaskEventData } from '@/types/converters/taskConverters';
-import { processTaskEvent } from '@/lib/ethos/coordinator';
+import { processEvent } from '@/lib/event-coordinator';
+import { EthosContracts } from '@/lib/event-coordinator/contracts';
+import { generateToken } from '@/lib/event-coordinator/logging';
 import { TaskData } from '@/types';
 import { UpdateTaskRequest } from '@/types/api/taskRequests';
 import { isValidObjectId } from 'mongoose';
@@ -171,10 +173,12 @@ export const PATCH = withAuth<TaskData | { task: TaskData; achievements?: any },
               'api'
             );
             
-            // 🆕 FIRE EVENT TO COORDINATOR 🆕
+            // 🆕 FIRE EVENT TO NEW COORDINATOR 🆕
             try {
-              const eventData = convertToTaskEventData(existingTask, 'completed', completionDate, previousState);
-              const coordinatorResult = await processTaskEvent(eventData);
+              const token = generateToken();
+              const taskEventData = convertToTaskEventData(existingTask, 'completed', completionDate, previousState);
+              const eventData = EthosContracts.taskCompletion(token, userId, taskEventData);
+              const coordinatorResult = await processEvent(eventData);
               
               console.log('🎉 [TASK] Coordinator processing complete:', coordinatorResult);
               
@@ -182,15 +186,15 @@ export const PATCH = withAuth<TaskData | { task: TaskData; achievements?: any },
               
               // Build response with achievement info if any were unlocked
               let message = 'Task marked as completed';
-              if (coordinatorResult.achievementsNotified.length > 0) {
-                message = `Task completed and ${coordinatorResult.achievementsNotified.length} achievement(s) unlocked!`;
+              if (coordinatorResult.achievementsUnlocked && coordinatorResult.achievementsUnlocked.length > 0) {
+                message = `Task completed and ${coordinatorResult.achievementsUnlocked.length} achievement(s) unlocked!`;
               }
               
               return apiResponse({
                 task: taskData,
-                achievements: coordinatorResult.achievementsNotified.length > 0 ? {
-                  unlockedCount: coordinatorResult.achievementsNotified.length,
-                  achievements: coordinatorResult.achievementsNotified
+                achievements: coordinatorResult.achievementsUnlocked && coordinatorResult.achievementsUnlocked.length > 0 ? {
+                  unlockedCount: coordinatorResult.achievementsUnlocked.length,
+                  achievements: coordinatorResult.achievementsUnlocked
                 } : undefined
               }, true, message);
               
@@ -233,10 +237,12 @@ export const PATCH = withAuth<TaskData | { task: TaskData; achievements?: any },
               'api'
             );
             
-            // 🆕 FIRE EVENT TO COORDINATOR (for uncompleted too) 🆕
+            // 🆕 FIRE EVENT TO NEW COORDINATOR (for uncompleted too) 🆕
             try {
-              const eventData = convertToTaskEventData(existingTask, 'uncompleted', completionDate, previousState);
-              await processTaskEvent(eventData);
+              const token = generateToken();
+              const taskEventData = convertToTaskEventData(existingTask, 'uncompleted', completionDate, previousState);
+              const eventData = EthosContracts.taskCompletion(token, userId, taskEventData);
+              await processEvent(eventData);
               console.log('✅ [TASK] Uncomplete event processed by coordinator');
             } catch (coordinatorError) {
               console.error('💥 [TASK] Error processing coordinator uncomplete event:', coordinatorError);

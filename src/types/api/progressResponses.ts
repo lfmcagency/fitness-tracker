@@ -20,6 +20,7 @@ export interface ProgressEventContract {
   taskType?: string;
   streakCount: number;
   totalCompletions: number;
+  token?: string;
   
   // Milestone context
   milestoneHit?: string; // '7_day_streak', '50_completions', etc.
@@ -30,13 +31,13 @@ export interface ProgressEventContract {
   category?: ProgressCategory;
   
   // Additional context for XP calculation
-  metadata?: {
   difficulty?: 'easy' | 'medium' | 'hard';
   bodyweight?: number;
   reps?: number;
   exerciseName?: string;
   isSystemTask?: boolean;
-}
+  isSystemItem?: boolean;
+  [key: string]: any;  // Add this to allow any additional properties
 }
 
 /**
