@@ -144,6 +144,9 @@ export interface StreakInfo {
 
 // NEW: Event data for coordinator communication
 export interface TaskEventData {
+  currentStreak: any;
+  name: string;
+  completionHistory: never[];
   taskId: string;
   userId: string;
   action: 'completed' | 'uncompleted';

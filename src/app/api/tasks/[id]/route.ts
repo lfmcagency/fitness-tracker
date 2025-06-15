@@ -7,11 +7,14 @@ import TaskLog from '@/models/TaskLog';
 import { ITask } from '@/types/models/tasks';
 import { withAuth, AuthLevel } from '@/lib/auth-utils';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
-import { convertTaskToTaskData } from '@/types/converters/taskConverters';
-import { handleTaskCompletion } from '@/lib/event-coordinator';
+import { convertTaskToTaskData, convertToTaskEventData } from '@/types/converters/taskConverters';
 import { TaskData } from '@/types';
 import { UpdateTaskRequest } from '@/types/api/taskRequests';
 import { isValidObjectId } from 'mongoose';
+
+// NEW: Rich coordinator integration
+import { processEvent, generateToken, startTokenTracking, trackTokenStage } from '@/lib/event-coordinator';
+import { BaseEventData } from '@/lib/event-coordinator/types';
 
 /**
  * Helper function to validate task updates
@@ -79,12 +82,20 @@ function parseCompletionDate(dateString?: string): Date {
 
 /**
  * PATCH /api/tasks/[id]
- * Updates a task with token-based rich coordinator integration
+ * Updates a task with RICH COORDINATOR INTEGRATION and token tracking
  */
-export const PATCH = withAuth<TaskData | { task: TaskData; achievements?: any }, { id: string }>(
+export const PATCH = withAuth<TaskData | { task: TaskData; achievements?: any; token?: string }, { id: string }>(
   async (req: NextRequest, userId: string, context) => {
+    // 🎯 GENERATE TOKEN FOR END-TO-END TRACKING
+    const token = generateToken();
+    startTokenTracking(token);
+    trackTokenStage(token, 'api_route_start');
+    
+    console.log(`🎯 [TASK-API] PATCH started with token: ${token}`);
+    
     try {
       await dbConnect();
+      trackTokenStage(token, 'db_connected');
       
       // Validate taskId parameter
       const taskId = context?.params?.id;
@@ -125,6 +136,8 @@ export const PATCH = withAuth<TaskData | { task: TaskData; achievements?: any },
         return apiError('Task not found or you do not have permission to update it', 404, 'ERR_NOT_FOUND');
       }
       
+      trackTokenStage(token, 'task_found');
+      
       // Parse completion date for all operations
       const completionDate = parseCompletionDate(updates.completionDate);
       console.log('📅 [TASK-API] Using completion date:', completionDate.toISOString());
@@ -159,6 +172,7 @@ export const PATCH = withAuth<TaskData | { task: TaskData; achievements?: any },
             // Save the task
             await existingTask.save();
             console.log('💾 [TASK-API] Task saved successfully');
+            trackTokenStage(token, 'task_saved');
             
             // Log the completion
             await TaskLog.logCompletion(
@@ -173,14 +187,33 @@ export const PATCH = withAuth<TaskData | { task: TaskData; achievements?: any },
             // 🚀 CALL RICH COORDINATOR WITH TOKEN FLOW
             try {
               console.log('🎯 [TASK-API] Calling rich coordinator for completion...');
+              trackTokenStage(token, 'coordinator_call_start');
               
-              const coordinatorResult = await handleTaskCompletion(
+              // Build rich event data
+              const taskEventData = convertToTaskEventData(existingTask, 'completed', completionDate, previousState);
+              
+              const eventData: BaseEventData = {
+                token,
                 userId,
-                existingTask,
-                'completed',
-                completionDate,
-                previousState
-              );
+                source: 'ethos',
+                action: 'task_completed',
+                timestamp: new Date(),
+                metadata: {
+                  taskEventData,
+                  previousState,
+                  completionDate: completionDate.toISOString()
+                }
+              };
+              
+              console.log('📋 [TASK-API] Firing rich event:', {
+                token,
+                action: eventData.action,
+                taskName: taskEventData.name,
+                streakCount: taskEventData.currentStreak
+              });
+              
+              const coordinatorResult = await processEvent(eventData);
+              trackTokenStage(token, 'coordinator_complete');
               
               console.log('🎉 [TASK-API] Rich coordinator processing complete:', {
                 success: coordinatorResult.success,
@@ -202,17 +235,20 @@ export const PATCH = withAuth<TaskData | { task: TaskData; achievements?: any },
                   unlockedCount: coordinatorResult.achievementsUnlocked.length,
                   achievements: coordinatorResult.achievementsUnlocked,
                   token: coordinatorResult.token // Include token for debugging
-                } : undefined
+                } : undefined,
+                token // Include token in response for debugging
               }, true, message);
               
             } catch (coordinatorError) {
               console.error('💥 [TASK-API] Rich coordinator error:', coordinatorError);
+              trackTokenStage(token, 'coordinator_failed');
               
               // Still return success since task was saved, but note coordinator failure
               const taskData = convertTaskToTaskData(existingTask, completionDate);
               return apiResponse({
                 task: taskData,
-                achievements: undefined
+                achievements: undefined,
+                token
               }, true, 'Task completed, but event processing failed');
             }
             
@@ -234,6 +270,7 @@ export const PATCH = withAuth<TaskData | { task: TaskData; achievements?: any },
             // Save the task
             await existingTask.save();
             console.log('💾 [TASK-API] Task saved successfully');
+            trackTokenStage(token, 'task_saved');
             
             // Log the uncompletion
             await TaskLog.logCompletion(
@@ -248,14 +285,26 @@ export const PATCH = withAuth<TaskData | { task: TaskData; achievements?: any },
             // 🚀 CALL RICH COORDINATOR FOR UNCOMPLETION TOO
             try {
               console.log('🎯 [TASK-API] Calling rich coordinator for uncompletion...');
+              trackTokenStage(token, 'coordinator_uncomplete_start');
               
-              const coordinatorResult = await handleTaskCompletion(
+              // Build rich event data for uncompletion
+              const taskEventData = convertToTaskEventData(existingTask, 'uncompleted', completionDate, previousState);
+              
+              const eventData: BaseEventData = {
+                token,
                 userId,
-                existingTask,
-                'uncompleted',
-                completionDate,
-                previousState
-              );
+                source: 'ethos',
+                action: 'task_uncompleted',
+                timestamp: new Date(),
+                metadata: {
+                  taskEventData,
+                  previousState,
+                  completionDate: completionDate.toISOString()
+                }
+              };
+              
+              const coordinatorResult = await processEvent(eventData);
+              trackTokenStage(token, 'coordinator_uncomplete_complete');
               
               console.log('✅ [TASK-API] Rich coordinator uncompletion processed:', {
                 success: coordinatorResult.success,
@@ -264,14 +313,19 @@ export const PATCH = withAuth<TaskData | { task: TaskData; achievements?: any },
               
             } catch (coordinatorError) {
               console.error('💥 [TASK-API] Rich coordinator uncompletion error:', coordinatorError);
+              trackTokenStage(token, 'coordinator_uncomplete_failed');
               // Continue - uncompletion still succeeded
             }
             
             const taskData = convertTaskToTaskData(existingTask, completionDate);
-            return apiResponse(taskData, true, 'Task marked as incomplete');
+            return apiResponse({
+              task: taskData,
+              token
+            }, true, 'Task marked as incomplete');
           }
         } catch (error) {
           console.error('💥 [TASK-API] Error updating task completion:', error);
+          trackTokenStage(token, 'completion_failed');
           return handleApiError(error, 'Error updating task completion');
         }
       }
@@ -288,14 +342,21 @@ export const PATCH = withAuth<TaskData | { task: TaskData; achievements?: any },
           return apiError('Task not found or could not be updated', 404, 'ERR_UPDATE_FAILED');
         }
         
+        trackTokenStage(token, 'task_updated');
+        
         const taskData = convertTaskToTaskData(updatedTask, completionDate);
-        return apiResponse(taskData, true, 'Task updated successfully');
+        return apiResponse({
+          task: taskData,
+          token
+        }, true, 'Task updated successfully');
       } catch (error) {
         console.error('💥 [TASK-API] Error updating task:', error);
+        trackTokenStage(token, 'update_failed');
         return handleApiError(error, 'Error updating task');
       }
     } catch (error) {
       console.error('💥 [TASK-API] Unexpected error in PATCH /api/tasks/[id]:', error);
+      trackTokenStage(token, 'api_route_failed');
       return handleApiError(error, 'Error updating task');
     }
   },

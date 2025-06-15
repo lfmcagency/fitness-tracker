@@ -1,25 +1,31 @@
 import { create } from 'zustand';
 import type { TaskData, RecurrencePattern, TaskPriority, DomainCategory } from '@/types';
 
+// NEW: Use shared utilities instead of duplicating code
+import { 
+  apiGet, 
+  apiPost, 
+  apiPatch, 
+  apiDelete,
+  ApiError,
+  getTodayString,
+  getTimeBlockForTime,
+  extractAchievements,
+  type AchievementNotification
+} from '@/lib/shared-utilities';
+
 // UPDATED: Creation parameters with new architecture fields
 export interface CreateTaskParams {
   name: string;
   scheduledTime: string;
   recurrencePattern?: RecurrencePattern;
   customRecurrenceDays?: number[];
-  domainCategory?: DomainCategory; // NEW
-  labels?: string[]; // NEW
+  domainCategory?: DomainCategory;
+  labels?: string[];
   category?: string;
   priority?: TaskPriority;
   description?: string;
-  isSystemTask?: boolean; // NEW (usually false for user-created tasks)
-}
-
-// NEW: Achievement notification interface
-export interface AchievementNotification {
-  unlockedCount: number;
-  achievements: string[];
-  message?: string;
+  isSystemTask?: boolean;
 }
 
 // UPDATED: Enhanced state with achievement handling
@@ -30,7 +36,7 @@ interface TaskState {
   isLoading: boolean;
   error: string | null;
   
-  // NEW: Achievement notifications
+  // Achievement notifications
   recentAchievements: AchievementNotification | null;
   
   // Actions - enhanced for new architecture
@@ -41,7 +47,7 @@ interface TaskState {
   completeTask: (taskId: string, completed: boolean, date?: string) => Promise<{ task: TaskData | null; achievements?: AchievementNotification }>;
   deleteTask: (taskId: string) => Promise<boolean>;
   
-  // NEW: Organization helpers
+  // Organization helpers
   getTasksByDomain: (domain: DomainCategory) => TaskData[];
   getTasksByLabels: (labels: string[]) => TaskData[];
   getSystemTasks: () => TaskData[];
@@ -53,40 +59,10 @@ interface TaskState {
   getTasksForTimeBlock: (timeBlock: 'morning' | 'afternoon' | 'evening') => TaskData[];
 }
 
-// Time block logic - moved out of components
-function getTimeBlockForScheduledTime(scheduledTime: string): 'morning' | 'afternoon' | 'evening' {
-  const [hours] = scheduledTime.split(':').map(Number);
-  
-  if (hours >= 6 && hours < 12) return 'morning';
-  if (hours >= 12 && hours < 18) return 'afternoon';
-  return 'evening';
-}
-
-// Helper to format today's date in local timezone
-function getTodayString(): string {
-  const today = new Date();
-  const year = today.getFullYear();
-  const month = String(today.getMonth() + 1).padStart(2, '0');
-  const day = String(today.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-// Helper to extract achievement notifications from API response
-function extractAchievements(responseData: any): AchievementNotification | null {
-  if (responseData?.achievements?.unlockedCount > 0) {
-    return {
-      unlockedCount: responseData.achievements.unlockedCount,
-      achievements: responseData.achievements.achievements || [],
-      message: `🎉 ${responseData.achievements.unlockedCount} achievement(s) unlocked!`
-    };
-  }
-  return null;
-}
-
 export const useTaskStore = create<TaskState>((set, get) => ({
   // Initial state
   tasks: [],
-  selectedDate: getTodayString(),
+  selectedDate: getTodayString(), // Using shared utility
   isLoading: false,
   error: null,
   recentAchievements: null,
@@ -96,7 +72,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
    */
   setSelectedDate: (date: string) => {
     console.log('📅 [STORE] Setting selected date:', date);
-    set({ selectedDate: date, recentAchievements: null }); // Clear achievements on date change
+    set({ selectedDate: date, recentAchievements: null });
     get().fetchTasksForDate(date);
   },
 
@@ -109,43 +85,34 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     set({ isLoading: true, error: null });
     
     try {
-      const response = await fetch(`/api/tasks/due?date=${date}`);
+      // Using shared API utility instead of manual fetch
+      const data = await apiGet<TaskData[]>(`/api/tasks/due`, { date });
       
-      if (!response.ok) {
-        throw new Error(`Failed to fetch tasks: ${response.status} ${response.statusText}`);
-      }
+      console.log(`✅ [STORE] Loaded ${data.length} tasks for ${date}`);
       
-      const data = await response.json();
+      // Log new fields for debugging
+      const systemTasks = data.filter((t: TaskData) => t.isSystemTask);
+      const domainBreakdown = data.reduce((acc: Record<string, number>, t: TaskData) => {
+        acc[t.domainCategory] = (acc[t.domainCategory] || 0) + 1;
+        return acc;
+      }, {});
       
-      if (data.success) {
-        const tasks = data.data || [];
-        console.log(`✅ [STORE] Loaded ${tasks.length} tasks for ${date}`);
-        
-        // Log new fields for debugging
-        const systemTasks = tasks.filter((t: TaskData) => t.isSystemTask);
-        const domainBreakdown = tasks.reduce((acc: Record<string, number>, t: TaskData) => {
-          acc[t.domainCategory] = (acc[t.domainCategory] || 0) + 1;
-          return acc;
-        }, {});
-        
-        console.log('📊 [STORE] Task breakdown:', {
-          total: tasks.length,
-          systemTasks: systemTasks.length,
-          domains: domainBreakdown
-        });
-        
-        set({ 
-          tasks,
-          isLoading: false,
-          selectedDate: date
-        });
-      } else {
-        throw new Error(data.error?.message || 'Failed to fetch tasks');
-      }
+      console.log('📊 [STORE] Task breakdown:', {
+        total: data.length,
+        systemTasks: systemTasks.length,
+        domains: domainBreakdown
+      });
+      
+      set({ 
+        tasks: data,
+        isLoading: false,
+        selectedDate: date
+      });
     } catch (error) {
       console.error('💥 [STORE] Error fetching tasks:', error);
+      const errorMessage = error instanceof ApiError ? error.message : 'Failed to fetch tasks';
       set({ 
-        error: error instanceof Error ? error.message : 'Failed to fetch tasks',
+        error: errorMessage,
         isLoading: false,
         tasks: []
       });
@@ -161,52 +128,39 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     set({ isLoading: true, error: null });
     
     try {
-      const response = await fetch('/api/tasks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...taskData,
-          date: get().selectedDate, // Use current selected date
-          domainCategory: taskData.domainCategory || 'ethos', // Default to ethos
-          labels: taskData.labels || [], // Default to empty array
-          isSystemTask: taskData.isSystemTask || false // Default to false
-        })
+      // Using shared API utility
+      const newTask = await apiPost<TaskData>('/api/tasks', {
+        ...taskData,
+        date: get().selectedDate,
+        domainCategory: taskData.domainCategory || 'ethos',
+        labels: taskData.labels || [],
+        isSystemTask: taskData.isSystemTask || false
       });
       
-      if (!response.ok) {
-        throw new Error(`Failed to create task: ${response.status} ${response.statusText}`);
-      }
+      console.log('✅ [STORE] Task created:', newTask.id);
+      console.log('🏷️ [STORE] Task details:', {
+        domainCategory: newTask.domainCategory,
+        labels: newTask.labels,
+        isSystemTask: newTask.isSystemTask
+      });
       
-      const data = await response.json();
-      
-      if (data.success) {
-        const newTask = data.data;
-        console.log('✅ [STORE] Task created:', newTask.id);
-        console.log('🏷️ [STORE] Task details:', {
-          domainCategory: newTask.domainCategory,
-          labels: newTask.labels,
-          isSystemTask: newTask.isSystemTask
-        });
-        
-        // Add to current tasks if it's for the selected date
-        const selectedDate = get().selectedDate;
-        if (newTask.date?.startsWith(selectedDate) || !newTask.date) {
-          set((state) => ({
-            tasks: [...state.tasks, newTask],
-            isLoading: false
-          }));
-        } else {
-          set({ isLoading: false });
-        }
-        
-        return newTask;
+      // Add to current tasks if it's for the selected date
+      const selectedDate = get().selectedDate;
+      if ((typeof newTask.date === 'string' && newTask.date.startsWith(selectedDate)) || !newTask.date) {
+        set((state) => ({
+          tasks: [...state.tasks, newTask],
+          isLoading: false
+        }));
       } else {
-        throw new Error(data.error?.message || 'Failed to create task');
+        set({ isLoading: false });
       }
+      
+      return newTask;
     } catch (error) {
       console.error('💥 [STORE] Error creating task:', error);
+      const errorMessage = error instanceof ApiError ? error.message : 'Failed to create task';
       set({ 
-        error: error instanceof Error ? error.message : 'Failed to create task',
+        error: errorMessage,
         isLoading: false 
       });
       return null;
@@ -222,46 +176,34 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     set({ isLoading: true, error: null });
     
     try {
-      const response = await fetch(`/api/tasks/${taskId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates)
-      });
+      // Using shared API utility
+      const responseData = await apiPatch<any>(`/api/tasks/${taskId}`, updates);
       
-      if (!response.ok) {
-        throw new Error(`Failed to update task: ${response.status} ${response.statusText}`);
+      // Handle both TaskData and { task: TaskData } response formats
+      const updatedTask = 'task' in responseData ? responseData.task : responseData;
+      console.log('✅ [STORE] Task updated:', updatedTask.id);
+      
+      // Check for achievements using shared utility
+      const achievements = extractAchievements(responseData);
+      if (achievements) {
+        console.log('🏆 [STORE] Achievements unlocked:', achievements);
       }
       
-      const data = await response.json();
+      // Update in local state
+      set((state) => ({
+        tasks: state.tasks.map(task => 
+          task.id === taskId ? updatedTask : task
+        ),
+        isLoading: false,
+        recentAchievements: achievements
+      }));
       
-      if (data.success) {
-        // Handle both TaskData and { task: TaskData } response formats
-        const updatedTask = 'task' in data.data ? data.data.task : data.data;
-        console.log('✅ [STORE] Task updated:', updatedTask.id);
-        
-        // Check for achievements from coordinator
-        const achievements = extractAchievements(data.data);
-        if (achievements) {
-          console.log('🏆 [STORE] Achievements unlocked:', achievements);
-        }
-        
-        // Update in local state
-        set((state) => ({
-          tasks: state.tasks.map(task => 
-            task.id === taskId ? updatedTask : task
-          ),
-          isLoading: false,
-          recentAchievements: achievements
-        }));
-        
-        return updatedTask;
-      } else {
-        throw new Error(data.error?.message || 'Failed to update task');
-      }
+      return updatedTask;
     } catch (error) {
       console.error('💥 [STORE] Error updating task:', error);
+      const errorMessage = error instanceof ApiError ? error.message : 'Failed to update task';
       set({ 
-        error: error instanceof Error ? error.message : 'Failed to update task',
+        error: errorMessage,
         isLoading: false 
       });
       return null;
@@ -278,53 +220,41 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     set({ isLoading: true, error: null });
     
     try {
-      const response = await fetch(`/api/tasks/${taskId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          completed,
-          completionDate 
-        })
+      // Using shared API utility
+      const responseData = await apiPatch<any>(`/api/tasks/${taskId}`, { 
+        completed,
+        completionDate 
       });
       
-      if (!response.ok) {
-        throw new Error(`Failed to ${completed ? 'complete' : 'uncomplete'} task: ${response.status} ${response.statusText}`);
+      // Handle both TaskData and { task: TaskData } response formats
+      const updatedTask = 'task' in responseData ? responseData.task : responseData;
+      console.log(`✅ [STORE] Task ${completed ? 'completed' : 'uncompleted'}:`, updatedTask.id);
+      console.log('📊 [STORE] Updated metrics:', {
+        currentStreak: updatedTask.currentStreak,
+        totalCompletions: updatedTask.totalCompletions
+      });
+      
+      // Check for achievements using shared utility
+      const achievements = extractAchievements(responseData);
+      if (achievements) {
+        console.log('🏆 [STORE] Achievements unlocked:', achievements);
       }
       
-      const data = await response.json();
-      
-      if (data.success) {
-        // Handle both TaskData and { task: TaskData } response formats
-        const updatedTask = 'task' in data.data ? data.data.task : data.data;
-        console.log(`✅ [STORE] Task ${completed ? 'completed' : 'uncompleted'}:`, updatedTask.id);
-        console.log('📊 [STORE] Updated metrics:', {
-          currentStreak: updatedTask.currentStreak,
-          totalCompletions: updatedTask.totalCompletions
-        });
-        
-        // Check for achievements from coordinator
-        const achievements = extractAchievements(data.data);
-        if (achievements) {
-          console.log('🏆 [STORE] Achievements unlocked:', achievements);
-        }
-        
       // Update in local state
-        set((state) => ({
-          tasks: state.tasks.map(task => 
-            task.id === taskId ? updatedTask : task
-          ),
-          isLoading: false,
-          recentAchievements: achievements
-        }));
-        
-        return { task: updatedTask, achievements: achievements || undefined };
-      } else {
-        throw new Error(data.error?.message || `Failed to ${completed ? 'complete' : 'uncomplete'} task`);
-      }
+      set((state) => ({
+        tasks: state.tasks.map(task => 
+          task.id === taskId ? updatedTask : task
+        ),
+        isLoading: false,
+        recentAchievements: achievements
+      }));
+      
+      return { task: updatedTask, achievements: achievements || undefined };
     } catch (error) {
       console.error(`💥 [STORE] Error ${completed ? 'completing' : 'uncompleting'} task:`, error);
+      const errorMessage = error instanceof ApiError ? error.message : `Failed to ${completed ? 'complete' : 'uncomplete'} task`;
       set({ 
-        error: error instanceof Error ? error.message : `Failed to ${completed ? 'complete' : 'uncomplete'} task`,
+        error: errorMessage,
         isLoading: false 
       });
       return { task: null };
@@ -347,33 +277,23 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     set({ isLoading: true, error: null });
     
     try {
-      const response = await fetch(`/api/tasks/${taskId}`, {
-        method: 'DELETE'
-      });
+      // Using shared API utility
+      await apiDelete(`/api/tasks/${taskId}`);
       
-      if (!response.ok) {
-        throw new Error(`Failed to delete task: ${response.status} ${response.statusText}`);
-      }
+      console.log('✅ [STORE] Task deleted:', taskId);
       
-      const data = await response.json();
+      // Remove from local state
+      set((state) => ({
+        tasks: state.tasks.filter(task => task.id !== taskId),
+        isLoading: false
+      }));
       
-      if (data.success) {
-        console.log('✅ [STORE] Task deleted:', taskId);
-        
-        // Remove from local state
-        set((state) => ({
-          tasks: state.tasks.filter(task => task.id !== taskId),
-          isLoading: false
-        }));
-        
-        return true;
-      } else {
-        throw new Error(data.error?.message || 'Failed to delete task');
-      }
+      return true;
     } catch (error) {
       console.error('💥 [STORE] Error deleting task:', error);
+      const errorMessage = error instanceof ApiError ? error.message : 'Failed to delete task';
       set({ 
-        error: error instanceof Error ? error.message : 'Failed to delete task',
+        error: errorMessage,
         isLoading: false 
       });
       return false;
@@ -381,7 +301,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   },
 
   /**
-   * NEW: Get tasks by domain category
+   * Get tasks by domain category
    */
   getTasksByDomain: (domain: DomainCategory) => {
     const tasks = get().tasks;
@@ -389,7 +309,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   },
 
   /**
-   * NEW: Get tasks by labels
+   * Get tasks by labels
    */
   getTasksByLabels: (labels: string[]) => {
     const tasks = get().tasks;
@@ -399,7 +319,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   },
 
   /**
-   * NEW: Get system tasks only
+   * Get system tasks only
    */
   getSystemTasks: () => {
     const tasks = get().tasks;
@@ -407,7 +327,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   },
 
   /**
-   * NEW: Get user tasks only (non-system)
+   * Get user tasks only (non-system)
    */
   getUserTasks: () => {
     const tasks = get().tasks;
@@ -422,19 +342,19 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   },
 
   /**
-   * NEW: Clear achievement notifications
+   * Clear achievement notifications
    */
   clearAchievements: () => {
     set({ recentAchievements: null });
   },
 
   /**
-   * Get tasks for a specific time block
+   * Get tasks for a specific time block - using shared utility
    */
   getTasksForTimeBlock: (timeBlock: 'morning' | 'afternoon' | 'evening') => {
     const tasks = get().tasks;
     return tasks.filter(task => {
-      const taskTimeBlock = getTimeBlockForScheduledTime(task.scheduledTime);
+      const taskTimeBlock = getTimeBlockForTime(task.scheduledTime);
       return taskTimeBlock === timeBlock;
     });
   }

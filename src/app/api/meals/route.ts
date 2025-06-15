@@ -12,6 +12,11 @@ import { CreateMealRequest } from "@/types/api/mealRequests";
 import { convertMealToResponse } from "@/types/converters/mealConverters";
 import { IMeal } from "@/types/models/meal";
 
+// NEW: Rich coordinator integration
+import { processEvent, generateToken, startTokenTracking, trackTokenStage } from '@/lib/event-coordinator';
+import { BaseEventData } from '@/lib/event-coordinator/types';
+import { calculateNutritionContext } from '@/lib/shared-utilities';
+
 // Default pagination values
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 20;
@@ -208,12 +213,20 @@ export const GET = withAuth<{
 
 /**
  * POST /api/meals
- * Create a new meal
+ * Create a new meal with RICH COORDINATOR INTEGRATION
  */
-export const POST = withAuth<MealData>(
+export const POST = withAuth<MealData & { token?: string; achievements?: any }>(
   async (req: NextRequest, userId: string) => {
+    // 🎯 GENERATE TOKEN FOR END-TO-END TRACKING
+    const token = generateToken();
+    startTokenTracking(token);
+    trackTokenStage(token, 'meal_api_start');
+    
+    console.log(`🥗 [MEAL-API] POST started with token: ${token}`);
+    
     try {
       await dbConnect();
+      trackTokenStage(token, 'db_connected');
       
       // Parse request body with defensive error handling
       let body: CreateMealRequest;
@@ -401,6 +414,7 @@ export const POST = withAuth<MealData>(
       let newMeal: IMeal;
       try {
         newMeal = await Meal.create(mealData) as IMeal;
+        trackTokenStage(token, 'meal_saved');
       } catch (error) {
         return handleApiError(error, 'Error creating meal in database');
       }
@@ -408,8 +422,100 @@ export const POST = withAuth<MealData>(
       // Convert to response using converter
       const mealResponse = convertMealToResponse(newMeal);
       
-      return apiResponse(mealResponse, true, 'Meal created successfully', 201);
+      // 🚀 FIRE NUTRITION EVENT TO COORDINATOR
+      try {
+        console.log('🥗 [MEAL-API] Firing nutrition event to coordinator...');
+        trackTokenStage(token, 'coordinator_call_start');
+        
+        // Get all meals for today to calculate context
+        const todayStart = new Date(mealDate);
+        todayStart.setHours(0, 0, 0, 0);
+        const todayEnd = new Date(todayStart);
+        todayEnd.setDate(todayEnd.getDate() + 1);
+        
+        const allMealsToday = await Meal.find({
+          userId,
+          date: { $gte: todayStart, $lt: todayEnd }
+        }) as IMeal[];
+        
+        // Default macro goals (TODO: get from user profile in Phase 6)
+        const macroGoals = {
+          protein: 140,
+          carbs: 200,
+          fat: 70,
+          calories: 2200
+        };
+        
+        // Calculate nutrition context
+        const nutritionContext = calculateNutritionContext(
+          userId,
+          mealDate.toISOString().split('T')[0],
+          allMealsToday.map(m => convertMealToResponse(m)),
+          macroGoals
+        );
+        
+        // Build rich event data
+        const eventData: BaseEventData = {
+          token,
+          userId,
+          source: 'trophe',
+          action: 'meal_logged',
+          timestamp: new Date(),
+          metadata: {
+            mealData: mealResponse,
+            nutritionContext,
+            allMealsToday: allMealsToday.length,
+            macroGoals,
+            mealDate: mealDate.toISOString()
+          }
+        };
+        
+        console.log('🥗 [MEAL-API] Firing nutrition event:', {
+          token,
+          action: eventData.action,
+          mealName: mealResponse.name,
+          macroProgress: nutritionContext.dailyMacroProgress.total
+        });
+        
+        const coordinatorResult = await processEvent(eventData);
+        trackTokenStage(token, 'coordinator_complete');
+        
+        console.log('🎉 [MEAL-API] Nutrition coordinator processing complete:', {
+          success: coordinatorResult.success,
+          achievementsUnlocked: coordinatorResult.achievementsUnlocked?.length || 0,
+          token: coordinatorResult.token
+        });
+        
+        // Build response with achievement info if any were unlocked
+        let message = 'Meal created successfully';
+        if (coordinatorResult.achievementsUnlocked && coordinatorResult.achievementsUnlocked.length > 0) {
+          message = `Meal logged and ${coordinatorResult.achievementsUnlocked.length} achievement(s) unlocked!`;
+        }
+        
+        return apiResponse({
+          ...mealResponse,
+          achievements: coordinatorResult.achievementsUnlocked && coordinatorResult.achievementsUnlocked.length > 0 ? {
+            unlockedCount: coordinatorResult.achievementsUnlocked.length,
+            achievements: coordinatorResult.achievementsUnlocked,
+            token: coordinatorResult.token
+          } : undefined,
+          token // Include token in response for debugging
+        }, true, message, 201);
+        
+      } catch (coordinatorError) {
+        console.error('💥 [MEAL-API] Nutrition coordinator error:', coordinatorError);
+        trackTokenStage(token, 'coordinator_failed');
+        
+        // Still return success since meal was saved, but note coordinator failure
+        return apiResponse({
+          ...mealResponse,
+          token
+        }, true, 'Meal created successfully, but event processing failed', 201);
+      }
+      
     } catch (error) {
+      console.error('💥 [MEAL-API] Unexpected error in POST /api/meals:', error);
+      trackTokenStage(token, 'meal_api_failed');
       return handleApiError(error, "Error creating meal");
     }
   }, 
