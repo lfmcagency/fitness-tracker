@@ -98,7 +98,8 @@ export function calculateStreak(
 
   // Sort dates descending (most recent first)
   const sortedDates = [...completionDates]
-    .sort((a, b) => b.getTime() - a.getTime());
+  .map(date => date instanceof Date ? date : new Date(date))
+  .sort((a, b) => b.getTime() - a.getTime());
 
   // For 'once' pattern, no streak concept
   if (recurrencePattern === 'once') {
