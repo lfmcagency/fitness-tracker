@@ -170,7 +170,7 @@ export async function findTaskCompletionEvent(
       if (!event.isReversible()) return false;
       
       // 🎯 BULLETPROOF: Match by exact taskId
-      const eventTaskId = contract.xpMetadata?.taskId;
+      const eventTaskId = contract.context?.taskContext?.taskId;
       if (!eventTaskId) {
         console.log(`⚠️ [REVERSE] Event ${event.token} missing taskId in metadata`);
         return false;
