@@ -3,6 +3,7 @@
  * 
  * Builds rich contracts with complete context using shared utilities.
  * Handles cross-domain updates, achievement thresholds, and calls XP functions directly.
+ * Now includes reverse event capabilities for atomic undo operations.
  */
 
 import { ProgressEventContract } from '@/types/api/progressResponses';
@@ -409,6 +410,12 @@ export function registerDomainProcessor(domain: string, processor: DomainProcess
 export function getRegisteredDomains(): string[] {
   return Object.keys(DOMAIN_PROCESSORS);
 }
+
+/**
+ * REVERSE EVENT HANDLING
+ * Export reverse event capabilities for atomic undo operations
+ */
+export { reverseEvent, findTaskCompletionEvent, canReverseEvent } from './reverse';
 
 /**
  * Token utilities export
