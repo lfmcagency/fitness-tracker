@@ -5,12 +5,14 @@ import { ProgressEventContract, XpAwardResult, AchievementEventContract } from '
 import { RichProgressContract, TaskUpdateRequest, AchievementThreshold, ReversalData } from '@/lib/event-coordinator/types';
 import { ProgressCategory } from '@/lib/category-progress';
 import UserProgress from '@/models/UserProgress';
+import EventLog, { EventLogStatus } from '@/models/EventLog'; // 🆕 Import EventLog
 
 /**
  * ENHANCED ATOMIC PROGRESS HANDLER
  * 
  * Processes rich contracts with complete context for atomic operations:
  * XP + achievements + task updates + reversal data in one transaction
+ * Now also stores complete contracts in EventLog for reversal capability
  */
 
 /**
@@ -50,11 +52,16 @@ export interface EnhancedXpAwardResult extends XpAwardResult {
     taskUpdateTime: number;
     achievementTime: number;
     reversalBuildTime: number;
+    eventLogTime: number; // 🆕 Track EventLog storage time
   };
+  
+  /** Whether contract was stored in EventLog */
+  contractStored?: boolean; // 🆕 Track storage success
 }
 
 /**
  * Main rich contract handler - atomic operations with complete context
+ * 🆕 Now stores successful contracts in EventLog for reversal capability
  */
 export async function handleRichProgressEvent(contract: RichProgressContract): Promise<EnhancedXpAwardResult> {
   const startTime = Date.now();
@@ -137,7 +144,32 @@ export async function handleRichProgressEvent(contract: RichProgressContract): P
     );
     const reversalDuration = Date.now() - reversalStart;
     
-    // 7. Trigger dashboard updates
+    // 🆕 7. Store complete contract in EventLog for reversal capability
+    const eventLogStart = Date.now();
+    let contractStored = false;
+    
+    try {
+      // Update contract with final reversal data
+      const contractWithReversal = {
+        ...contract,
+        reversalData: reversalData
+      };
+      
+      await EventLog.createEventLog(contract, reversalData);
+      contractStored = true;
+      
+      console.log(`💾 [PROGRESS-RICH] Contract stored in EventLog: ${token}`);
+      
+    } catch (eventLogError) {
+      console.error(`💥 [PROGRESS-RICH] Failed to store contract in EventLog: ${token}`, eventLogError);
+      // Don't fail the entire operation if EventLog storage fails
+      // This is important - the XP was already awarded, so we can't roll back easily
+      contractStored = false;
+    }
+    
+    const eventLogDuration = Date.now() - eventLogStart;
+    
+    // 8. Trigger dashboard updates
     const dashboardUpdates = {
       userProgress: true,
       categoryProgress: categoryToUse !== undefined,
@@ -147,7 +179,7 @@ export async function handleRichProgressEvent(contract: RichProgressContract): P
     
     const totalDuration = Date.now() - startTime;
     
-    // 8. Build enhanced result
+    // 9. Build enhanced result
     const result: EnhancedXpAwardResult = {
       token,
       xpAwarded: totalXpAwarded,
@@ -159,12 +191,14 @@ export async function handleRichProgressEvent(contract: RichProgressContract): P
       tasksUpdated: taskResults,
       reversalData,
       dashboardUpdates,
+      contractStored, // 🆕 Include storage status
       performance: {
         totalDuration,
         xpCalculationTime: xpDuration,
         taskUpdateTime: taskDuration,
         achievementTime: achievementDuration,
-        reversalBuildTime: reversalDuration
+        reversalBuildTime: reversalDuration,
+        eventLogTime: eventLogDuration // 🆕 Include EventLog timing
       },
       previousLevel: undefined,
       categoryUpdates: {},
@@ -190,13 +224,33 @@ export async function handleRichProgressEvent(contract: RichProgressContract): P
       xpAwarded: totalXpAwarded,
       leveledUp,
       achievementsUnlocked: achievementResults.unlockedAchievements.length,
-      tasksUpdated: taskResults.length
+      tasksUpdated: taskResults.length,
+      contractStored // 🆕 Log storage status
     });
     
     return result;
     
   } catch (error) {
     console.error(`💥 [PROGRESS-RICH] Atomic operation failed: ${token}`, error);
+    
+    // 🆕 Store failed contract in EventLog for debugging
+    try {
+      await EventLog.create({
+        token: contract.token,
+        userId: new Types.ObjectId(contract.userId),
+        contractData: contract,
+        reversalData: contract.reversalData, // May be incomplete, but better than nothing
+        status: EventLogStatus.FAILED,
+        timestamp: new Date(),
+        errorMessage: error instanceof Error ? error.message : 'Unknown error'
+      });
+      
+      console.log(`💾 [PROGRESS-RICH] Failed contract stored for debugging: ${token}`);
+      
+    } catch (eventLogError) {
+      console.error(`💥 [PROGRESS-RICH] Failed to store failed contract: ${token}`, eventLogError);
+      // If we can't even store the failure, just log and continue
+    }
     
     // In a full implementation, this would trigger rollback
     // For now, we log and rethrow
@@ -361,7 +415,18 @@ function buildReversalData(
         }))
     },
     previousUserState: previousState,
-    finalUserState: finalState
+    finalUserState: finalState,
+    snapshotData: {
+      userStateBeforeEvent: {
+        level: previousState.level,
+        totalXp: previousState.totalXp,
+        categoryProgress: previousState.categoryProgress,
+        achievements: previousState.achievements,
+        pendingAchievements: previousState.pendingAchievements
+      },
+      eventContext: contract.context,
+      crossDomainUpdates: contract.taskUpdates
+    }
   };
 }
 

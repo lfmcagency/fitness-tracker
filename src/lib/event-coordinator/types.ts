@@ -183,8 +183,14 @@ export interface ReversalData {
     categoryProgress: Record<string, any>;
     achievements: string[];
   };
+  
+  /** Snapshot data for validation */
+  snapshotData?: {
+    userStateBeforeEvent: any;
+    eventContext: RichEventContext;
+    crossDomainUpdates: TaskUpdateRequest[];
+  };
 }
-
 /**
  * Rich progress contract for atomic operations
  */
@@ -215,16 +221,13 @@ export interface RichProgressContract {
   };
   
   /** Reversal preparation data */
-  reversalData: {
-    /** Instructions for complete reversal */
-    undoInstructions: ReversalData['undoInstructions'];
-    
-    /** Snapshot data for validation */
-    snapshotData: {
-      userStateBeforeEvent: any;
-      eventContext: RichEventContext;
-      crossDomainUpdates: TaskUpdateRequest[];
-    };
+  reversalData: ReversalData;
+  
+  /** Snapshot data for validation */
+  snapshotData?: {
+    userStateBeforeEvent: any;
+    eventContext: RichEventContext;
+    crossDomainUpdates: TaskUpdateRequest[];
   };
 }
 
