@@ -124,6 +124,7 @@ export class EthosProcessor implements DomainProcessor {
       milestoneValue,
       taskContext: {
         ...taskContext,
+        taskId: eventData.metadata?.taskId,
         taskName: taskEventData.name || 'Task'
       }
     };
@@ -180,6 +181,7 @@ export class EthosProcessor implements DomainProcessor {
           taskUpdates: [],
           achievementThresholds: [],
           xpMetadata: {
+            taskId: eventData.metadata?.taskId ?? null,
             baseXp: this.getXpConfig().baseXp,
             streakMultiplier: this.getXpConfig().streakMultiplier,
             milestoneBonus: this.getXpConfig().milestoneBonus,
@@ -187,6 +189,7 @@ export class EthosProcessor implements DomainProcessor {
             categoryBonus: richContext.isSystemItem ? this.getXpConfig().systemItemBonus : 0
           },
           reversalData: {
+            token,
             undoInstructions: {},
             snapshotData: {
               userStateBeforeEvent: null,

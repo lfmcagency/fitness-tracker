@@ -36,6 +36,7 @@ export function buildRichProgressContract(
   
   // Calculate XP metadata based on context
   const xpMetadata = {
+    taskId: (eventData as any).taskId ?? (richContext as any).taskId ?? null,
     baseXp: xpConfig.baseXp,
     streakMultiplier: xpConfig.streakMultiplier,
     milestoneBonus: xpConfig.milestoneBonus,
@@ -45,6 +46,7 @@ export function buildRichProgressContract(
   
   // Prepare reversal data structure
   const reversalData = {
+    token: eventData.token,
     undoInstructions: {
       subtractXp: calculateTotalXp(xpMetadata, richContext),
       lockAchievements: achievementThresholds.filter(t => t.justCrossed).map(t => t.achievementId),
