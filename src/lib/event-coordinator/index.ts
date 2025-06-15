@@ -98,7 +98,13 @@ export async function processEvent(eventData: BaseEventData): Promise<DomainEven
       success: true,
       token,
       progressContract: richContract,
-      progressResult,
+      progressResult: {
+        ...progressResult,
+        totalXpAwarded: progressResult.xpAwarded || 0,
+        levelIncreases: progressResult.leveledUp ? [{ from: progressResult.previousLevel || 0, to: progressResult.newLevel || 0 }] : [],
+        categoryUpdates: progressResult.categoryUpdates || {},
+        achievementsUnlocked: progressResult.achievementsUnlocked || []
+      },
       crossDomainResults,
       milestonesHit: richContract.achievementThresholds
         .filter(t => t.justCrossed)
