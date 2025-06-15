@@ -17,6 +17,9 @@ import UserProgress from '@/models/UserProgress';
  * Enhanced result type with atomic operation data
  */
 export interface EnhancedXpAwardResult extends XpAwardResult {
+  categoryUpdates: {};
+  newLevel: number;
+  previousLevel: undefined;
   /** Token for operation tracking */
   token: string;
   
@@ -162,7 +165,10 @@ export async function handleRichProgressEvent(contract: RichProgressContract): P
         taskUpdateTime: taskDuration,
         achievementTime: achievementDuration,
         reversalBuildTime: reversalDuration
-      }
+      },
+      previousLevel: undefined,
+      categoryUpdates: {},
+      newLevel: 0
     };
     
     // Add category progress if applicable

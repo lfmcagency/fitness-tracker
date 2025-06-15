@@ -2,7 +2,7 @@
  * ENHANCED EVENT COORDINATOR
  * 
  * Builds rich contracts with complete context using shared utilities.
- * Handles cross-domain updates, achievement thresholds, and reversal data.
+ * Handles cross-domain updates, achievement thresholds, and calls XP functions directly.
  */
 
 import { ProgressEventContract } from '@/types/api/progressResponses';
@@ -30,6 +30,12 @@ import {
   logEventFailure 
 } from './logging';
 import { EthosProcessor } from './ethos';
+import { 
+  handleRichProgressEvent, 
+  handleLegacyProgressEvent,
+  EnhancedXpAwardResult 
+} from '@/lib/xp/index';
+import { Types } from 'mongoose';
 
 /**
  * Registry of domain processors
@@ -77,12 +83,12 @@ export async function processEvent(eventData: BaseEventData): Promise<DomainEven
     const richContract = await buildDomainSpecificContract(eventData, richContext, processor);
     trackTokenStage(token, 'contract_built');
     
-    // Fire rich contract to Progress system
+    // Fire rich contract to Progress system DIRECTLY
     const progressResult = await fireRichProgressEvent(richContract);
-    trackTokenStage(token, 'progress_fired');
+    trackTokenStage(token, 'progress_complete');
     
-    // Handle cross-domain operations if any
-    const crossDomainResults = await handleCrossDomainOperations(richContract);
+    // Cross-domain operations are now handled inside the XP handler
+    const crossDomainResults = { tasksUpdated: progressResult.tasksUpdated || [] };
     trackTokenStage(token, 'cross_domain_complete');
     
     // Complete tracking
@@ -102,9 +108,7 @@ export async function processEvent(eventData: BaseEventData): Promise<DomainEven
           achievementId: t.achievementId,
           currentValue: t.currentValue
         })),
-      achievementsUnlocked: richContract.achievementThresholds
-        .filter(t => t.justCrossed)
-        .map(t => t.achievementId)
+      achievementsUnlocked: progressResult.achievementsUnlocked || []
     };
     
     // Log success with complete context
@@ -113,8 +117,9 @@ export async function processEvent(eventData: BaseEventData): Promise<DomainEven
     console.log('✅ [COORDINATOR] Rich contract complete:', {
       token,
       xpCalculated: richContract.xpMetadata.baseXp,
+      xpAwarded: progressResult.xpAwarded,
       milestonesHit: result.milestonesHit?.length || 0,
-      taskUpdates: richContract.taskUpdates.length,
+      taskUpdates: progressResult.tasksUpdated?.length || 0,
       duration: performance?.totalDuration || 0
     });
     
@@ -217,123 +222,39 @@ async function buildBasicContext(eventData: BaseEventData): Promise<RichEventCon
 }
 
 /**
- * Fire rich progress event to Progress system
- * Converts rich contract to current ProgressEventContract format
+ * Fire rich progress event DIRECTLY (no HTTP calls)
  */
-async function fireRichProgressEvent(richContract: RichProgressContract): Promise<any> {
+async function fireRichProgressEvent(richContract: RichProgressContract): Promise<EnhancedXpAwardResult> {
   try {
-    console.log('🎯 [COORDINATOR] Firing rich progress event:', {
+    console.log('🎯 [COORDINATOR] Processing rich contract directly:', {
       token: richContract.token,
       source: richContract.source,
       streakCount: richContract.context.streakCount,
       totalCompletions: richContract.context.totalCompletions
     });
     
-    // Convert rich contract to current Progress API format
-    // TODO: Phase 5 will enhance Progress to handle rich contracts directly
-    const legacyContract: ProgressEventContract = {
-      userId: richContract.userId,
-      eventId: richContract.eventId,
-      source: richContract.source,
-      streakCount: richContract.context.streakCount,
-      totalCompletions: richContract.context.totalCompletions,
-      milestoneHit: richContract.context.milestoneHit,
-      category: richContract.xpMetadata.baseXp > 40 ? 'legs' : 'core', // Temporary mapping
-      metadata: {
-        difficulty: richContract.context.difficulty,
-        exerciseName: richContract.context.itemName,
-        isSystemTask: richContract.context.isSystemItem,
-        richContext: richContract.context, // Pass rich context as metadata
-        xpMetadata: richContract.xpMetadata,
-        taskUpdates: richContract.taskUpdates,
-        achievementThresholds: richContract.achievementThresholds
-      }
-    };
-
-    const response = await fetch('/api/progress/add-xp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(legacyContract)
-    });
-
-    const result = await response.json();
-
-    if (!result.success) {
-      throw new Error(result.message || 'Failed to process rich progress event');
+    // Validate userId
+    if (!richContract.userId || !Types.ObjectId.isValid(richContract.userId)) {
+      throw new Error('Invalid user ID in rich contract');
     }
-
+    
+    // Call XP handler directly - no HTTP nonsense
+    const result = await handleRichProgressEvent(richContract);
+    
     console.log('✅ [COORDINATOR] Rich progress event complete:', {
       token: richContract.token,
-      xpAwarded: result.data?.xpAwarded || 0,
-      leveledUp: result.data?.leveledUp || false
+      xpAwarded: result.xpAwarded,
+      leveledUp: result.leveledUp,
+      achievementsUnlocked: result.achievementsUnlocked?.length || 0,
+      tasksUpdated: result.tasksUpdated?.length || 0
     });
     
-    return result.data;
+    return result;
+    
   } catch (error) {
-    console.error('💥 [COORDINATOR] Failed to fire rich progress event:', error);
+    console.error('💥 [COORDINATOR] Failed to process rich progress event:', error);
     throw error;
   }
-}
-
-/**
- * Handle cross-domain operations from rich contract
- */
-async function handleCrossDomainOperations(richContract: RichProgressContract): Promise<any> {
-  if (!richContract.taskUpdates || richContract.taskUpdates.length === 0) {
-    return { tasksUpdated: [] };
-  }
-  
-  const results = [];
-  
-  for (const taskUpdate of richContract.taskUpdates) {
-    try {
-      console.log(`🔄 [COORDINATOR] Cross-domain task update:`, {
-        token: richContract.token,
-        action: taskUpdate.action,
-        domainCategory: taskUpdate.domainCategory,
-        labels: taskUpdate.labels
-      });
-      
-      // Route to ethos processor for task operations
-      const ethosProcessor = DOMAIN_PROCESSORS.ethos;
-      if (ethosProcessor.handleCrossDomainOperation) {
-        const crossDomainContract: CrossDomainContract = {
-          token: richContract.token,
-          targetDomain: 'ethos',
-          operation: taskUpdate.action === 'complete' ? 'complete_task' : 'update_task',
-          operationData: {
-            userId: richContract.userId,
-            domainCategory: taskUpdate.domainCategory,
-            labels: taskUpdate.labels,
-            action: taskUpdate.action,
-            updates: taskUpdate.taskData,
-            completionDate: taskUpdate.taskData?.completionDate
-          },
-          sourceDomain: richContract.source,
-          userId: richContract.userId,
-          timestamp: new Date()
-        };
-        
-        const result = await ethosProcessor.handleCrossDomainOperation(crossDomainContract);
-        results.push({
-          taskId: result.task?.id || 'unknown',
-          action: taskUpdate.action,
-          success: true,
-          result
-        });
-      }
-    } catch (error) {
-      console.error(`💥 [COORDINATOR] Cross-domain task update failed:`, error);
-      results.push({
-        taskId: 'unknown',
-        action: taskUpdate.action,
-        success: false,
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
-  }
-  
-  return { tasksUpdated: results };
 }
 
 /**
@@ -373,10 +294,11 @@ export function detectMilestone(
 }
 
 /**
- * Legacy progress event firing for compatibility
+ * Legacy progress event firing for compatibility (still uses HTTP for external calls)
  */
 export async function fireProgressEvent(contract: ProgressEventContract): Promise<any> {
   try {
+    // This is for external calls from stores - they still use HTTP
     const response = await fetch('/api/progress/add-xp', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
