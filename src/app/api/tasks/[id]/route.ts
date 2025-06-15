@@ -7,10 +7,8 @@ import TaskLog from '@/models/TaskLog';
 import { ITask } from '@/types/models/tasks';
 import { withAuth, AuthLevel } from '@/lib/auth-utils';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
-import { convertTaskToTaskData, convertToTaskEventData } from '@/types/converters/taskConverters';
-import { processEvent } from '@/lib/event-coordinator';
-import { EthosContracts } from '@/lib/event-coordinator/contracts';
-import { generateToken } from '@/lib/event-coordinator/logging';
+import { convertTaskToTaskData } from '@/types/converters/taskConverters';
+import { handleTaskCompletion } from '@/lib/event-coordinator';
 import { TaskData } from '@/types';
 import { UpdateTaskRequest } from '@/types/api/taskRequests';
 import { isValidObjectId } from 'mongoose';
@@ -31,7 +29,7 @@ function validateTaskUpdates(updates: Partial<UpdateTaskRequest>): string | unde
   }
   
   if (updates.recurrencePattern !== undefined) {
-    const validPatterns = ['once', 'daily', 'custom']; // UPDATED: Only 3 patterns
+    const validPatterns = ['once', 'daily', 'custom'];
     if (!validPatterns.includes(updates.recurrencePattern)) {
       return 'Invalid recurrence pattern';
     }
@@ -44,7 +42,6 @@ function validateTaskUpdates(updates: Partial<UpdateTaskRequest>): string | unde
     }
   }
   
-  // NEW: Validate domain category
   if (updates.domainCategory !== undefined) {
     const validCategories = ['ethos', 'trophe', 'soma'];
     if (!validCategories.includes(updates.domainCategory)) {
@@ -52,7 +49,6 @@ function validateTaskUpdates(updates: Partial<UpdateTaskRequest>): string | unde
     }
   }
   
-  // NEW: Validate labels
   if (updates.labels !== undefined) {
     if (!Array.isArray(updates.labels)) {
       return 'Labels must be an array of strings';
@@ -83,7 +79,7 @@ function parseCompletionDate(dateString?: string): Date {
 
 /**
  * PATCH /api/tasks/[id]
- * Updates a task with simplified event-driven logic
+ * Updates a task with token-based rich coordinator integration
  */
 export const PATCH = withAuth<TaskData | { task: TaskData; achievements?: any }, { id: string }>(
   async (req: NextRequest, userId: string, context) => {
@@ -104,7 +100,7 @@ export const PATCH = withAuth<TaskData | { task: TaskData; achievements?: any },
       let updates: UpdateTaskRequest & { completionDate?: string };
       try {
         updates = await req.json();
-        console.log('📝 [TASK] PATCH updates received:', updates);
+        console.log('📝 [TASK-API] PATCH updates received:', updates);
       } catch (error) {
         return apiError('Invalid JSON in request body', 400, 'ERR_INVALID_JSON');
       }
@@ -131,24 +127,25 @@ export const PATCH = withAuth<TaskData | { task: TaskData; achievements?: any },
       
       // Parse completion date for all operations
       const completionDate = parseCompletionDate(updates.completionDate);
-      console.log('📅 [TASK] Using completion date:', completionDate.toISOString());
+      console.log('📅 [TASK-API] Using completion date:', completionDate.toISOString());
       
-      // Handle completion status changes - SIMPLIFIED
+      // Handle completion status changes - USING RICH COORDINATOR
       if (updates.hasOwnProperty('completed')) {
-        console.log('🎯 [TASK] Processing completion status change:', updates.completed);
+        console.log('🎯 [TASK-API] Processing completion status change:', updates.completed);
         
         try {
-          // Store previous state for event creation
+          // Store previous state for coordinator context
           const previousState = {
             streak: existingTask.currentStreak,
-            totalCompletions: existingTask.totalCompletions
+            totalCompletions: existingTask.totalCompletions,
+            completed: existingTask.isCompletedOnDate(completionDate)
           };
           
           if (updates.completed === true) {
-            // Mark as completed
-            console.log('✅ [TASK] Marking task as completed for date:', completionDate.toISOString());
+            // Mark as completed in database first
+            console.log('✅ [TASK-API] Marking task as completed for date:', completionDate.toISOString());
             existingTask.completeTask(completionDate);
-            console.log('📊 [TASK] After completeTask - streak:', existingTask.currentStreak, 'total:', existingTask.totalCompletions);
+            console.log('📊 [TASK-API] After completeTask - streak:', existingTask.currentStreak, 'total:', existingTask.totalCompletions);
             
             // Apply other updates (except completion-related fields)
             const otherUpdates = { ...updates };
@@ -161,7 +158,7 @@ export const PATCH = withAuth<TaskData | { task: TaskData; achievements?: any },
             
             // Save the task
             await existingTask.save();
-            console.log('💾 [TASK] Task saved successfully');
+            console.log('💾 [TASK-API] Task saved successfully');
             
             // Log the completion
             await TaskLog.logCompletion(
@@ -173,14 +170,23 @@ export const PATCH = withAuth<TaskData | { task: TaskData; achievements?: any },
               'api'
             );
             
-            // 🆕 FIRE EVENT TO NEW COORDINATOR 🆕
+            // 🚀 CALL RICH COORDINATOR WITH TOKEN FLOW
             try {
-              const token = generateToken();
-              const taskEventData = convertToTaskEventData(existingTask, 'completed', completionDate, previousState);
-              const eventData = EthosContracts.taskCompletion(token, userId, taskEventData);
-              const coordinatorResult = await processEvent(eventData);
+              console.log('🎯 [TASK-API] Calling rich coordinator for completion...');
               
-              console.log('🎉 [TASK] Coordinator processing complete:', coordinatorResult);
+              const coordinatorResult = await handleTaskCompletion(
+                userId,
+                existingTask,
+                'completed',
+                completionDate,
+                previousState
+              );
+              
+              console.log('🎉 [TASK-API] Rich coordinator processing complete:', {
+                success: coordinatorResult.success,
+                achievementsUnlocked: coordinatorResult.achievementsUnlocked?.length || 0,
+                token: coordinatorResult.token
+              });
               
               const taskData = convertTaskToTaskData(existingTask, completionDate);
               
@@ -194,13 +200,15 @@ export const PATCH = withAuth<TaskData | { task: TaskData; achievements?: any },
                 task: taskData,
                 achievements: coordinatorResult.achievementsUnlocked && coordinatorResult.achievementsUnlocked.length > 0 ? {
                   unlockedCount: coordinatorResult.achievementsUnlocked.length,
-                  achievements: coordinatorResult.achievementsUnlocked
+                  achievements: coordinatorResult.achievementsUnlocked,
+                  token: coordinatorResult.token // Include token for debugging
                 } : undefined
               }, true, message);
               
             } catch (coordinatorError) {
-              console.error('💥 [TASK] Error processing coordinator event:', coordinatorError);
+              console.error('💥 [TASK-API] Rich coordinator error:', coordinatorError);
               
+              // Still return success since task was saved, but note coordinator failure
               const taskData = convertTaskToTaskData(existingTask, completionDate);
               return apiResponse({
                 task: taskData,
@@ -209,10 +217,10 @@ export const PATCH = withAuth<TaskData | { task: TaskData; achievements?: any },
             }
             
           } else if (updates.completed === false) {
-            // Mark as uncompleted
-            console.log('❌ [TASK] Marking task as incomplete for date:', completionDate.toISOString());
+            // Mark as uncompleted in database first
+            console.log('❌ [TASK-API] Marking task as incomplete for date:', completionDate.toISOString());
             existingTask.uncompleteTask(completionDate);
-            console.log('📊 [TASK] After uncompleteTask - streak:', existingTask.currentStreak, 'total:', existingTask.totalCompletions);
+            console.log('📊 [TASK-API] After uncompleteTask - streak:', existingTask.currentStreak, 'total:', existingTask.totalCompletions);
             
             // Apply other updates (except completion-related fields)
             const otherUpdates = { ...updates };
@@ -225,7 +233,7 @@ export const PATCH = withAuth<TaskData | { task: TaskData; achievements?: any },
             
             // Save the task
             await existingTask.save();
-            console.log('💾 [TASK] Task saved successfully');
+            console.log('💾 [TASK-API] Task saved successfully');
             
             // Log the uncompletion
             await TaskLog.logCompletion(
@@ -237,15 +245,25 @@ export const PATCH = withAuth<TaskData | { task: TaskData; achievements?: any },
               'api'
             );
             
-            // 🆕 FIRE EVENT TO NEW COORDINATOR (for uncompleted too) 🆕
+            // 🚀 CALL RICH COORDINATOR FOR UNCOMPLETION TOO
             try {
-              const token = generateToken();
-              const taskEventData = convertToTaskEventData(existingTask, 'uncompleted', completionDate, previousState);
-              const eventData = EthosContracts.taskCompletion(token, userId, taskEventData);
-              await processEvent(eventData);
-              console.log('✅ [TASK] Uncomplete event processed by coordinator');
+              console.log('🎯 [TASK-API] Calling rich coordinator for uncompletion...');
+              
+              const coordinatorResult = await handleTaskCompletion(
+                userId,
+                existingTask,
+                'uncompleted',
+                completionDate,
+                previousState
+              );
+              
+              console.log('✅ [TASK-API] Rich coordinator uncompletion processed:', {
+                success: coordinatorResult.success,
+                token: coordinatorResult.token
+              });
+              
             } catch (coordinatorError) {
-              console.error('💥 [TASK] Error processing coordinator uncomplete event:', coordinatorError);
+              console.error('💥 [TASK-API] Rich coordinator uncompletion error:', coordinatorError);
               // Continue - uncompletion still succeeded
             }
             
@@ -253,12 +271,12 @@ export const PATCH = withAuth<TaskData | { task: TaskData; achievements?: any },
             return apiResponse(taskData, true, 'Task marked as incomplete');
           }
         } catch (error) {
-          console.error('💥 [TASK] Error updating task completion:', error);
+          console.error('💥 [TASK-API] Error updating task completion:', error);
           return handleApiError(error, 'Error updating task completion');
         }
       }
       
-      // Handle other updates (non-completion related) - SIMPLIFIED
+      // Handle other updates (non-completion related)
       try {
         const updatedTask = await Task.findOneAndUpdate(
           { _id: taskId, user: userId },
@@ -273,11 +291,11 @@ export const PATCH = withAuth<TaskData | { task: TaskData; achievements?: any },
         const taskData = convertTaskToTaskData(updatedTask, completionDate);
         return apiResponse(taskData, true, 'Task updated successfully');
       } catch (error) {
-        console.error('💥 [TASK] Error updating task:', error);
+        console.error('💥 [TASK-API] Error updating task:', error);
         return handleApiError(error, 'Error updating task');
       }
     } catch (error) {
-      console.error('💥 [TASK] Unexpected error in PATCH /api/tasks/[id]:', error);
+      console.error('💥 [TASK-API] Unexpected error in PATCH /api/tasks/[id]:', error);
       return handleApiError(error, 'Error updating task');
     }
   },
@@ -334,7 +352,7 @@ export const GET = withAuth<TaskData, { id: string }>(
       
       return apiResponse(taskData);
     } catch (error) {
-      console.error('💥 [TASK] Error in GET /api/tasks/[id]:', error);
+      console.error('💥 [TASK-API] Error in GET /api/tasks/[id]:', error);
       return handleApiError(error, 'Error fetching task details');
     }
   }, 
@@ -378,12 +396,11 @@ export const DELETE = withAuth<{ id: string }, { id: string }>(
       // Delete the task
       await Task.findOneAndDelete({ _id: taskId, user: userId });
       
-      // NOTE: No need to fire coordinator events for deletions
-      // The task is gone, so no progress implications
+      // NOTE: No coordinator events for deletions - task is gone, no progress implications
       
       return apiResponse({ id: taskId }, true, 'Task deleted successfully');
     } catch (error) {
-      console.error('💥 [TASK] Error in DELETE /api/tasks/[id]:', error);
+      console.error('💥 [TASK-API] Error in DELETE /api/tasks/[id]:', error);
       return handleApiError(error, 'Error deleting task');
     }
   },

@@ -1,303 +1,559 @@
 /**
- * EVENT CONTRACT BUILDERS
+ * RICH EVENT CONTRACT BUILDERS
  * 
- * Standardized contract builders for consistent event formatting.
- * Domains use these to create properly formatted events without
- * dealing with the messy details.
+ * Uses shared utilities to build comprehensive contracts with complete context,
+ * cross-domain updates, achievement thresholds, and reversal data.
  */
 
-import { ProgressEventContract } from '@/types/api/progressResponses';
-import { BaseEventData, DOMAIN_XP_CONFIG } from './types';
+import { 
+  BaseEventData, 
+  RichProgressContract, 
+  RichEventContext, 
+  TaskUpdateRequest,
+  AchievementThreshold,
+  ReversalData,
+  ENHANCED_DOMAIN_XP_CONFIG 
+} from './types';
+import { 
+  calculateNutritionContext,
+  calculateTaskContext,
+  calculateWorkoutContext,
+  MILESTONE_THRESHOLDS 
+} from '@/lib/shared-utilities';
 
 /**
- * Build a progress contract from domain event data
- * The main utility domains use to fire progress events
+ * Build comprehensive progress contract from event data
+ * This is the main function coordinator uses to create rich contracts
  */
-export function buildProgressContract(
+export function buildRichProgressContract(
   eventData: BaseEventData,
-  domainContext: {
-    streakCount?: number;
-    totalCompletions?: number;
-    itemName?: string;
-    milestoneHit?: string;
-    difficulty?: 'easy' | 'medium' | 'hard';
-    isSystemItem?: boolean;
-    [key: string]: any;
-  }
-): ProgressEventContract {
-  const xpConfig = DOMAIN_XP_CONFIG[eventData.source] || DOMAIN_XP_CONFIG.ethos;
+  richContext: RichEventContext,
+  taskUpdates: TaskUpdateRequest[] = [],
+  achievementThresholds: AchievementThreshold[] = []
+): RichProgressContract {
   
-  return {
-    userId: eventData.userId,
-    eventId: Date.now(), // Simple deduplication - timestamp should be unique enough
-    source: `${eventData.source}_${eventData.action}`,
-    token: eventData.token,
-
-    // Core context from domain
-    streakCount: domainContext.streakCount || 0,
-    totalCompletions: domainContext.totalCompletions || 0,
-    
-    // Milestone context
-    milestoneHit: domainContext.milestoneHit,
-    
-    // Category mapping for Progress system
-    category: xpConfig.progressCategory,
-    
-    // Metadata for XP calculation
-    metadata: {
-      difficulty: domainContext.difficulty || 'medium',
-      exerciseName: domainContext.itemName || 'Unknown Item',
-      isSystemTask: domainContext.isSystemItem || false, // Map isSystemItem to isSystemTask
-      isSystemItem: domainContext.isSystemItem || false, // Also include isSystemItem for compatibility
-      baseXp: xpConfig.baseXp,
-      streakMultiplier: xpConfig.streakMultiplier,
-      milestoneBonus: xpConfig.milestoneBonus,
-      ...eventData.metadata
+  const xpConfig = ENHANCED_DOMAIN_XP_CONFIG[eventData.source] || ENHANCED_DOMAIN_XP_CONFIG.ethos;
+  
+  // Calculate XP metadata based on context
+  const xpMetadata = {
+    baseXp: xpConfig.baseXp,
+    streakMultiplier: xpConfig.streakMultiplier,
+    milestoneBonus: xpConfig.milestoneBonus,
+    difficultyMultiplier: xpConfig.difficultyMultipliers[richContext.difficulty || 'medium'],
+    categoryBonus: richContext.isSystemItem ? xpConfig.systemItemBonus : 0
+  };
+  
+  // Prepare reversal data structure
+  const reversalData = {
+    undoInstructions: {
+      subtractXp: calculateTotalXp(xpMetadata, richContext),
+      lockAchievements: achievementThresholds.filter(t => t.justCrossed).map(t => t.achievementId),
+      undoTaskUpdates: taskUpdates.map(update => ({
+        taskId: update.taskId || 'unknown',
+        revertTo: { action: 'undo', originalUpdate: update }
+      }))
+    },
+    snapshotData: {
+      userStateBeforeEvent: null, // Will be populated by Progress system
+      eventContext: richContext,
+      crossDomainUpdates: taskUpdates
     }
   };
-}
-
-/**
- * Create a standardized base event for domains
- * Ensures all events have required fields and consistent format
- */
-export function createBaseEvent(
-  token: string,
-  userId: string,
-  source: 'ethos' | 'trophe' | 'soma' | 'system',
-  action: string,
-  metadata?: Record<string, any>
-): BaseEventData {
+  
   return {
-    token,
-    userId,
-    source,
-    action,
-    timestamp: new Date(),
-    metadata: metadata || {}
+    token: eventData.token,
+    eventId: Date.now(),
+    source: eventData.source,
+    action: eventData.action,
+    userId: eventData.userId,
+    
+    context: richContext,
+    taskUpdates,
+    achievementThresholds,
+    xpMetadata,
+    reversalData
   };
 }
 
 /**
- * Ethos-specific contract builders
+ * Calculate total XP from metadata and context
+ */
+function calculateTotalXp(xpMetadata: any, context: RichEventContext): number {
+  let totalXp = xpMetadata.baseXp;
+  
+  // Apply difficulty multiplier
+  totalXp *= xpMetadata.difficultyMultiplier;
+  
+  // Apply streak bonus
+  if (context.streakCount > 0) {
+    totalXp += Math.floor(context.streakCount * xpMetadata.streakMultiplier);
+  }
+  
+  // Apply milestone bonus
+  if (context.milestoneHit) {
+    totalXp += xpMetadata.milestoneBonus;
+  }
+  
+  // Apply category bonus
+  totalXp += xpMetadata.categoryBonus;
+  
+  return Math.floor(totalXp);
+}
+
+/**
+ * ETHOS CONTRACT BUILDERS
  */
 export const EthosContracts = {
   /**
-   * Create task completion event
+   * Build task completion contract with rich context
    */
-  taskCompletion(
-    token: string,
-    userId: string,
-    taskEventData: any
-  ): BaseEventData {
-    return createBaseEvent(token, userId, 'ethos', 'task_completed', {
-      taskEventData
-    });
+  async buildTaskCompletionContract(
+    eventData: BaseEventData,
+    taskData: any,
+    allUserTasks: any[],
+    completionHistory: Date[]
+  ): Promise<RichProgressContract> {
+    
+    // Calculate rich context using shared utilities
+    const taskContext = calculateTaskContext(taskData, allUserTasks, completionHistory);
+    
+    // Add the required taskName property to match expected type
+    const enhancedTaskContext = {
+      ...taskContext,
+      taskName: taskData.name || 'Task'
+    };
+    
+    const richContext: RichEventContext = {
+      streakCount: taskContext.streakCount,
+      totalCompletions: taskContext.totalCompletions,
+      itemName: taskData.name || 'Task', // Use taskData.name instead of non-existent taskContext.taskName
+      domainCategory: taskContext.domainCategory,
+      labels: taskContext.labels,
+      difficulty: 'medium', // Could be enhanced based on task properties
+      isSystemItem: taskContext.isSystemTask,
+      taskContext: enhancedTaskContext
+    };
+    
+    // Detect milestones
+    const milestoneHit = detectTaskMilestones(taskContext);
+    if (milestoneHit) {
+      richContext.milestoneHit = milestoneHit.achievementId;
+      richContext.milestoneValue = milestoneHit.currentValue;
+    }
+    
+    // Check achievement thresholds
+    const achievementThresholds = checkTaskAchievementThresholds(taskContext);
+    
+    // No cross-domain task updates for ethos (ethos IS the task domain)
+    const taskUpdates: TaskUpdateRequest[] = [];
+    
+    return buildRichProgressContract(eventData, richContext, taskUpdates, achievementThresholds);
   },
 
   /**
-   * Create task creation event
+   * Build task creation contract
    */
-  taskCreation(
-    token: string,
-    userId: string,
+  buildTaskCreationContract(
+    eventData: BaseEventData,
     taskData: any
-  ): BaseEventData {
-    return createBaseEvent(token, userId, 'ethos', 'task_created', {
-      taskData
-    });
+  ): RichProgressContract {
+    
+    const richContext: RichEventContext = {
+      streakCount: 0,
+      totalCompletions: 0,
+      itemName: taskData.name,
+      domainCategory: taskData.domainCategory,
+      labels: taskData.labels,
+      difficulty: 'easy', // Task creation is easier than completion
+      isSystemItem: taskData.isSystemTask || false,
+      taskContext: {
+        taskName: taskData.name,
+        bestStreak: 0,
+        domainTasksTotal: 1, // This is a new task
+        domainTasksCompleted: 0
+      }
+    };
+    
+    // Task creation typically doesn't trigger major achievements
+    const achievementThresholds: AchievementThreshold[] = [];
+    
+    return buildRichProgressContract(eventData, richContext, [], achievementThresholds);
   }
 };
 
 /**
- * Nutrition-specific contract builders (placeholders)
+ * NUTRITION CONTRACT BUILDERS (TROPHE)
  */
 export const NutritionContracts = {
   /**
-   * Create meal logging event
+   * Build meal logging contract with rich nutrition context
    */
-  mealLogged(
-    token: string,
-    userId: string,
+  buildMealLoggingContract(
+    eventData: BaseEventData,
     mealData: any,
-    nutritionContext: any
-  ): BaseEventData {
-    return createBaseEvent(token, userId, 'trophe', 'meal_logged', {
-      mealData,
+    allMealsToday: any[],
+    macroGoals: any,
+    nutritionStreak: number,
+    totalMeals: number
+  ): RichProgressContract {
+    
+    // Calculate nutrition context using shared utilities
+    const nutritionContext = calculateNutritionContext(
+      eventData.userId,
+      new Date().toISOString().split('T')[0],
+      allMealsToday,
+      macroGoals
+    );
+    
+    const richContext: RichEventContext = {
+      streakCount: nutritionStreak,
+      totalCompletions: totalMeals,
+      itemName: mealData.name || 'Meal',
+      domainCategory: 'trophe',
+      labels: ['nutrition', 'meal_tracking'],
+      difficulty: 'medium',
+      isSystemItem: false,
       nutritionContext
-    });
+    };
+    
+    // Detect nutrition milestones
+    const milestoneHit = detectNutritionMilestones(nutritionContext, nutritionStreak, totalMeals);
+    if (milestoneHit) {
+      richContext.milestoneHit = milestoneHit.achievementId;
+      richContext.milestoneValue = milestoneHit.currentValue;
+    }
+    
+    // Check achievement thresholds
+    const achievementThresholds = checkNutritionAchievementThresholds(
+      nutritionContext,
+      nutritionStreak,
+      totalMeals
+    );
+    
+    // Cross-domain: Update nutrition tracking task in ethos
+    const taskUpdates: TaskUpdateRequest[] = [];
+    
+    // If macro progress is good, complete daily nutrition task
+    if (nutritionContext.dailyMacroProgress.total >= 80) {
+      taskUpdates.push({
+        domainCategory: 'trophe',
+        labels: ['daily_nutrition_tracking'],
+        action: 'complete',
+        taskData: {
+          progress: nutritionContext.dailyMacroProgress.total,
+          completed: true,
+          completionDate: new Date().toISOString(),
+          description: `Hit ${nutritionContext.dailyMacroProgress.total}% macro targets`
+        },
+        source: 'trophe',
+        token: eventData.token
+      });
+    }
+    
+    return buildRichProgressContract(eventData, richContext, taskUpdates, achievementThresholds);
   },
 
   /**
-   * Create macro target achievement event
+   * Build macro target achievement contract
    */
-  macroTargetHit(
-    token: string,
-    userId: string,
-    macroProgress: any
-  ): BaseEventData {
-    return createBaseEvent(token, userId, 'trophe', 'macro_target_hit', {
-      macroProgress
-    });
+  buildMacroTargetContract(
+    eventData: BaseEventData,
+    macroProgress: any,
+    nutritionStreak: number
+  ): RichProgressContract {
+    
+    const richContext: RichEventContext = {
+      streakCount: nutritionStreak,
+      totalCompletions: 0, // This is about daily achievement, not total count
+      itemName: 'Macro Target Achievement',
+      domainCategory: 'trophe',
+      labels: ['nutrition', 'macro_targets'],
+      difficulty: macroProgress.total >= 100 ? 'hard' : 'medium',
+      isSystemItem: false,
+      milestoneHit: macroProgress.total >= 100 ? 'perfect_macros' : 'macro_80',
+      milestoneValue: macroProgress.total
+    };
+    
+    // Perfect macro achievement
+    const achievementThresholds: AchievementThreshold[] = [];
+    if (macroProgress.total >= 100) {
+      achievementThresholds.push({
+        achievementId: 'perfect_macro_day',
+        type: 'milestone',
+        threshold: 100,
+        currentValue: macroProgress.total,
+        justCrossed: true,
+        bonusXp: 50
+      });
+    }
+    
+    return buildRichProgressContract(eventData, richContext, [], achievementThresholds);
   }
 };
 
 /**
- * Exercise/workout contract builders (placeholders)
+ * WORKOUT CONTRACT BUILDERS (SOMA) - Future
  */
 export const SomaContracts = {
   /**
-   * Create workout completion event
+   * Build workout completion contract
    */
-  workoutCompleted(
-    token: string,
-    userId: string,
+  buildWorkoutCompletionContract(
+    eventData: BaseEventData,
     workoutData: any,
-    performanceContext: any
-  ): BaseEventData {
-    return createBaseEvent(token, userId, 'soma', 'workout_completed', {
-      workoutData,
-      performanceContext
-    });
-  },
-
-  /**
-   * Create exercise mastery event
-   */
-  exerciseMastery(
-    token: string,
-    userId: string,
-    exerciseData: any
-  ): BaseEventData {
-    return createBaseEvent(token, userId, 'soma', 'exercise_mastered', {
-      exerciseData
-    });
+    exercises: any[],
+    userProgress: any
+  ): RichProgressContract {
+    
+    // Calculate workout context using shared utilities
+    const workoutContext = calculateWorkoutContext(workoutData, exercises, userProgress);
+    
+    const richContext: RichEventContext = {
+      streakCount: userProgress.workoutStreak || 0,
+      totalCompletions: workoutContext.totalWorkouts,
+      itemName: `Workout (${workoutContext.exerciseCount} exercises)`,
+      domainCategory: 'soma',
+      labels: ['workout', ...workoutContext.categories],
+      difficulty: workoutContext.difficulty,
+      isSystemItem: false,
+      workoutContext
+    };
+    
+    // Detect workout milestones
+    const milestoneHit = detectWorkoutMilestones(workoutContext);
+    if (milestoneHit) {
+      richContext.milestoneHit = milestoneHit.achievementId;
+      richContext.milestoneValue = milestoneHit.currentValue;
+    }
+    
+    // Check achievement thresholds
+    const achievementThresholds = checkWorkoutAchievementThresholds(workoutContext);
+    
+    // Cross-domain: Update workout tracking task in ethos
+    const taskUpdates: TaskUpdateRequest[] = [{
+      domainCategory: 'soma',
+      labels: ['daily_workout'],
+      action: 'complete',
+      taskData: {
+        completed: true,
+        completionDate: new Date().toISOString(),
+        description: `Completed ${workoutContext.exerciseCount}-exercise workout`
+      },
+      source: 'soma',
+      token: eventData.token
+    }];
+    
+    return buildRichProgressContract(eventData, richContext, taskUpdates, achievementThresholds);
   }
 };
 
 /**
- * Cross-domain contract builder
- * For when one domain needs to trigger actions in another
+ * MILESTONE DETECTION UTILITIES
  */
-export function buildCrossDomainContract(
-  token: string,
-  sourceDomain: string,
-  targetDomain: 'ethos' | 'trophe' | 'soma',
-  operation: string,
-  operationData: any,
-  userId: string
-) {
-  return {
-    token,
-    targetDomain,
-    operation,
-    operationData,
-    sourceDomain,
-    userId,
-    timestamp: new Date()
-  };
+
+function detectTaskMilestones(taskContext: any): { achievementId: string; currentValue: number } | null {
+  const { streakCount, totalCompletions } = taskContext;
+  
+  // Check streak milestones
+  if (MILESTONE_THRESHOLDS.STREAK.includes(streakCount)) {
+    return {
+      achievementId: `task_streak_${streakCount}`,
+      currentValue: streakCount
+    };
+  }
+  
+  // Check completion milestones
+  if (MILESTONE_THRESHOLDS.USAGE.includes(totalCompletions)) {
+    return {
+      achievementId: `task_completion_${totalCompletions}`,
+      currentValue: totalCompletions
+    };
+  }
+  
+  return null;
+}
+
+function detectNutritionMilestones(
+  nutritionContext: any,
+  streak: number,
+  totalMeals: number
+): { achievementId: string; currentValue: number } | null {
+  
+  // Perfect macro day
+  if (nutritionContext.dailyMacroProgress.total >= 100) {
+    return {
+      achievementId: 'perfect_macro_day',
+      currentValue: nutritionContext.dailyMacroProgress.total
+    };
+  }
+  
+  // Nutrition streak milestones
+  if (MILESTONE_THRESHOLDS.STREAK.includes(streak as 3 | 7 | 14 | 30 | 50 | 100)) {
+    return {
+      achievementId: `nutrition_streak_${streak}`,
+      currentValue: streak
+    };
+  }
+  
+  // Meal count milestones
+  if (MILESTONE_THRESHOLDS.USAGE.includes(totalMeals as 10 | 25 | 50 | 100 | 250 | 500 | 1000 | 2500 | 5000)) {
+    return {
+      achievementId: `meals_logged_${totalMeals}`,
+      currentValue: totalMeals
+    };
+  }
+  
+  return null;
+}
+
+function detectWorkoutMilestones(workoutContext: any): { achievementId: string; currentValue: number } | null {
+  const { totalWorkouts } = workoutContext;
+  
+  // Workout count milestones
+  if (MILESTONE_THRESHOLDS.USAGE.includes(totalWorkouts)) {
+    return {
+      achievementId: `workouts_completed_${totalWorkouts}`,
+      currentValue: totalWorkouts
+    };
+  }
+  
+  return null;
 }
 
 /**
- * Quick builders for common cross-domain operations
+ * ACHIEVEMENT THRESHOLD CHECKERS
  */
-export const CrossDomainContracts = {
-  /**
-   * Create or update a system task in ethos
-   */
-  ethosTaskOperation(
-    token: string,
-    sourceDomain: string,
-    userId: string,
-    operation: 'create_task' | 'update_task' | 'complete_task',
-    taskData: any
-  ) {
-    return buildCrossDomainContract(
-      token,
-      sourceDomain,
-      'ethos',
-      operation,
-      taskData,
-      userId
-    );
-  },
 
-  /**
-   * Check metrics from ethos
-   */
-  checkEthosMetrics(
-    token: string,
-    sourceDomain: string,
-    userId: string,
-    labels: string[],
-    domainCategory?: string
-  ) {
-    return buildCrossDomainContract(
-      token,
-      sourceDomain,
-      'ethos',
-      'check_metrics',
-      { userId, labels, domainCategory },
-      userId
-    );
+function checkTaskAchievementThresholds(taskContext: any): AchievementThreshold[] {
+  const thresholds: AchievementThreshold[] = [];
+  const { streakCount, totalCompletions } = taskContext;
+  
+  // Check if we just hit a streak milestone
+  if (MILESTONE_THRESHOLDS.STREAK.includes(streakCount)) {
+    thresholds.push({
+      achievementId: `discipline_streak_${streakCount}`,
+      type: 'streak',
+      threshold: streakCount,
+      currentValue: streakCount,
+      justCrossed: true,
+      bonusXp: 25
+    });
   }
-};
+  
+  // Check if we just hit a completion milestone
+  if (MILESTONE_THRESHOLDS.USAGE.includes(totalCompletions)) {
+    thresholds.push({
+      achievementId: `discipline_completion_${totalCompletions}`,
+      type: 'total',
+      threshold: totalCompletions,
+      currentValue: totalCompletions,
+      justCrossed: true,
+      bonusXp: 50
+    });
+  }
+  
+  return thresholds;
+}
+
+function checkNutritionAchievementThresholds(
+  nutritionContext: any,
+  streak: number,
+  totalMeals: number
+): AchievementThreshold[] {
+  const thresholds: AchievementThreshold[] = [];
+  
+  // Perfect macro achievement
+  if (nutritionContext.dailyMacroProgress.total >= 100) {
+    thresholds.push({
+      achievementId: 'perfectionist_nutrition',
+      type: 'milestone',
+      threshold: 100,
+      currentValue: nutritionContext.dailyMacroProgress.total,
+      justCrossed: true,
+      bonusXp: 50
+    });
+  }
+  
+  // Meal logging milestones
+  if (MILESTONE_THRESHOLDS.USAGE.includes(totalMeals as 10 | 25 | 50 | 100 | 250 | 500 | 1000 | 2500 | 5000)) {
+    thresholds.push({
+      achievementId: `nutrition_tracker_${totalMeals}`,
+      type: 'total',
+      threshold: totalMeals,
+      currentValue: totalMeals,
+      justCrossed: true,
+      bonusXp: 30
+    });
+  }
+  
+  return thresholds;
+}
+
+function checkWorkoutAchievementThresholds(workoutContext: any): AchievementThreshold[] {
+  const thresholds: AchievementThreshold[] = [];
+  const { totalWorkouts } = workoutContext;
+  
+  // Workout completion milestones
+  if (MILESTONE_THRESHOLDS.USAGE.includes(totalWorkouts)) {
+    thresholds.push({
+      achievementId: `warrior_training_${totalWorkouts}`,
+      type: 'total',
+      threshold: totalWorkouts,
+      currentValue: totalWorkouts,
+      justCrossed: true,
+      bonusXp: 75
+    });
+  }
+  
+  return thresholds;
+}
 
 /**
- * Contract validation utilities
+ * CROSS-DOMAIN TASK BUILDERS
  */
-export const ContractValidation = {
+export const CrossDomainTasks = {
   /**
-   * Validate base event structure
+   * Create daily nutrition tracking task update
    */
-  validateBaseEvent(event: BaseEventData): string[] {
-    const errors: string[] = [];
-    
-    if (!event.token || typeof event.token !== 'string') {
-      errors.push('Token is required and must be a string');
-    }
-    
-    if (!event.userId || typeof event.userId !== 'string') {
-      errors.push('UserId is required and must be a string');
-    }
-    
-    if (!['ethos', 'trophe', 'soma', 'system'].includes(event.source)) {
-      errors.push('Source must be ethos, trophe, soma, or system');
-    }
-    
-    if (!event.action || typeof event.action !== 'string') {
-      errors.push('Action is required and must be a string');
-    }
-    
-    if (!event.timestamp || !(event.timestamp instanceof Date)) {
-      errors.push('Timestamp is required and must be a Date');
-    }
-    
-    return errors;
+  createNutritionTaskUpdate(
+    token: string,
+    progress: number,
+    completed: boolean = false
+  ): TaskUpdateRequest {
+    return {
+      domainCategory: 'trophe',
+      labels: ['daily_nutrition_tracking'],
+      action: completed ? 'complete' : 'update',
+      taskData: {
+        progress,
+        completed,
+        completionDate: completed ? new Date().toISOString() : undefined,
+        description: `Nutrition progress: ${progress}%`
+      },
+      source: 'trophe',
+      token
+    };
   },
 
   /**
-   * Validate progress contract structure
+   * Create daily workout tracking task update
    */
-  validateProgressContract(contract: ProgressEventContract): string[] {
-    const errors: string[] = [];
-    
-    if (!contract.userId || typeof contract.userId !== 'string') {
-      errors.push('UserId is required and must be a string');
-    }
-    
-    if (typeof contract.eventId !== 'number') {
-      errors.push('EventId is required and must be a number');
-    }
-    
-    if (!contract.source || typeof contract.source !== 'string') {
-      errors.push('Source is required and must be a string');
-    }
-    
-    if (!['core', 'push', 'pull', 'legs'].includes(contract.category || '')) {
-      errors.push('Category must be core, push, pull, or legs');
-    }
-    
-    return errors;
+  createWorkoutTaskUpdate(
+    token: string,
+    exerciseCount: number,
+    duration: number
+  ): TaskUpdateRequest {
+    return {
+      domainCategory: 'soma',
+      labels: ['daily_workout'],
+      action: 'complete',
+      taskData: {
+        completed: true,
+        completionDate: new Date().toISOString(),
+        description: `Workout: ${exerciseCount} exercises, ${duration} minutes`
+      },
+      source: 'soma',
+      token
+    };
   }
 };

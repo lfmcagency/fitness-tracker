@@ -1,8 +1,8 @@
 /**
- * ETHOS DOMAIN PROCESSOR
+ * ENHANCED ETHOS PROCESSOR
  * 
- * Handles task completion events, system task operations, and ethos-specific
- * milestone detection. Implements DomainProcessor interface for the coordinator.
+ * Updated to work with rich contract system and shared utilities.
+ * Calculates complete context and integrates with cross-domain operations.
  */
 
 import { Types } from 'mongoose';
@@ -26,24 +26,18 @@ import {
   MilestoneConfig,
   DomainXpConfig,
   CrossDomainContract,
-  DomainProcessor
+  DomainProcessor,
+  RichEventContext
 } from './types';
 import { 
-  detectMilestone, 
-  fireProgressEventWithContext, 
-  notifyAchievementSystem 
-} from './index';
+  calculateTaskContext,
+  MILESTONE_THRESHOLDS 
+} from '@/lib/shared-utilities';
+import { EthosContracts } from './contracts';
+import { trackTokenStage } from './logging';
 
 /**
- * Ethos-specific milestone configuration
- */
-const ETHOS_MILESTONES = {
-  STREAK: [3, 7, 14, 30, 50, 100, 365], // Days
-  COMPLETIONS: [10, 25, 50, 100, 250, 500, 1000] // Total completions
-} as const;
-
-/**
- * Ethos domain processor implementation
+ * Enhanced ethos processor with rich context calculation
  */
 export class EthosProcessor implements DomainProcessor {
   
@@ -54,13 +48,15 @@ export class EthosProcessor implements DomainProcessor {
     return {
       streak: {
         type: 'streak',
-        thresholds: ETHOS_MILESTONES.STREAK,
-        achievementPrefix: 'discipline_streak'
+        thresholds: MILESTONE_THRESHOLDS.STREAK,
+        achievementPrefix: 'discipline_streak',
+        bonusXp: 25
       },
       completion: {
         type: 'completion', 
-        thresholds: ETHOS_MILESTONES.COMPLETIONS,
-        achievementPrefix: 'discipline_completion'
+        thresholds: MILESTONE_THRESHOLDS.USAGE,
+        achievementPrefix: 'discipline_completion',
+        bonusXp: 50
       }
     };
   }
@@ -73,104 +69,166 @@ export class EthosProcessor implements DomainProcessor {
       baseXp: 50,
       streakMultiplier: 1.0,
       milestoneBonus: 25,
-      progressCategory: 'core'
+      progressCategory: 'core',
+      difficultyMultipliers: { easy: 0.8, medium: 1.0, hard: 1.3 },
+      systemItemBonus: 10
     };
   }
 
   /**
-   * Process task completion events
+   * Calculate rich context using shared utilities
    */
-  async processEvent(eventData: BaseEventData): Promise<DomainEventResult> {
-    // Convert base event to task event data
+  async calculateRichContext(eventData: BaseEventData): Promise<RichEventContext> {
     const taskEventData = eventData.metadata?.taskEventData as TaskEventData;
     if (!taskEventData) {
       throw new Error('Task event data missing from event metadata');
     }
 
-    console.log('📋 [ETHOS] Processing task event:', taskEventData);
+    trackTokenStage(eventData.token, 'ethos_context_start');
     
-    const milestonesHit: string[] = [];
-    const achievementsNotified: string[] = [];
+    // Get all user tasks for domain analysis
+    const allUserTasks = await Task.find({ 
+      user: new Types.ObjectId(eventData.userId) 
+    }).lean() as any[];
+    
+    // Calculate rich context using shared utilities
+    const taskContext = calculateTaskContext(
+      taskEventData,
+      allUserTasks,
+      taskEventData.completionHistory || []
+    );
+    
+    trackTokenStage(eventData.token, 'ethos_context_calculated');
+    
+    // Detect milestones
+    let milestoneHit: string | undefined;
+    let milestoneValue: number | undefined;
+    
+    if (MILESTONE_THRESHOLDS.STREAK.includes(taskContext.streakCount as 3 | 7 | 14 | 30 | 50 | 100)) {
+      milestoneHit = `discipline_streak_${taskContext.streakCount}`;
+      milestoneValue = taskContext.streakCount;
+    } else if (MILESTONE_THRESHOLDS.USAGE.includes(taskContext.totalCompletions as 10 | 25 | 50 | 100 | 250 | 500 | 1000 | 2500 | 5000)) {
+      milestoneHit = `discipline_completion_${taskContext.totalCompletions}`;
+      milestoneValue = taskContext.totalCompletions;
+    }
+    
+    const richContext: RichEventContext = {
+      streakCount: taskContext.streakCount,
+      totalCompletions: taskContext.totalCompletions,
+      itemName: taskEventData.name || 'Task', // Use task name from event data instead
+      domainCategory: taskContext.domainCategory,
+      labels: taskContext.labels,
+      difficulty: 'medium', // Could be enhanced based on task properties
+      isSystemItem: taskContext.isSystemTask,
+      milestoneHit,
+      milestoneValue,
+      taskContext: {
+        ...taskContext,
+        taskName: taskEventData.name || 'Task'
+      }
+    };
+    
+    console.log('📋 [ETHOS] Rich context calculated:', {
+      token: eventData.token,
+      streakCount: richContext.streakCount,
+      totalCompletions: richContext.totalCompletions,
+      milestoneHit: richContext.milestoneHit
+    });
+    
+    return richContext;
+  }
+
+  /**
+   * Process task events using rich contract system
+   */
+  async processEvent(eventData: BaseEventData): Promise<DomainEventResult> {
+    const { token, action } = eventData;
+    
+    console.log('📋 [ETHOS] Processing event with rich contracts:', { token, action });
     
     try {
-      // Detect milestones using extracted logic
-      const milestoneConfigs = this.getMilestoneConfig();
+      trackTokenStage(token, 'ethos_processing_start');
       
-      const streakMilestone = detectMilestone(
-        taskEventData.newStreak,
-        taskEventData.previousStreak,
-        milestoneConfigs.streak.thresholds,
-        'streak',
-        milestoneConfigs.streak.achievementPrefix
-      );
+      // Calculate rich context
+      const richContext = await this.calculateRichContext(eventData);
       
-      const completionMilestone = detectMilestone(
-        taskEventData.totalCompletions,
-        taskEventData.previousTotalCompletions,
-        milestoneConfigs.completion.thresholds,
-        'completion',
-        milestoneConfigs.completion.achievementPrefix
-      );
-      
-      // Build domain context for progress event
-      const domainContext = {
-        streakCount: taskEventData.newStreak,
-        totalCompletions: taskEventData.totalCompletions,
-        taskName: taskEventData.taskName,
-        milestoneHit: streakMilestone.isNewMilestone 
-          ? streakMilestone.achievementId! 
-          : (completionMilestone.isNewMilestone ? completionMilestone.achievementId! : undefined),
-        difficulty: 'medium', // Could be derived from task properties
-        isSystemItem: taskEventData.isSystemTask
-      };
-      
-      // Fire to Progress system using coordinator utility
-      const progressResult = await fireProgressEventWithContext(eventData, domainContext);
-      
-      // Handle milestone achievements
-      if (streakMilestone.isNewMilestone) {
-        milestonesHit.push(streakMilestone.achievementId!);
-        await notifyAchievementSystem(
-          eventData.userId, 
-          streakMilestone.achievementId!, 
-          taskEventData.newStreak,
-          eventData.token
+      // Build domain-specific rich contract
+      let richContract;
+      if (action === 'task_completed') {
+        const taskEventData = eventData.metadata?.taskEventData as TaskEventData;
+        const allUserTasks = await Task.find({ 
+          user: new Types.ObjectId(eventData.userId) 
+        }).lean() as any[];
+        
+        richContract = await EthosContracts.buildTaskCompletionContract(
+          eventData,
+          taskEventData,
+          allUserTasks,
+          taskEventData.completionHistory || []
         );
-        achievementsNotified.push(streakMilestone.achievementId!);
+      } else if (action === 'task_created') {
+        richContract = EthosContracts.buildTaskCreationContract(eventData, eventData.metadata);
+      } else {
+        // Fallback to basic rich contract
+        richContract = {
+          token,
+          eventId: Date.now(),
+          source: eventData.source,
+          action: eventData.action,
+          userId: eventData.userId,
+          context: richContext,
+          taskUpdates: [],
+          achievementThresholds: [],
+          xpMetadata: {
+            baseXp: this.getXpConfig().baseXp,
+            streakMultiplier: this.getXpConfig().streakMultiplier,
+            milestoneBonus: this.getXpConfig().milestoneBonus,
+            difficultyMultiplier: this.getXpConfig().difficultyMultipliers.medium,
+            categoryBonus: richContext.isSystemItem ? this.getXpConfig().systemItemBonus : 0
+          },
+          reversalData: {
+            undoInstructions: {},
+            snapshotData: {
+              userStateBeforeEvent: null,
+              eventContext: richContext,
+              crossDomainUpdates: []
+            }
+          }
+        };
       }
       
-      if (completionMilestone.isNewMilestone) {
-        milestonesHit.push(completionMilestone.achievementId!);
-        await notifyAchievementSystem(
-          eventData.userId, 
-          completionMilestone.achievementId!, 
-          taskEventData.totalCompletions,
-          eventData.token
-        );
-        achievementsNotified.push(completionMilestone.achievementId!);
-      }
+      trackTokenStage(token, 'ethos_contract_built');
       
-      console.log('✅ [ETHOS] Task event processing complete:', {
-        token: eventData.token,
-        milestonesHit,
-        achievementsNotified
+      console.log('✅ [ETHOS] Rich contract event processing complete:', {
+        token,
+        milestonesHit: richContract.achievementThresholds?.length || 0,
+        taskUpdates: richContract.taskUpdates?.length || 0
       });
       
       return {
         success: true,
-        progressResult,
-        milestonesHit,
-        achievementsUnlocked: achievementsNotified,
-        token: eventData.token
+        token,
+        progressContract: richContract,
+        milestonesHit: richContract.achievementThresholds
+          ?.filter(t => t.justCrossed)
+          ?.map(t => ({
+            type: t.type,
+            threshold: t.threshold,
+            achievementId: t.achievementId,
+            currentValue: t.currentValue
+          })) || [],
+        achievementsUnlocked: richContract.achievementThresholds
+          ?.filter(t => t.justCrossed)
+          ?.map(t => t.achievementId) || []
       };
       
     } catch (error) {
-      console.error('💥 [ETHOS] Error processing task event:', error);
+      console.error('💥 [ETHOS] Enhanced processing failed:', error);
       
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
-        token: eventData.token
+        token
       };
     }
   }
@@ -182,21 +240,36 @@ export class EthosProcessor implements DomainProcessor {
     const { operation, operationData, token } = contract;
     
     console.log('🔧 [ETHOS] Cross-domain operation:', { token, operation });
+    trackTokenStage(token, 'ethos_cross_domain_start');
     
-    switch (operation) {
-      case 'create_task':
-        return await this.createSystemTask(operationData);
-      case 'update_task':
-      case 'complete_task':
-        return await this.updateSystemTask(operationData);
-      case 'check_metrics':
-        return await this.getLabelMetrics(
-          operationData.userId,
-          operationData.labels,
-          operationData.domainCategory
-        );
-      default:
-        throw new Error(`Unsupported ethos operation: ${operation}`);
+    try {
+      let result;
+      
+      switch (operation) {
+        case 'create_task':
+          result = await this.createSystemTask(operationData);
+          break;
+        case 'update_task':
+        case 'complete_task':
+          result = await this.updateSystemTask(operationData);
+          break;
+        case 'check_metrics':
+          result = await this.getLabelMetrics(
+            operationData.userId,
+            operationData.labels,
+            operationData.domainCategory
+          );
+          break;
+        default:
+          throw new Error(`Unsupported ethos operation: ${operation}`);
+      }
+      
+      trackTokenStage(token, 'ethos_cross_domain_complete');
+      return result;
+      
+    } catch (error) {
+      console.error('💥 [ETHOS] Cross-domain operation failed:', error);
+      throw error;
     }
   }
 
@@ -259,30 +332,8 @@ export class EthosProcessor implements DomainProcessor {
             'system'
           );
           
-          // Fire event through coordinator
-          const eventData: BaseEventData = {
-            token: Date.now().toString(),
-            userId: request.userId,
-            source: 'ethos',
-            action: 'task_completed',
-            timestamp: new Date(),
-            metadata: {
-              taskEventData: convertToTaskEventData(task, 'completed', completionDate, previousState)
-            }
-          };
-          
-          const coordinatorResult = await this.processEvent(eventData);
-          eventFired = true;
-          
           console.log('✅ [ETHOS] System task completed:', task._id);
-          return {
-            task: convertTaskToTaskData(task),
-            eventFired,
-            achievements: coordinatorResult.achievementsUnlocked && coordinatorResult.achievementsUnlocked.length > 0 ? {
-              unlockedCount: coordinatorResult.achievementsUnlocked.length,
-              achievements: coordinatorResult.achievementsUnlocked
-            } : undefined
-          };
+          eventFired = true;
         }
       } else if (request.action === 'uncomplete') {
         const completionDate = request.completionDate ? new Date(request.completionDate) : new Date();
@@ -420,7 +471,7 @@ export class EthosProcessor implements DomainProcessor {
   }
 
   /**
-   * Check milestones for all user tasks (debugging/admin utility)
+   * Debug utility - check milestones for all user tasks
    */
   async checkMilestonesForUser(userId: string): Promise<{
     streakMilestones: any[];
