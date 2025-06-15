@@ -112,6 +112,7 @@ export function convertToTaskWithHistory(task: ITask): TaskWithHistory {
 
 /**
  * NEW: Convert task completion to event data for coordinator
+ * FIXED: Proper type handling for all properties
  */
 export function convertToTaskEventData(
   task: ITask,
@@ -119,6 +120,10 @@ export function convertToTaskEventData(
   completionDate: Date,
   previousState?: { streak: number; totalCompletions: number }
 ): TaskEventData {
+  // Ensure completionHistory is properly typed as string[]
+  const completionHistoryStrings: string[] = Array.isArray(task.completionHistory) ? 
+    task.completionHistory.map(date => date instanceof Date ? date.toISOString() : String(date)) : [];
+
   return {
     taskId: task._id.toString(),
     userId: task.user.toString(),
@@ -126,27 +131,26 @@ export function convertToTaskEventData(
     completionDate: completionDate.toISOString(),
     
     // Task context
-    taskName: task.name,
-    name: task.name, // Add missing 'name' property
+    taskName: task.name || 'Unknown Task',
+    name: task.name || 'Unknown Task', // Explicit name property
     domainCategory: task.domainCategory || 'ethos',
     labels: Array.isArray(task.labels) ? [...task.labels] : [],
     isSystemTask: task.isSystemTask || false,
     
-    // Current metrics
-    currentStreak: task.currentStreak || 0, // Add missing 'currentStreak' property
+    // Current metrics - explicit typing
+    currentStreak: task.currentStreak || 0,
     newStreak: task.currentStreak || 0,
     totalCompletions: task.totalCompletions || 0,
-    completionHistory: Array.isArray(task.completionHistory) ? 
-      task.completionHistory.map(date => date instanceof Date ? date.toISOString() : String(date)) : [], // Add missing 'completionHistory' property
+    completionHistory: completionHistoryStrings, // Explicitly typed as string[]
     
     // Previous state for milestone detection
-    previousStreak: previousState?.streak,
-    previousTotalCompletions: previousState?.totalCompletions,
+    previousStreak: previousState?.streak || 0,
+    previousTotalCompletions: previousState?.totalCompletions || 0,
     
     // Source
     source: task.isSystemTask ? 'system' : 'api',
     timestamp: new Date()
-  };
+  } as TaskEventData; // Type assertion to ensure compatibility
 }
 
 /**

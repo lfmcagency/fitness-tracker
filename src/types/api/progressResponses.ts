@@ -37,7 +37,7 @@ export interface ProgressEventContract {
   exerciseName?: string;
   isSystemTask?: boolean;
   isSystemItem?: boolean;
-  [key: string]: any;  // Add this to allow any additional properties
+  metadata?: Record<string, any>;  // Changed from index signature to explicit metadata field
 }
 
 /**
@@ -49,6 +49,7 @@ export interface AchievementEventContract {
   achievementType: 'discipline' | 'usage' | 'progress';
   triggeredBy: 'streak' | 'total_count' | 'xp_threshold' | 'level_threshold';
   currentValue: number; // Current streak/count/xp/level
+  token?: string; // Add token support
 }
 
 // ==========================================
@@ -102,6 +103,14 @@ export interface ProgressOverviewData {
 }
 
 /**
+ * Individual category progress data
+ */
+export interface CategoryProgressData {
+  level: number;
+  xp: number;
+}
+
+/**
  * Weight entry for bodyweight tracking
  */
 export interface WeightEntryData {
@@ -132,5 +141,6 @@ export interface ProgressHistoryData {
 
 export type XpAwardResponse = ApiResponse<XpAwardResult>;
 export type ProgressOverviewResponse = ApiResponse<ProgressOverviewData>;
+export type CategoryProgressResponse = ApiResponse<CategoryProgressData>;
 export type WeightEntryResponse = ApiResponse<WeightEntryData>;
 export type ProgressHistoryResponse = ApiResponse<ProgressHistoryData>;
