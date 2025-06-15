@@ -7,10 +7,7 @@ import TaskLog from '@/models/TaskLog';
 import { ITask } from '@/types/models/tasks';
 import { withAuth, AuthLevel } from '@/lib/auth-utils';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
-import { convertToTaskEventData } from '@/types/converters/taskConverters';
-import { processEvent } from '@/lib/event-coordinator';
-import { EthosContracts } from '@/lib/event-coordinator/contracts';
-import { generateToken } from '@/lib/event-coordinator/logging';
+import { handleTaskCompletion } from '@/lib/event-coordinator/task-completion';
 import { StreakInfo } from '@/types';
 import { TaskStreakRequest } from '@/types/api/taskRequests';
 import { isValidObjectId } from 'mongoose';
@@ -73,7 +70,7 @@ export const GET = withAuth<StreakInfo, { id: string }>(
 
 /**
  * POST /api/tasks/[id]/streak
- * Complete a task for streak purposes (simplified - just calls main completion logic)
+ * Complete a task for streak purposes (FIXED COORDINATOR INTEGRATION)
  */
 export const POST = withAuth<StreakInfo & { achievements?: any }, { id: string }>(
   async (req: NextRequest, userId: string, context) => {
@@ -153,13 +150,17 @@ export const POST = withAuth<StreakInfo & { achievements?: any }, { id: string }
           'api'
         );
         
-        // 🆕 FIRE EVENT TO NEW COORDINATOR 🆕
+        // 🆕 FIRE EVENT TO COORDINATOR - FIXED VERSION 🆕
         let coordinatorResult = { achievementsUnlocked: [] as string[] };
         try {
-          const token = generateToken();
-          const taskEventData = convertToTaskEventData(task, 'completed', date, previousState);
-          const eventData = EthosContracts.taskCompletion(token, userId, taskEventData);
-          const result = await processEvent(eventData);
+          const result = await handleTaskCompletion(
+            userId,
+            task,
+            'completed',
+            date,
+            previousState
+          );
+          
           coordinatorResult = { 
             achievementsUnlocked: result.achievementsUnlocked || []
           };

@@ -1,6 +1,6 @@
 // src/lib/event-coordinator/task-coordination.ts
 /**
- * TASK COORDINATION HELPER
+ * TASK COORDINATION HELPER - FIXED
  * 
  * Bridge between Progress domain and Ethos for atomic cross-domain task operations.
  * Called by Progress during atomic operations to update tasks across domains.
@@ -21,7 +21,7 @@ import {
  * This is called during atomic operations to maintain consistency
  */
 export async function processTaskUpdateFromProgress(
-  taskUpdate: TaskUpdateRequest,
+  taskUpdate: TaskUpdateRequest & { userId: string }, // Add userId here directly
   token: string
 ): Promise<{
   taskId: string;
@@ -60,7 +60,7 @@ export async function processTaskUpdateFromProgress(
  * Create system task from other domains
  */
 async function createSystemTaskFromProgress(
-  taskUpdate: TaskUpdateRequest,
+  taskUpdate: TaskUpdateRequest & { userId: string },
   token: string
 ): Promise<any> {
   console.log(`➕ [TASK-COORD] Creating system task: ${token}`);
@@ -69,7 +69,7 @@ async function createSystemTaskFromProgress(
     throw new Error('Task name required for creation');
   }
   
-  const userId = extractUserIdFromUpdate(taskUpdate);
+  const userId = taskUpdate.userId;
   
   // Check if task already exists
   const existingTask = await Task.findOne({
@@ -118,12 +118,12 @@ async function createSystemTaskFromProgress(
  * Update existing task from other domains
  */
 async function updateTaskFromProgress(
-  taskUpdate: TaskUpdateRequest,
+  taskUpdate: TaskUpdateRequest & { userId: string },
   token: string
 ): Promise<any> {
   console.log(`📝 [TASK-COORD] Updating task: ${token}`);
   
-  const userId = extractUserIdFromUpdate(taskUpdate);
+  const userId = taskUpdate.userId;
   let task: ITask | null = null;
   
   // Find task by ID or criteria
@@ -178,12 +178,12 @@ async function updateTaskFromProgress(
  * Complete task from other domains (e.g., nutrition hitting macro goals)
  */
 async function completeTaskFromProgress(
-  taskUpdate: TaskUpdateRequest,
+  taskUpdate: TaskUpdateRequest & { userId: string },
   token: string
 ): Promise<any> {
   console.log(`✅ [TASK-COORD] Completing task: ${token}`);
   
-  const userId = extractUserIdFromUpdate(taskUpdate);
+  const userId = taskUpdate.userId;
   let task: ITask | null = null;
   
   // Find task by ID or criteria
@@ -207,9 +207,9 @@ async function completeTaskFromProgress(
       console.log(`🔧 [TASK-COORD] Task not found, creating system task: ${token}`);
       
       const defaultName = generateDefaultTaskName(taskUpdate.domainCategory, taskUpdate.labels);
-      const createRequest: TaskUpdateRequest = {
+      const createRequest = {
         ...taskUpdate,
-        action: 'create',
+        action: 'create' as const,
         taskData: {
           name: defaultName,
           ...taskUpdate.taskData
@@ -239,14 +239,14 @@ async function completeTaskFromProgress(
     task.completeTask(completionDate);
     await task.save();
     
-    // Log the completion
+    // Log the completion with correct source type
     await TaskLog.logCompletion(
       task._id,
       new Types.ObjectId(userId),
       'completed',
       completionDate,
       task,
-      'cross_domain'
+      'system' // Use 'system' instead of 'cross_domain' since that's what TaskLog accepts
     );
     
     console.log(`✅ [TASK-COORD] Task completed: ${task._id} | ${token}`);
@@ -267,12 +267,12 @@ async function completeTaskFromProgress(
  * Uncomplete task from other domains
  */
 async function uncompleteTaskFromProgress(
-  taskUpdate: TaskUpdateRequest,
+  taskUpdate: TaskUpdateRequest & { userId: string },
   token: string
 ): Promise<any> {
   console.log(`❌ [TASK-COORD] Uncompleting task: ${token}`);
   
-  const userId = extractUserIdFromUpdate(taskUpdate);
+  const userId = taskUpdate.userId;
   let task: ITask | null = null;
   
   // Find task by ID or criteria
@@ -310,14 +310,14 @@ async function uncompleteTaskFromProgress(
     task.uncompleteTask(completionDate);
     await task.save();
     
-    // Log the uncompletion
+    // Log the uncompletion with correct source type
     await TaskLog.logCompletion(
       task._id,
       new Types.ObjectId(userId),
       'uncompleted',
       completionDate,
       task,
-      'cross_domain'
+      'system' // Use 'system' instead of 'cross_domain'
     );
     
     console.log(`❌ [TASK-COORD] Task uncompleted: ${task._id} | ${token}`);
@@ -332,21 +332,6 @@ async function uncompleteTaskFromProgress(
     result: convertTaskToTaskData(task, completionDate),
     previousState
   };
-}
-
-/**
- * Extract user ID from task update request
- */
-function extractUserIdFromUpdate(taskUpdate: TaskUpdateRequest): string {
-  // In a rich contract, userId should be available from the source
-  // For now, we'll need to pass it through the taskUpdate metadata
-  // This is a temporary solution until we refactor the interface
-  
-  if ('userId' in taskUpdate && taskUpdate.userId) {
-    return taskUpdate.userId as string;
-  }
-  
-  throw new Error('User ID not found in task update request');
 }
 
 /**
@@ -374,7 +359,7 @@ function generateDefaultTaskName(domainCategory: string, labels: string[]): stri
  * Bulk task operations for efficiency
  */
 export async function processBulkTaskUpdates(
-  taskUpdates: TaskUpdateRequest[],
+  taskUpdates: (TaskUpdateRequest & { userId: string })[],
   token: string
 ): Promise<Array<{
   taskId: string;

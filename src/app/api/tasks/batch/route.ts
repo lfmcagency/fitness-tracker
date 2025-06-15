@@ -7,17 +7,15 @@ import TaskLog from '@/models/TaskLog';
 import { ITask } from '@/types/models/tasks';
 import { withAuth, AuthLevel } from '@/lib/auth-utils';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
-import { convertTaskToTaskData, convertToTaskEventData } from '@/types/converters/taskConverters';
-import { processEvent } from '@/lib/event-coordinator';
-import { EthosContracts } from '@/lib/event-coordinator/contracts';
-import { generateToken } from '@/lib/event-coordinator/logging';
+import { convertTaskToTaskData } from '@/types/converters/taskConverters';
+import { handleTaskCompletion, handleBatchTaskCompletion } from '@/lib/event-coordinator/task-completion';
 import { TaskData } from '@/types';
 import { BatchTaskRequest } from '@/types/api/taskRequests';
 import { isValidObjectId } from 'mongoose';
 
 /**
  * POST /api/tasks/batch
- * Performs batch operations on tasks with simplified event-driven architecture
+ * Performs batch operations on tasks with FIXED event-driven architecture
  */
 export const POST = withAuth<TaskData[] | { count: number; taskIds: string[]; achievements?: any }>(
   async (req: NextRequest, userId: string) => {
@@ -81,81 +79,77 @@ export const POST = withAuth<TaskData[] | { count: number; taskIds: string[]; ac
               return apiError('Invalid completion date', 400, 'ERR_INVALID_DATE');
             }
             
-            const completedTasks: TaskData[] = [];
-            let totalAchievementsUnlocked = 0;
-            const allUnlockedAchievements: string[] = [];
+            // Get all tasks and prepare for batch completion
+            const tasks = await Task.find(query) as ITask[];
+            const tasksToComplete = [];
             
-            // Process each task individually for proper event handling
-            for (const taskId of validTaskIds) {
-              try {
-                const task = await Task.findOne({ _id: taskId, user: userId }) as ITask | null;
+            for (const task of tasks) {
+              if (!task.isCompletedOnDate(completionDate)) {
+                // Store previous state before completing
+                const previousState = {
+                  streak: task.currentStreak,
+                  totalCompletions: task.totalCompletions
+                };
                 
-                if (task && !task.isCompletedOnDate(completionDate)) {
-                  console.log(`✅ [BATCH] Completing task: ${task.name}`);
-                  
-                  // Store previous state for event creation
-                  const previousState = {
-                    streak: task.currentStreak,
-                    totalCompletions: task.totalCompletions
-                  };
-                  
-                  // Complete the task
-                  task.completeTask(completionDate);
-                  await task.save();
-                  
-                  // Log the completion
-                  await TaskLog.logCompletion(
-                    task._id,
-                    task.user,
-                    'completed',
-                    completionDate,
-                    task,
-                    'api'
-                  );
-                  
-                  // 🆕 FIRE EVENT TO NEW COORDINATOR FOR EACH TASK 🆕
-                  try {
-                    const token = generateToken();
-                    const taskEventData = convertToTaskEventData(task, 'completed', completionDate, previousState);
-                    const eventData = EthosContracts.taskCompletion(token, userId, taskEventData);
-                    const coordinatorResult = await processEvent(eventData);
-                    
-                    if (coordinatorResult.achievementsUnlocked && coordinatorResult.achievementsUnlocked.length > 0) {
-                      console.log(`🏆 [BATCH] Task "${task.name}" unlocked ${coordinatorResult.achievementsUnlocked.length} achievements!`);
-                      totalAchievementsUnlocked += coordinatorResult.achievementsUnlocked.length;
-                      allUnlockedAchievements.push(...coordinatorResult.achievementsUnlocked);
-                    }
-                  } catch (coordinatorError) {
-                    console.error(`💥 [BATCH] Error processing coordinator event for task ${taskId}:`, coordinatorError);
-                    // Continue with other tasks
-                  }
-                  
-                  // Convert task for response
-                  const taskData = convertTaskToTaskData(task);
-                  completedTasks.push(taskData);
-                }
-              } catch (error) {
-                console.error(`💥 [BATCH] Error completing task ${taskId}:`, error);
-                // Continue with other tasks even if one fails
+                // Complete the task
+                task.completeTask(completionDate);
+                await task.save();
+                
+                // Log the completion
+                await TaskLog.logCompletion(
+                  task._id,
+                  task.user,
+                  'completed',
+                  completionDate,
+                  task,
+                  'api'
+                );
+                
+                tasksToComplete.push({
+                  task,
+                  completionDate,
+                  previousState
+                });
+                
+                console.log(`✅ [BATCH] Completed task: ${task.name}`);
               }
             }
             
-            // Build response with achievement info
-            const response: any = {
-              tasks: completedTasks,
-              completedCount: completedTasks.length
+            // 🆕 FIRE EVENTS TO COORDINATOR - FIXED BATCH VERSION 🆕
+            let coordinatorResult = {
+              achievementsUnlocked: [] as string[],
+              processedTasks: 0,
+              errors: [] as string[]
             };
             
-            if (totalAchievementsUnlocked > 0) {
+            if (tasksToComplete.length > 0) {
+              try {
+                coordinatorResult = await handleBatchTaskCompletion(userId, tasksToComplete);
+                console.log(`🎉 [BATCH] Coordinator processing complete: ${coordinatorResult.processedTasks}/${tasksToComplete.length} tasks`);
+              } catch (coordinatorError) {
+                console.error('💥 [BATCH] Error processing coordinator events:', coordinatorError);
+                // Continue - completions still succeeded
+              }
+            }
+            
+            // Build response
+            const completedTaskData = tasksToComplete.map(({ task }) => convertTaskToTaskData(task, completionDate));
+            
+            const response: any = {
+              tasks: completedTaskData,
+              completedCount: completedTaskData.length
+            };
+            
+            if (coordinatorResult.achievementsUnlocked.length > 0) {
               response.achievements = {
-                unlockedCount: totalAchievementsUnlocked,
-                achievements: allUnlockedAchievements
+                unlockedCount: coordinatorResult.achievementsUnlocked.length,
+                achievements: coordinatorResult.achievementsUnlocked
               };
             }
             
-            const message = totalAchievementsUnlocked > 0
-              ? `${completedTasks.length} tasks completed and ${totalAchievementsUnlocked} achievement(s) unlocked!`
-              : `${completedTasks.length} tasks marked as completed.`;
+            const message = coordinatorResult.achievementsUnlocked.length > 0
+              ? `${completedTaskData.length} tasks completed and ${coordinatorResult.achievementsUnlocked.length} achievement(s) unlocked!`
+              : `${completedTaskData.length} tasks marked as completed.`;
             
             return apiResponse(response, true, message);
           } catch (error) {
