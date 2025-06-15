@@ -127,13 +127,17 @@ export function convertToTaskEventData(
     
     // Task context
     taskName: task.name,
+    name: task.name, // Add missing 'name' property
     domainCategory: task.domainCategory || 'ethos',
     labels: Array.isArray(task.labels) ? [...task.labels] : [],
     isSystemTask: task.isSystemTask || false,
     
     // Current metrics
+    currentStreak: task.currentStreak || 0, // Add missing 'currentStreak' property
     newStreak: task.currentStreak || 0,
     totalCompletions: task.totalCompletions || 0,
+    completionHistory: Array.isArray(task.completionHistory) ? 
+      task.completionHistory.map(date => date instanceof Date ? date.toISOString() : String(date)) : [], // Add missing 'completionHistory' property
     
     // Previous state for milestone detection
     previousStreak: previousState?.streak,

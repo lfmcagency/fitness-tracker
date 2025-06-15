@@ -59,7 +59,13 @@ export class NutritionProcessor implements DomainProcessor {
       baseXp: 30,
       streakMultiplier: 1.2,
       milestoneBonus: 20,
-      progressCategory: 'push'
+      progressCategory: 'push',
+      difficultyMultipliers: {
+        easy: 0.5,
+        medium: 1.0,
+        hard: 1.5
+      },
+      systemItemBonus: 10
     };
   }
 
@@ -78,7 +84,7 @@ export class NutritionProcessor implements DomainProcessor {
     
     return {
       success: true,
-      progressResult: null,
+      progressResult: undefined,
       milestonesHit: [],
       achievementsUnlocked: [],
       token: eventData.token
