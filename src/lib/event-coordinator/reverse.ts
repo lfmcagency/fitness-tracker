@@ -144,39 +144,59 @@ export async function findTaskCompletionEvent(
 ): Promise<string | null> {
   
   try {
-    // Get recent events for this user
-    const userEvents = await EventLog.findUserEvents(userId, 100);
+    console.log(`🔍 [REVERSE] Searching for completion event: taskId=${taskId}, userId=${userId}`);
     
-    // Look for task completion events
+    // Calculate date range for search
+    const searchStartDate = new Date(completionDate);
+    searchStartDate.setDate(searchStartDate.getDate() - maxLookbackDays);
+    
+    // Get recent events for this user within the date range
+    const userEvents = await EventLog.findUserEvents(userId, 200); // Increase limit to be safe
+    
+    console.log(`📋 [REVERSE] Found ${userEvents.length} recent events for user`);
+    
+    // Look for task completion events with exact taskId match
     const taskCompletions = userEvents.filter(event => {
       const contract = event.contractData;
       
-      // Must be a completion action
+      // Must be a task completion action
       if (contract.action !== 'task_completed') return false;
       
       // Must be within lookback period
       const eventDate = new Date(event.timestamp);
-      const daysDiff = Math.abs((completionDate.getTime() - eventDate.getTime()) / (1000 * 60 * 60 * 24));
-      if (daysDiff > maxLookbackDays) return false;
+      if (eventDate < searchStartDate) return false;
       
       // Must be reversible
       if (!event.isReversible()) return false;
       
-      // Check if this matches the task we're looking for
-      // For now, match by context itemName and domain
-      const contextMatch = contract.context.itemName && contract.context.domainCategory;
-      if (!contextMatch) return false;
+      // 🎯 BULLETPROOF: Match by exact taskId
+      const eventTaskId = contract.xpMetadata?.taskId;
+      if (!eventTaskId) {
+        console.log(`⚠️ [REVERSE] Event ${event.token} missing taskId in metadata`);
+        return false;
+      }
       
-      // TODO: Improve matching logic when we store task IDs in contracts
-      return true;
+      const isMatch = eventTaskId === taskId;
+      if (isMatch) {
+        console.log(`✅ [REVERSE] Found matching completion: ${event.token} for task ${taskId}`);
+      }
+      
+      return isMatch;
     });
     
-    // Return most recent matching completion
-    if (taskCompletions.length > 0) {
-      return taskCompletions[0].token;
+    if (taskCompletions.length === 0) {
+      console.log(`❌ [REVERSE] No completion events found for task ${taskId} in last ${maxLookbackDays} days`);
+      return null;
     }
     
-    return null;
+    if (taskCompletions.length > 1) {
+      console.log(`⚠️ [REVERSE] Multiple completion events found for task ${taskId}, using most recent`);
+    }
+    
+    // Return most recent matching completion
+    const mostRecent = taskCompletions[0];
+    console.log(`🎯 [REVERSE] Returning completion token: ${mostRecent.token}`);
+    return mostRecent.token;
     
   } catch (error) {
     console.error(`💥 [REVERSE] Error finding task completion event:`, error);

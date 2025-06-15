@@ -70,6 +70,7 @@ export interface RichEventContext {
   };
   
   taskContext?: {
+    taskId?: string;
     taskName: string;
     bestStreak: number;
     domainTasksTotal: number;
@@ -213,6 +214,7 @@ export interface RichProgressContract {
   
   /** Metadata for XP calculation */
   xpMetadata: {
+    taskId: any;
     baseXp: number;
     streakMultiplier: number;
     milestoneBonus: number;
