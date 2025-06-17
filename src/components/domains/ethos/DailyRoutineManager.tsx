@@ -19,11 +19,12 @@ export function DailyRoutineManager() {
     clearError
   } = useTaskStore();
 
-  // Fetch tasks when component mounts
-  useEffect(() => {
-    console.log('🚀 [DRM] Component mounted, fetching tasks for:', selectedDate);
+  // Just trigger initial fetch once
+useEffect(() => {
+  if (tasks.length === 0 && !isLoading) {
     fetchTasksForDate(selectedDate);
-  }, []); // Only run on mount
+  }
+}, []);
 
   // Handle date changes
   const handleDateChange = (newDate: string) => {

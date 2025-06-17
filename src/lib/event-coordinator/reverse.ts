@@ -1,211 +1,82 @@
-// src/lib/event-coordinator/reverse.ts
-import { generateToken, startTokenTracking, trackTokenStage, completeTokenTracking, logEventSuccess, logEventFailure } from './logging';
-import { BaseEventData, DomainEventResult } from './types';
-import EventLog, { EventLogStatus } from '@/models/EventLog';
-
 /**
- * REVERSE EVENT PROCESSOR
+ * SIMPLIFIED REVERSE PROCESSOR
  * 
- * Finds original contract and reverses atomic operations
+ * Same-day event reversal only. No complex cascade logic.
+ * Token = event identifier, simple lookups.
  */
 
-/**
- * Reverse an event by finding original contract and applying undo instructions
- */
-export async function reverseEvent(
-  originalToken: string,
-  userId: string,
-  reason: string = 'User requested reversal'
-): Promise<DomainEventResult> {
-  
-  const reverseToken = generateToken();
-  startTokenTracking(reverseToken);
-  trackTokenStage(reverseToken, 'reverse_start');
-  
-  console.log(`🔄 [REVERSE] Starting reversal: ${originalToken} → ${reverseToken}`);
-  
-  try {
-    // 1. Find original contract in EventLog
-    trackTokenStage(reverseToken, 'lookup_original');
-    const originalEvent = await EventLog.findByToken(originalToken);
-    
-    if (!originalEvent) {
-      throw new Error(`Original event not found: ${originalToken}`);
-    }
-    
-    if (!originalEvent.isReversible()) {
-      throw new Error(`Event is not reversible: ${originalToken} (status: ${originalEvent.status})`);
-    }
-    
-    // Verify user owns this event
-    if (originalEvent.userId.toString() !== userId) {
-      throw new Error(`User ${userId} does not own event ${originalToken}`);
-    }
-    
-    console.log(`📋 [REVERSE] Found original contract: ${originalToken}`);
-    trackTokenStage(reverseToken, 'original_found');
-    
-    // 2. Apply reversal using XP system (placeholder for now)
-    trackTokenStage(reverseToken, 'apply_reversal');
-    
-    // TODO: Create actual reversal handler
-    const reversalResult = {
-      xpSubtracted: originalEvent.reversalData.undoInstructions.subtractXp || 0,
-      levelReverted: originalEvent.reversalData.undoInstructions.revertLevel !== undefined,
-      previousUserState: originalEvent.reversalData.previousUserState || { level: 0 },
-      finalUserState: originalEvent.reversalData.finalUserState || { level: 0 },
-      categoryUpdates: {}
-    };
-    
-    trackTokenStage(reverseToken, 'reversal_complete');
-    
-    // 3. Mark original event as reversed
-    await originalEvent.markAsReversed(reverseToken);
-    
-    // 4. Store reversal operation in EventLog
-    await EventLog.create({
-      token: reverseToken,
-      userId: originalEvent.userId,
-      contractData: {
-        ...originalEvent.contractData,
-        token: reverseToken,
-        action: `reverse_${originalEvent.contractData.action}`
-      },
-      reversalData: {
-        token: reverseToken,
-        undoInstructions: {}, // Reversal doesn't need further reversal
-        previousUserState: reversalResult.finalUserState,
-        finalUserState: reversalResult.previousUserState
-      },
-      status: EventLogStatus.COMPLETED,
-      timestamp: new Date()
-    });
-    
-    const performance = completeTokenTracking(reverseToken);
-    
-    const result: DomainEventResult = {
-      success: true,
-      token: reverseToken,
-      progressResult: {
-        totalXpAwarded: -reversalResult.xpSubtracted,
-        levelIncreases: reversalResult.levelReverted ? [{ 
-          from: reversalResult.finalUserState.level, 
-          to: reversalResult.previousUserState.level 
-        }] : [],
-        achievementsUnlocked: [], // Achievements get locked, not unlocked
-        categoryUpdates: reversalResult.categoryUpdates || {}
-      },
-      milestonesHit: [], // No milestones on reversal
-      achievementsUnlocked: []
-    };
-    
-    logEventSuccess(reverseToken, 'reverse_coordinator', {
-      token: reverseToken,
-      userId,
-      source: 'system',
-      action: 'reverse_event',
-      timestamp: new Date(),
-      metadata: { originalToken, reason }
-    }, result);
-    
-    console.log(`✅ [REVERSE] Reversal complete: ${originalToken} → ${reverseToken} (${performance?.totalDuration}ms)`);
-    return result;
-    
-  } catch (error) {
-    console.error(`💥 [REVERSE] Reversal failed: ${originalToken} → ${reverseToken}`, error);
-    
-    logEventFailure(reverseToken, 'reverse_coordinator', {
-      token: reverseToken,
-      userId,
-      source: 'system', 
-      action: 'reverse_event',
-      timestamp: new Date(),
-      metadata: { originalToken, reason }
-    }, error instanceof Error ? error : String(error));
-    
-    completeTokenTracking(reverseToken);
-    
-    return {
-      success: false,
-      token: reverseToken,
-      error: error instanceof Error ? error.message : 'Unknown error'
-    };
-  }
-}
+import SimpleEventLog from './SimpleEventLog';
+import { DomainEvent, EventContext } from './types';
 
 /**
- * Find original completion event for a task
+ * Find event by token
  */
-export async function findTaskCompletionEvent(
-  userId: string,
-  taskId: string,
-  completionDate: Date,
-  maxLookbackDays: number = 7
-): Promise<string | null> {
+export async function findEventByToken(token: string): Promise<{
+  eventData: DomainEvent;
+  context: EventContext;
+  userId: string;
+  source: string;
+  action: string;
+  timestamp: Date;
+  xpAwarded: number;
+} | null> {
   
   try {
-    console.log(`🔍 [REVERSE] Searching for completion event: taskId=${taskId}, userId=${userId}`);
+    console.log(`🔍 [REVERSE] Looking up event: ${token}`);
     
-    // Calculate date range for search
-    const searchStartDate = new Date(completionDate);
-    searchStartDate.setDate(searchStartDate.getDate() - maxLookbackDays);
-    
-    // Get recent events for this user within the date range
-    const userEvents = await EventLog.findUserEvents(userId, 200); // Increase limit to be safe
-    
-    console.log(`📋 [REVERSE] Found ${userEvents.length} recent events for user`);
-    
-    // Look for task completion events with exact taskId match
-    const taskCompletions = userEvents.filter(event => {
-      const contract = event.contractData;
-      
-      // Must be a task completion action
-      if (contract.action !== 'task_completed') return false;
-      
-      // Must be within lookback period
-      const eventDate = new Date(event.timestamp);
-      if (eventDate < searchStartDate) return false;
-      
-      // Must be reversible
-      if (!event.isReversible()) return false;
-      
-      // 🎯 BULLETPROOF: Match by exact taskId
-      const eventTaskId = contract.context?.taskContext?.taskId;
-      if (!eventTaskId) {
-        console.log(`⚠️ [REVERSE] Event ${event.token} missing taskId in metadata`);
-        return false;
-      }
-      
-      const isMatch = eventTaskId === taskId;
-      if (isMatch) {
-        console.log(`✅ [REVERSE] Found matching completion: ${event.token} for task ${taskId}`);
-      }
-      
-      return isMatch;
-    });
-    
-    if (taskCompletions.length === 0) {
-      console.log(`❌ [REVERSE] No completion events found for task ${taskId} in last ${maxLookbackDays} days`);
+    const event = await SimpleEventLog.findByToken(token);
+    if (!event) {
+      console.log(`❌ [REVERSE] Event not found: ${token}`);
       return null;
     }
     
-    if (taskCompletions.length > 1) {
-      console.log(`⚠️ [REVERSE] Multiple completion events found for task ${taskId}, using most recent`);
-    }
+    console.log(`✅ [REVERSE] Found event: ${token}`, {
+      source: event.source,
+      action: event.action,
+      timestamp: event.timestamp
+    });
     
-    // Return most recent matching completion
-    const mostRecent = taskCompletions[0];
-    console.log(`🎯 [REVERSE] Returning completion token: ${mostRecent.token}`);
-    return mostRecent.token;
+    return {
+      eventData: event.eventData,
+      context: event.context,
+      userId: event.userId.toString(),
+      source: event.source,
+      action: event.action,
+      timestamp: event.timestamp,
+      xpAwarded: event.xpAwarded || 0
+    };
     
   } catch (error) {
-    console.error(`💥 [REVERSE] Error finding task completion event:`, error);
+    console.error(`💥 [REVERSE] Error finding event: ${token}`, error);
     return null;
   }
 }
 
 /**
- * Check if a specific event can be reversed
+ * Validate same-day restriction
+ */
+export function validateSameDay(eventTimestamp: Date): void {
+  const eventDate = new Date(eventTimestamp);
+  const today = new Date();
+  
+  // Reset time parts for date comparison
+  eventDate.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+  
+  if (eventDate.getTime() !== today.getTime()) {
+    const eventDateStr = eventDate.toDateString();
+    const todayStr = today.toDateString();
+    
+    throw new Error(
+      `Cannot modify historical data. Event was on ${eventDateStr}, today is ${todayStr}.`
+    );
+  }
+  
+  console.log(`✅ [REVERSE] Same-day validation passed for ${eventTimestamp.toISOString()}`);
+}
+
+/**
+ * Check if event can be reversed
  */
 export async function canReverseEvent(token: string, userId: string): Promise<{
   canReverse: boolean;
@@ -213,7 +84,7 @@ export async function canReverseEvent(token: string, userId: string): Promise<{
 }> {
   
   try {
-    const event = await EventLog.findByToken(token);
+    const event = await SimpleEventLog.findByToken(token);
     
     if (!event) {
       return { canReverse: false, reason: 'Event not found' };
@@ -223,13 +94,151 @@ export async function canReverseEvent(token: string, userId: string): Promise<{
       return { canReverse: false, reason: 'Not authorized to reverse this event' };
     }
     
-    if (!event.isReversible()) {
-      return { canReverse: false, reason: `Event cannot be reversed (status: ${event.status})` };
+    if (event.status === 'reversed') {
+      return { canReverse: false, reason: 'Event already reversed' };
+    }
+    
+    if (event.status === 'failed') {
+      return { canReverse: false, reason: 'Cannot reverse failed event' };
+    }
+    
+    // Same-day check
+    try {
+      validateSameDay(event.timestamp);
+    } catch (error) {
+      return { canReverse: false, reason: 'Can only reverse same-day events' };
     }
     
     return { canReverse: true };
     
   } catch (error) {
     return { canReverse: false, reason: 'Error checking reversal status' };
+  }
+}
+
+/**
+ * Mark event as reversed
+ */
+export async function markEventAsReversed(
+  originalToken: string,
+  reverseToken: string
+): Promise<void> {
+  
+  try {
+    console.log(`🔄 [REVERSE] Marking event as reversed: ${originalToken} → ${reverseToken}`);
+    
+    await SimpleEventLog.updateOne(
+      { token: originalToken },
+      {
+        status: 'reversed',
+        reversedAt: new Date(),
+        reversedByToken: reverseToken
+      }
+    );
+    
+    console.log(`✅ [REVERSE] Event marked as reversed: ${originalToken}`);
+    
+  } catch (error) {
+    console.error(`💥 [REVERSE] Error marking event as reversed: ${originalToken}`, error);
+    throw error;
+  }
+}
+
+/**
+ * Find recent events for debugging
+ */
+export async function findRecentEvents(
+  userId: string,
+  limit: number = 20
+): Promise<Array<{
+  token: string;
+  source: string;
+  action: string;
+  timestamp: Date;
+  status: string;
+  canReverse: boolean;
+}>> {
+  
+  try {
+    const events = await SimpleEventLog.findUserEvents(userId, limit);
+    
+    const enrichedEvents = events.map(event => ({
+      token: event.token,
+      source: event.source,
+      action: event.action,
+      timestamp: event.timestamp,
+      status: event.status,
+      canReverse: event.status === 'completed' && !event.reversedAt && 
+                  event.timestamp.toDateString() === new Date().toDateString()
+    }));
+    
+    console.log(`📋 [REVERSE] Found ${enrichedEvents.length} recent events for user ${userId}`);
+    
+    return enrichedEvents;
+    
+  } catch (error) {
+    console.error(`💥 [REVERSE] Error finding recent events for user ${userId}`, error);
+    return [];
+  }
+}
+
+/**
+ * Get reversal statistics for debugging
+ */
+export async function getReversalStats(userId: string): Promise<{
+  totalEvents: number;
+  reversedEvents: number;
+  todayEvents: number;
+  reversibleEvents: number;
+}> {
+  
+  try {
+    const allEvents = await SimpleEventLog.findUserEvents(userId, 1000);
+    const today = new Date().toDateString();
+    
+    const stats = {
+      totalEvents: allEvents.length,
+      reversedEvents: allEvents.filter(e => e.status === 'reversed').length,
+      todayEvents: allEvents.filter(e => e.timestamp.toDateString() === today).length,
+      reversibleEvents: allEvents.filter(e => 
+        e.status === 'completed' && 
+        !e.reversedAt && 
+        e.timestamp.toDateString() === today
+      ).length
+    };
+    
+    console.log(`📊 [REVERSE] Reversal stats for user ${userId}:`, stats);
+    
+    return stats;
+    
+  } catch (error) {
+    console.error(`💥 [REVERSE] Error getting reversal stats for user ${userId}`, error);
+    return { totalEvents: 0, reversedEvents: 0, todayEvents: 0, reversibleEvents: 0 };
+  }
+}
+
+/**
+ * Clean up old events (development utility)
+ */
+export async function cleanupOldEvents(olderThanDays: number = 30): Promise<number> {
+  
+  try {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - olderThanDays);
+    
+    console.log(`🧹 [REVERSE] Cleaning up events older than ${cutoffDate.toDateString()}`);
+    
+    const result = await SimpleEventLog.deleteMany({
+      timestamp: { $lt: cutoffDate },
+      status: { $ne: 'completed' } // Keep completed events for analytics
+    });
+    
+    console.log(`✅ [REVERSE] Cleaned up ${result.deletedCount} old events`);
+    
+    return result.deletedCount || 0;
+    
+  } catch (error) {
+    console.error(`💥 [REVERSE] Error cleaning up old events`, error);
+    return 0;
   }
 }

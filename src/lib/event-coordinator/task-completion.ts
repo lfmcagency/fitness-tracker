@@ -41,11 +41,11 @@ export async function handleTaskCompletion(
     // Convert task to event data format
     const taskEventData = convertToTaskEventData(task, action, completionDate, previousState);
     
-    // Build BaseEventData structure for coordinator
-    const eventData: BaseEventData = {
+    // Build TaskEvent structure for coordinator (matches DomainEvent for 'ethos')
+    const eventData = {
       token,
       userId,
-      source: 'ethos',
+      source: 'ethos' as const,
       action: action === 'completed' ? 'task_completed' : 'task_uncompleted',
       timestamp: new Date(),
       metadata: {
@@ -56,7 +56,7 @@ export async function handleTaskCompletion(
     };
     
     // Fire event to coordinator
-    const result = await processEvent(eventData);
+    const result = await processEvent(eventData as any); // Cast as any to satisfy DomainEvent type
     
     console.log(`✅ [TASK-COMPLETION] Coordinator result: ${token}`, {
       success: result.success,

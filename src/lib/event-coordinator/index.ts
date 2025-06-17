@@ -1,27 +1,19 @@
 /**
- * ENHANCED EVENT COORDINATOR
+ * SIMPLIFIED EVENT COORDINATOR
  * 
- * Builds rich contracts with complete context using shared utilities.
- * Handles cross-domain updates, achievement thresholds, and calls XP functions directly.
- * Now includes reverse event capabilities for atomic undo operations.
+ * Simple domain router - no more rich contracts, no more orchestration.
+ * Just routes events to processors and sends context to Progress.
  */
 
-import { ProgressEventContract } from '@/types/api/progressResponses';
 import { 
-  BaseEventData, 
+  DomainEvent, 
   DomainEventResult, 
-  RichProgressContract,
-  RichEventContext,
-  CrossDomainContract,
-  DomainProcessor,
-  ENHANCED_DOMAIN_XP_CONFIG 
+  ProgressContract,
+  DomainProcessor 
 } from './types';
-import { 
-  EthosContracts,
-  NutritionContracts,
-  SomaContracts,
-  buildRichProgressContract 
-} from './contracts';
+import { EthosProcessor } from './ethos';
+import { TropheProcessor } from './trophe';
+import { AreteProcessor } from './arete';
 import { 
   generateToken,
   startTokenTracking,
@@ -30,67 +22,58 @@ import {
   logEventSuccess,
   logEventFailure 
 } from './logging';
-import { EthosProcessor } from './ethos';
-import { 
-  handleRichProgressEvent, 
-  handleLegacyProgressEvent,
-  EnhancedXpAwardResult 
-} from '@/lib/xp/index';
-import { Types } from 'mongoose';
 
 /**
- * Registry of domain processors
+ * Domain processor registry
  */
-const DOMAIN_PROCESSORS: Record<string, DomainProcessor> = {
+const PROCESSORS: Record<string, DomainProcessor> = {
   ethos: new EthosProcessor(),
-  // trophe: new TropheProcessor(), // Phase 6
-  // soma: new SomaProcessor(),     // Future
+  trophe: new TropheProcessor(),
+  arete: new AreteProcessor()
 };
 
 /**
- * MAIN EVENT PROCESSING - Rich Contract Builder
- * This is where the magic happens - coordinator calculates complete context
+ * MAIN EVENT PROCESSOR - Simple domain router
  */
-export async function processEvent(eventData: BaseEventData): Promise<DomainEventResult> {
-  const { source, token, action, userId } = eventData;
+export async function processEvent(event: DomainEvent): Promise<DomainEventResult> {
+  const { token, source } = event;
   
-  // Start tracking this operation
+  // Start tracking
   startTokenTracking(token);
   trackTokenStage(token, 'coordinator_start');
   
-  console.log(`🚀 [COORDINATOR] Building rich contract: ${source}_${action} | ${token}`);
+  console.log(`🎯 [COORDINATOR] Processing ${source}_${event.action} | ${token}`);
   
   try {
     // Get domain processor
-    const processor = DOMAIN_PROCESSORS[source];
+    const processor = PROCESSORS[source];
     if (!processor) {
       throw new Error(`No processor found for domain: ${source}`);
     }
     
     trackTokenStage(token, 'processor_found');
     
-    // Build rich context using domain processor
-    let richContext: RichEventContext;
-    if (processor.calculateRichContext) {
-      richContext = await processor.calculateRichContext(eventData);
-      trackTokenStage(token, 'context_calculated');
-    } else {
-      // Fallback to basic context
-      richContext = await buildBasicContext(eventData);
-      trackTokenStage(token, 'basic_context');
+    // Process event in domain
+    const domainResult = await processor.processEvent(event);
+    trackTokenStage(token, 'domain_complete');
+    
+    if (!domainResult.success) {
+      throw new Error(domainResult.error || 'Domain processing failed');
     }
     
-    // Build rich progress contract
-    const richContract = await buildDomainSpecificContract(eventData, richContext, processor);
-    trackTokenStage(token, 'contract_built');
-    
-    // Fire rich contract to Progress system DIRECTLY
-    const progressResult = await fireRichProgressEvent(richContract);
-    trackTokenStage(token, 'progress_complete');
-    
-    // Cross-domain operations are now handled inside the XP handler
-    const crossDomainResults = { tasksUpdated: progressResult.tasksUpdated || [] };
-    trackTokenStage(token, 'cross_domain_complete');
+    // Send to Progress if we have context
+    let progressResult;
+    if (domainResult.context) {
+      progressResult = await sendToProgress({
+        token,
+        userId: event.userId,
+        source: event.source,
+        action: event.action,
+        context: domainResult.context,
+        timestamp: event.timestamp
+      });
+      trackTokenStage(token, 'progress_complete');
+    }
     
     // Complete tracking
     const performance = completeTokenTracking(token);
@@ -98,326 +81,165 @@ export async function processEvent(eventData: BaseEventData): Promise<DomainEven
     const result: DomainEventResult = {
       success: true,
       token,
-      progressContract: richContract,
-      progressResult: {
-        ...progressResult,
-        totalXpAwarded: progressResult.xpAwarded || 0,
-        levelIncreases: progressResult.leveledUp ? [{ from: progressResult.previousLevel || 0, to: progressResult.newLevel || 0 }] : [],
-        categoryUpdates: progressResult.categoryUpdates || {},
-        achievementsUnlocked: progressResult.achievementsUnlocked || []
-      },
-      crossDomainResults,
-      milestonesHit: richContract.achievementThresholds
-        .filter(t => t.justCrossed)
-        .map(t => ({
-          type: t.type,
-          threshold: t.threshold,
-          achievementId: t.achievementId,
-          currentValue: t.currentValue
-        })),
-      achievementsUnlocked: progressResult.achievementsUnlocked || []
+      context: domainResult.context,
+      xpAwarded: progressResult?.xpAwarded || 0,
+      achievementsUnlocked: progressResult?.achievementsUnlocked || []
     };
     
-    // Log success with complete context
-    logEventSuccess(token, 'coordinator', eventData, result, richContext, richContract);
+    logEventSuccess(token, 'coordinator', event, result);
     
-    console.log('✅ [COORDINATOR] Rich contract complete:', {
-      token,
-      xpCalculated: richContract.xpMetadata.baseXp,
-      xpAwarded: progressResult.xpAwarded,
-      milestonesHit: result.milestonesHit?.length || 0,
-      taskUpdates: progressResult.tasksUpdated?.length || 0,
-      duration: performance?.totalDuration || 0
-    });
-    
+    console.log(`✅ [COORDINATOR] Event complete: ${token} (${performance?.totalDuration}ms)`);
     return result;
     
   } catch (error) {
-    console.error('💥 [COORDINATOR] Rich contract failed:', error);
+    console.error(`💥 [COORDINATOR] Event failed: ${token}`, error);
     
-    // Log failure
-    logEventFailure(token, 'coordinator', eventData, error instanceof Error ? error : String(error));
-    
-    // Complete tracking even on failure
+    logEventFailure(token, 'coordinator', event, error instanceof Error ? error.message : String(error));
     completeTokenTracking(token);
     
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      token
+      token,
+      error: error instanceof Error ? error.message : 'Unknown error'
     };
   }
 }
 
 /**
- * Build domain-specific rich contracts
+ * Send simple context to Progress system
  */
-async function buildDomainSpecificContract(
-  eventData: BaseEventData,
-  richContext: RichEventContext,
-  processor: DomainProcessor
-): Promise<RichProgressContract> {
-  
-  const { source, action } = eventData;
-  
-  // Route to domain-specific contract builders
-  switch (source) {
-    case 'ethos':
-      if (action === 'task_completed' && eventData.metadata?.taskEventData) {
-        // Use ethos contract builder for task completion
-        const taskData = eventData.metadata.taskEventData;
-        return await EthosContracts.buildTaskCompletionContract(
-          eventData,
-          taskData,
-          [], // allUserTasks - would be fetched in real implementation
-          taskData.completionHistory || []
-        );
-      } else if (action === 'task_created') {
-        return EthosContracts.buildTaskCreationContract(eventData, eventData.metadata);
-      }
-      break;
-      
-    case 'trophe':
-      if (action === 'meal_logged') {
-        // Use nutrition contract builder
-        return NutritionContracts.buildMealLoggingContract(
-          eventData,
-          eventData.metadata?.mealData,
-          eventData.metadata?.allMealsToday || [],
-          eventData.metadata?.macroGoals || { protein: 140, carbs: 200, fat: 70, calories: 2200 },
-          richContext.streakCount,
-          richContext.totalCompletions
-        );
-      } else if (action === 'macro_target_hit') {
-        return NutritionContracts.buildMacroTargetContract(
-          eventData,
-          eventData.metadata?.macroProgress,
-          richContext.streakCount
-        );
-      }
-      break;
-      
-    case 'soma':
-      if (action === 'workout_completed') {
-        // Use soma contract builder
-        return SomaContracts.buildWorkoutCompletionContract(
-          eventData,
-          eventData.metadata?.workoutData,
-          eventData.metadata?.exercises || [],
-          eventData.metadata?.userProgress || {}
-        );
-      }
-      break;
-  }
-  
-  // Fallback to generic contract
-  return buildRichProgressContract(eventData, richContext);
-}
-
-/**
- * Build basic context when domain processor doesn't have rich context calculation
- */
-async function buildBasicContext(eventData: BaseEventData): Promise<RichEventContext> {
-  return {
-    streakCount: 0,
-    totalCompletions: 0,
-    itemName: 'Unknown Item',
-    domainCategory: eventData.source as any,
-    difficulty: 'medium',
-    isSystemItem: false
-  };
-}
-
-/**
- * Fire rich progress event DIRECTLY (no HTTP calls)
- */
-async function fireRichProgressEvent(richContract: RichProgressContract): Promise<EnhancedXpAwardResult> {
+async function sendToProgress(contract: ProgressContract): Promise<{
+  xpAwarded: number;
+  achievementsUnlocked: string[];
+}> {
   try {
-    console.log('🎯 [COORDINATOR] Processing rich contract directly:', {
-      token: richContract.token,
-      source: richContract.source,
-      streakCount: richContract.context.streakCount,
-      totalCompletions: richContract.context.totalCompletions
+    console.log(`📈 [PROGRESS] Sending context: ${contract.token}`, {
+      source: contract.source,
+      action: contract.action
     });
     
-    // Validate userId
-    if (!richContract.userId || !Types.ObjectId.isValid(richContract.userId)) {
-      throw new Error('Invalid user ID in rich contract');
-    }
-    
-    // Call XP handler directly - no HTTP nonsense
-    const result = await handleRichProgressEvent(richContract);
-    
-    console.log('✅ [COORDINATOR] Rich progress event complete:', {
-      token: richContract.token,
-      xpAwarded: result.xpAwarded,
-      leveledUp: result.leveledUp,
-      achievementsUnlocked: result.achievementsUnlocked?.length || 0,
-      tasksUpdated: result.tasksUpdated?.length || 0
-    });
-    
-    return result;
-    
-  } catch (error) {
-    console.error('💥 [COORDINATOR] Failed to process rich progress event:', error);
-    throw error;
-  }
-}
-
-/**
- * LEGACY COMPATIBILITY FUNCTIONS
- * These maintain compatibility with current API routes during transition
- */
-
-/**
- * Legacy milestone detection for current Progress system
- */
-export function detectMilestone(
-  currentValue: number,
-  previousValue: number | undefined,
-  thresholds: readonly number[],
-  type: 'streak' | 'completion' | 'usage' | 'performance',
-  achievementPrefix: string
-): any {
-  for (const threshold of thresholds) {
-    if (currentValue >= threshold && (previousValue === undefined || previousValue < threshold)) {
-      return {
-        type,
-        threshold,
-        achievementId: `${achievementPrefix}_${threshold}`,
-        isNewMilestone: true,
-        currentValue
-      };
-    }
-  }
-  
-  return {
-    type: null,
-    threshold: null,
-    achievementId: null,
-    isNewMilestone: false,
-    currentValue
-  };
-}
-
-/**
- * Legacy progress event firing for compatibility (still uses HTTP for external calls)
- */
-export async function fireProgressEvent(contract: ProgressEventContract): Promise<any> {
-  try {
-    // This is for external calls from stores - they still use HTTP
+    // Call Progress API (keeping existing endpoint for now)
     const response = await fetch('/api/progress/add-xp', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(contract)
+      body: JSON.stringify({
+        userId: contract.userId,
+        eventId: Date.now(),
+        source: `${contract.source}_${contract.action}`,
+        metadata: {
+          token: contract.token,
+          context: contract.context,
+          timestamp: contract.timestamp.toISOString()
+        }
+      })
     });
 
     const result = await response.json();
     if (!result.success) {
-      throw new Error(result.message || 'Failed to process progress event');
+      throw new Error(result.message || 'Progress processing failed');
     }
 
-    return result.data;
+    return {
+      xpAwarded: result.data?.xpAwarded || 0,
+      achievementsUnlocked: result.data?.achievementsUnlocked || []
+    };
+    
   } catch (error) {
-    console.error('💥 [COORDINATOR] Legacy progress event failed:', error);
+    console.error(`💥 [PROGRESS] Progress call failed: ${contract.token}`, error);
     throw error;
   }
 }
 
 /**
- * Legacy achievement notification (placeholder)
+ * REVERSAL FUNCTIONS
  */
-export async function notifyAchievementSystem(
-  userId: string,
-  achievementId: string,
-  currentValue: number,
-  token: string
-): Promise<void> {
-  console.log('🏆 [COORDINATOR] Achievement notification:', { 
-    userId, 
-    achievementId, 
-    currentValue,
-    token 
-  });
-}
 
 /**
- * Legacy contract builder for existing code
+ * Reverse a same-day event
  */
-export function buildProgressContract(
-  eventData: BaseEventData,
-  domainContext: any
-): ProgressEventContract {
-  const xpConfig = ENHANCED_DOMAIN_XP_CONFIG[eventData.source] || ENHANCED_DOMAIN_XP_CONFIG.ethos;
+export async function reverseEvent(
+  originalToken: string, 
+  userId: string
+): Promise<DomainEventResult> {
+  const reverseToken = generateToken();
+  startTokenTracking(reverseToken);
   
-  return {
-    userId: eventData.userId,
-    eventId: Date.now(),
-    source: `${eventData.source}_${eventData.action}`,
-    streakCount: domainContext.streakCount || 0,
-    totalCompletions: domainContext.totalCompletions || 0,
-    milestoneHit: domainContext.milestoneHit,
-    category: xpConfig.progressCategory,
-    metadata: {
-      difficulty: domainContext.difficulty || 'medium',
-      exerciseName: domainContext.itemName || domainContext.taskName || 'Unknown',
-      isSystemItem: domainContext.isSystemItem || false,
-      source: eventData.source,
-      ...eventData.metadata
+  console.log(`🔄 [REVERSE] Starting reversal: ${originalToken} → ${reverseToken}`);
+  
+  try {
+    // Import here to avoid circular dependency
+    const { findEventByToken, validateSameDay } = await import('./reverse');
+    
+    trackTokenStage(reverseToken, 'lookup_original');
+    
+    // Find original event
+    const originalEvent = await findEventByToken(originalToken);
+    if (!originalEvent) {
+      throw new Error(`Original event not found: ${originalToken}`);
     }
-  };
-}
-
-/**
- * Legacy wrapper for domain processors
- */
-export async function fireProgressEventWithContext(
-  eventData: BaseEventData,
-  domainContext: any
-): Promise<any> {
-  const contract = buildProgressContract(eventData, domainContext);
-  return await fireProgressEvent(contract);
-}
-
-/**
- * Legacy cross-domain operation handler
- */
-export async function processCrossDomainOperation(
-  contract: CrossDomainContract
-): Promise<any> {
-  const { targetDomain } = contract;
-  const processor = DOMAIN_PROCESSORS[targetDomain];
-  
-  if (!processor || !processor.handleCrossDomainOperation) {
-    throw new Error(`Domain ${targetDomain} does not support cross-domain operations`);
+    
+    // Validate same-day and ownership
+    validateSameDay(originalEvent.timestamp);
+    if (originalEvent.userId !== userId) {
+      throw new Error('Not authorized to reverse this event');
+    }
+    
+    trackTokenStage(reverseToken, 'validation_complete');
+    
+    // Get domain processor and reverse
+    const processor = PROCESSORS[originalEvent.source];
+    if (!processor) {
+      throw new Error(`No processor for domain: ${originalEvent.source}`);
+    }
+    
+    if (!processor.canReverseEvent(originalEvent.eventData)) {
+      throw new Error('Event cannot be reversed');
+    }
+    
+    const reverseResult = await processor.reverseEvent(
+      originalEvent.eventData,
+      originalEvent.context
+    );
+    
+    trackTokenStage(reverseToken, 'reverse_complete');
+    
+    // Send reversal to Progress (subtract XP)
+    if (reverseResult.context && originalEvent.xpAwarded > 0) {
+      await sendToProgress({
+        token: reverseToken,
+        userId,
+        source: originalEvent.source,
+        action: `reverse_${originalEvent.action}`,
+        context: reverseResult.context,
+        timestamp: new Date()
+      });
+    }
+    
+    const performance = completeTokenTracking(reverseToken);
+    
+    console.log(`✅ [REVERSE] Reversal complete: ${originalToken} → ${reverseToken} (${performance?.totalDuration}ms)`);
+    
+    return {
+      success: true,
+      token: reverseToken,
+      xpAwarded: -originalEvent.xpAwarded,
+      achievementsUnlocked: []
+    };
+    
+  } catch (error) {
+    console.error(`💥 [REVERSE] Reversal failed: ${originalToken} → ${reverseToken}`, error);
+    completeTokenTracking(reverseToken);
+    
+    return {
+      success: false,
+      token: reverseToken,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
   }
-  
-  return await processor.handleCrossDomainOperation(contract);
 }
 
 /**
- * Utility exports for domain processors
+ * Utility exports
  */
-export function getDomainXpConfig(domain: string) {
-  return ENHANCED_DOMAIN_XP_CONFIG[domain] || ENHANCED_DOMAIN_XP_CONFIG.ethos;
-}
-
-export function registerDomainProcessor(domain: string, processor: DomainProcessor): void {
-  DOMAIN_PROCESSORS[domain] = processor;
-  console.log(`📝 [COORDINATOR] Registered processor for domain: ${domain}`);
-}
-
-export function getRegisteredDomains(): string[] {
-  return Object.keys(DOMAIN_PROCESSORS);
-}
-
-/**
- * REVERSE EVENT HANDLING
- * Export reverse event capabilities for atomic undo operations
- */
-export { reverseEvent, findTaskCompletionEvent, canReverseEvent } from './reverse';
-
-/**
- * Token utilities export
- */
-export { generateToken, startTokenTracking, trackTokenStage };
+export { generateToken } from './logging';
+export * from './types';

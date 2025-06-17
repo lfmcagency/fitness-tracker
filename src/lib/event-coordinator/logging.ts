@@ -1,26 +1,14 @@
 /**
- * EVENT COORDINATOR LOGGING & TOKEN TRACKING
+ * SIMPLIFIED EVENT LOGGING & TOKEN TRACKING
  * 
- * Token generation, event logging, and debugging utilities for
- * tracking operations across the entire event chain.
+ * Keeps the token tracking that works great, removes complex event log entries.
+ * Token = event identifier, simple performance monitoring.
  */
 
-import { 
-  BaseEventData, 
-  EventLogEntry, 
-  RichEventContext, 
-  RichProgressContract, 
-  TokenTracker,
-  ReversalData 
-} from './types';
+import { DomainEvent, DomainEventResult, EventContext } from './types';
 
 /**
- * In-memory event log for debugging (production would use database)
- */
-const EVENT_LOG: Map<string, EventLogEntry[]> = new Map();
-
-/**
- * Active token tracking for performance monitoring
+ * In-memory token tracking for performance monitoring
  */
 const ACTIVE_TOKENS: Map<string, { startTime: number; stages: string[] }> = new Map();
 
@@ -48,7 +36,7 @@ export function startTokenTracking(token: string): void {
 /**
  * Track token through a specific stage
  */
-export function trackTokenStage(token: string, stage: string, data?: any): void {
+export function trackTokenStage(token: string, stage: string): void {
   const tracking = ACTIVE_TOKENS.get(token);
   if (tracking) {
     tracking.stages.push(stage);
@@ -77,97 +65,6 @@ export function completeTokenTracking(token: string): {
 }
 
 /**
- * Log an event entry for debugging and recovery
- */
-export function logEventEntry(entry: Omit<EventLogEntry, 'timestamp'>): void {
-  const fullEntry: EventLogEntry = {
-    ...entry,
-    timestamp: new Date()
-  };
-  
-  // Add to in-memory log
-  const tokenEntries = EVENT_LOG.get(entry.token) || [];
-  tokenEntries.push(fullEntry);
-  EVENT_LOG.set(entry.token, tokenEntries);
-  
-  // Log to console for debugging
-  const status = entry.success ? '✅' : '❌';
-  console.log(`${status} [LOG] ${entry.stage.toUpperCase()} | ${entry.token} | ${entry.eventData.action}`);
-  
-  if (entry.error) {
-    console.error(`💥 [ERROR] ${entry.token}: ${entry.error}`);
-  }
-}
-
-/**
- * Log successful event processing
- */
-export function logEventSuccess(
-  token: string,
-  stage: string,
-  eventData: BaseEventData,
-  result?: any,
-  richContext?: RichEventContext,
-  progressContract?: RichProgressContract,
-  reversalData?: ReversalData
-): void {
-  logEventEntry({
-    token,
-    stage: stage as any,
-    success: true,
-    eventData,
-    richContext,
-    progressContract,
-    result,
-    reversalData
-  });
-}
-
-/**
- * Log failed event processing
- */
-export function logEventFailure(
-  token: string,
-  stage: string,
-  eventData: BaseEventData,
-  error: string | Error
-): void {
-  logEventEntry({
-    token,
-    stage: stage as any,
-    success: false,
-    eventData,
-    error: error instanceof Error ? error.message : error
-  });
-}
-
-/**
- * Get complete token history for debugging
- */
-export function getTokenHistory(token: string): EventLogEntry[] {
-  return EVENT_LOG.get(token) || [];
-}
-
-/**
- * Get all log entries for a user (debugging utility)
- */
-export function getUserEventHistory(userId: string, limit: number = 50): EventLogEntry[] {
-  const allEntries: EventLogEntry[] = [];
-  
-  for (const tokenEntries of EVENT_LOG.values()) {
-    for (const entry of tokenEntries) {
-      if (entry.eventData.userId === userId) {
-        allEntries.push(entry);
-      }
-    }
-  }
-  
-  return allEntries
-    .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
-    .slice(0, limit);
-}
-
-/**
  * Check if token is still active in the system
  */
 export function isTokenActive(token: string): boolean {
@@ -175,192 +72,125 @@ export function isTokenActive(token: string): boolean {
 }
 
 /**
- * Get performance metrics for a completed token
+ * Get performance metrics for active tokens
  */
-export function getTokenPerformance(token: string): {
-  totalDuration?: number;
-  stageCount: number;
-  errorCount: number;
-  lastStage: string | null;
-} {
-  const entries = getTokenHistory(token);
+export function getActiveTokens(): Array<{
+  token: string;
+  duration: number;
+  stages: string[];
+}> {
+  const activeTokens = [];
+  const now = Date.now();
   
-  if (entries.length === 0) {
-    return { stageCount: 0, errorCount: 0, lastStage: null };
+  for (const [token, tracking] of ACTIVE_TOKENS.entries()) {
+    activeTokens.push({
+      token,
+      duration: now - tracking.startTime,
+      stages: tracking.stages
+    });
   }
   
-  const errorCount = entries.filter(e => !e.success).length;
-  const lastEntry = entries[entries.length - 1];
-  const firstEntry = entries[0];
-  
-  const totalDuration = lastEntry && firstEntry 
-    ? lastEntry.timestamp.getTime() - firstEntry.timestamp.getTime()
-    : undefined;
-  
-  return {
-    totalDuration,
-    stageCount: entries.length,
-    errorCount,
-    lastStage: lastEntry?.stage || null
-  };
+  return activeTokens;
 }
 
 /**
- * Find failed tokens for debugging
+ * Simple event logging to console (keep it light)
  */
-export function findFailedTokens(timeRange: { start: Date; end: Date }): string[] {
-  const failedTokens: Set<string> = new Set();
-  
-  for (const [token, entries] of EVENT_LOG.entries()) {
-    const hasFailure = entries.some(entry => 
-      !entry.success && 
-      entry.timestamp >= timeRange.start && 
-      entry.timestamp <= timeRange.end
-    );
-    
-    if (hasFailure) {
-      failedTokens.add(token);
-    }
-  }
-  
-  return Array.from(failedTokens);
+export function logEventSuccess(
+  token: string,
+  stage: string,
+  event: DomainEvent,
+  result: DomainEventResult
+): void {
+  console.log(`✅ [LOG] ${stage.toUpperCase()} | ${token} | ${event.source}_${event.action}`, {
+    xpAwarded: result.xpAwarded || 0,
+    achievements: result.achievementsUnlocked?.length || 0
+  });
 }
 
 /**
- * Get event statistics for monitoring
+ * Log event failures
  */
-export function getEventStatistics(timeRange?: { start: Date; end: Date }): {
-  totalEvents: number;
-  successfulEvents: number;
-  failedEvents: number;
+export function logEventFailure(
+  token: string,
+  stage: string,
+  event: DomainEvent,
+  error: string
+): void {
+  console.error(`❌ [LOG] ${stage.toUpperCase()} | ${token} | ${event.source}_${event.action}`, {
+    error: error.substring(0, 100) // Truncate long errors
+  });
+}
+
+/**
+ * Simple performance statistics
+ */
+export function getPerformanceStats(): {
+  activeTokens: number;
   averageDuration: number;
-  domainBreakdown: Record<string, number>;
-  stageBreakdown: Record<string, number>;
+  slowestTokens: Array<{ token: string; duration: number }>;
 } {
-  let totalEvents = 0;
-  let successfulEvents = 0;
-  let failedEvents = 0;
-  let totalDuration = 0;
-  const domainBreakdown: Record<string, number> = {};
-  const stageBreakdown: Record<string, number> = {};
+  const activeTokens = getActiveTokens();
+  const totalDuration = activeTokens.reduce((sum, t) => sum + t.duration, 0);
+  const averageDuration = activeTokens.length > 0 ? totalDuration / activeTokens.length : 0;
   
-  for (const entries of EVENT_LOG.values()) {
-    for (const entry of entries) {
-      // Apply time filter if specified
-      if (timeRange && (entry.timestamp < timeRange.start || entry.timestamp > timeRange.end)) {
-        continue;
-      }
-      
-      totalEvents++;
-      
-      if (entry.success) {
-        successfulEvents++;
-      } else {
-        failedEvents++;
-      }
-      
-      // Domain breakdown
-      const domain = entry.eventData.source;
-      domainBreakdown[domain] = (domainBreakdown[domain] || 0) + 1;
-      
-      // Stage breakdown
-      stageBreakdown[entry.stage] = (stageBreakdown[entry.stage] || 0) + 1;
-      
-      // Duration calculation (if performance data available)
-      if (entry.performance?.duration) {
-        totalDuration += entry.performance.duration;
-      }
-    }
-  }
+  const slowestTokens = activeTokens
+    .sort((a, b) => b.duration - a.duration)
+    .slice(0, 5)
+    .map(t => ({ token: t.token, duration: t.duration }));
   
   return {
-    totalEvents,
-    successfulEvents,
-    failedEvents,
-    averageDuration: totalEvents > 0 ? totalDuration / totalEvents : 0,
-    domainBreakdown,
-    stageBreakdown
+    activeTokens: activeTokens.length,
+    averageDuration: Math.round(averageDuration),
+    slowestTokens
   };
 }
 
 /**
- * Clear old log entries to prevent memory bloat
- * In production, this would archive to database
+ * Clear old tracking data to prevent memory bloat
  */
-export function clearOldLogEntries(olderThan: Date): number {
-  let clearedCount = 0;
+export function clearOldTracking(): number {
+  const now = Date.now();
+  const maxAge = 5 * 60 * 1000; // 5 minutes
+  let cleared = 0;
   
-  for (const [token, entries] of EVENT_LOG.entries()) {
-    const filteredEntries = entries.filter(entry => entry.timestamp >= olderThan);
-    
-    if (filteredEntries.length === 0) {
-      EVENT_LOG.delete(token);
-      clearedCount += entries.length;
-    } else if (filteredEntries.length !== entries.length) {
-      EVENT_LOG.set(token, filteredEntries);
-      clearedCount += entries.length - filteredEntries.length;
+  for (const [token, tracking] of ACTIVE_TOKENS.entries()) {
+    if (now - tracking.startTime > maxAge) {
+      console.log(`🧹 [TOKEN] Clearing stale token: ${token}`);
+      ACTIVE_TOKENS.delete(token);
+      cleared++;
     }
   }
   
-  console.log(`🧹 [LOG] Cleared ${clearedCount} old log entries`);
-  return clearedCount;
+  if (cleared > 0) {
+    console.log(`🧹 [LOG] Cleared ${cleared} stale tokens`);
+  }
+  
+  return cleared;
 }
 
 /**
- * Export event logs for analysis (development utility)
+ * Debug utility - dump all active tokens
  */
-export function exportEventLogs(format: 'json' | 'csv' = 'json'): string {
-  const allEntries: EventLogEntry[] = [];
-  
-  for (const entries of EVENT_LOG.values()) {
-    allEntries.push(...entries);
+export function dumpActiveTokens(): void {
+  console.log('🚨 [DEBUG] Active tokens dump:');
+  for (const [token, tracking] of ACTIVE_TOKENS.entries()) {
+    const duration = Date.now() - tracking.startTime;
+    console.log(`  ${token}: ${duration}ms | stages: ${tracking.stages.join(' → ')}`);
   }
-  
-  if (format === 'json') {
-    return JSON.stringify(allEntries, null, 2);
-  }
-  
-  // CSV format
-  const headers = ['token', 'stage', 'success', 'source', 'action', 'userId', 'timestamp', 'error'];
-  const rows = allEntries.map(entry => [
-    entry.token,
-    entry.stage,
-    entry.success.toString(),
-    entry.eventData.source,
-    entry.eventData.action,
-    entry.eventData.userId,
-    entry.timestamp.toISOString(),
-    entry.error || ''
-  ]);
-  
-  return [headers, ...rows].map(row => row.join(',')).join('\n');
 }
 
 /**
- * Token tracker implementation
- */
-export const tokenTracker: TokenTracker = {
-  generateToken,
-  trackToken: trackTokenStage,
-  getTokenHistory,
-  isTokenActive
-};
-
-/**
- * Initialize logging system (cleanup old entries on startup)
+ * Initialize logging system (cleanup on startup)
  */
 export function initializeLogging(): void {
-  // Clear entries older than 24 hours on startup
-  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  clearOldLogEntries(oneDayAgo);
+  // Clear any stale tokens on startup
+  clearOldTracking();
   
-  console.log('🔧 [LOG] Event logging system initialized');
-}
-
-/**
- * Emergency log dump for debugging critical failures
- */
-export function emergencyLogDump(): void {
-  console.log('🚨 [EMERGENCY] Complete event log dump:');
-  console.log(exportEventLogs('json'));
+  // Set up periodic cleanup
+  setInterval(() => {
+    clearOldTracking();
+  }, 60000); // Every minute
+  
+  console.log('🔧 [LOG] Simple logging system initialized');
 }
