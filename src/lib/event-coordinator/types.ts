@@ -51,7 +51,7 @@ export interface TaskEventContext {
  */
 export interface MealEvent extends BaseEventData {
   source: 'trophe';
-  action: 'meal_created' | 'meal_deleted' | 'meal_updated';
+  action: 'meal_created' | 'meal_deleted';
   mealData: {
     mealId: string;
     mealName: string;
@@ -79,6 +79,8 @@ export interface MealEventContext {
   totalMeals: number;
   dailyMacroProgress: number; // Total percentage
   macroGoalsMet: boolean;
+  dailyMealCount: number;        // 🆕 How many meals logged today (including this one)
+  exceedsDailyMealLimit: boolean; // 🆕 True if this is meal #6+
   milestoneHit?: string;
 }
 

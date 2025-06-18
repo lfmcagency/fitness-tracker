@@ -4,7 +4,7 @@ import { getUserProgress } from './calculations';
 import { XpAwardResult } from '@/types/api/progressResponses';
 import { ProgressContract, TaskEventContext, MealEventContext, WeightEventContext, FoodEventContext } from '@/lib/event-coordinator/types';
 import { calculateTaskCompletionXp } from './ethos';
-import { calculateMealLoggingXp, calculateMacroGoalXp } from './trophe';
+import { calculateMealLoggingXp } from './trophe';
 import UserProgress from '@/models/UserProgress';
 
 /**
@@ -170,12 +170,12 @@ function calculateEthosXp(action: string, context: TaskEventContext): number {
  */
 function calculateTropheXp(action: string, context: MealEventContext): number {
   if (action === 'meal_created') {
-    let xp = calculateMealLoggingXp(); // Base meal logging XP from trophe.ts
+    let xp = calculateMealLoggingXp(context as MealEventContext); // Base meal logging XP from trophe.ts
     
     // Add macro goal bonus if goals were met
     if (context.macroGoalsMet) {
-      const macroXp = calculateMacroGoalXp('macro_80_percent');
-      xp += macroXp.baseXp;
+      // TODO: Add macro goal XP calculation if available
+      xp += 10; // Placeholder XP for meeting macro goals
     }
     
     // Add milestone bonus

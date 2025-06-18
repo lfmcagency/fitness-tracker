@@ -209,110 +209,14 @@ export const PUT = withAuth<MealData, { id: string }>(
       
       // Convert to response format
       const mealResponse = convertMealToResponse(updatedMeal);
-      
-      // 🚀 CHECK FOR THRESHOLD CHANGES (only if meal has foods that could affect macros)
-      if (updatedMeal.creationToken && updatedMeal.foods && updatedMeal.foods.length > 0) {
-        try {
-          console.log('🔄 [MEAL-UPDATE] Checking threshold changes...');
-          
-          // Get original creation event
-          const originalEvent = await SimpleEventLog.findByToken(updatedMeal.creationToken as unknown as string);
-          
-          if (originalEvent && originalEvent.mealData) {
-            // Get current meals for today to recalculate totals
-            const todayStart = new Date(updatedMeal.date);
-            todayStart.setHours(0, 0, 0, 0);
-            const todayEnd = new Date(todayStart);
-            todayEnd.setDate(todayEnd.getDate() + 1);
-            
-            const allMealsToday = await Meal.find({
-              userId,
-              date: { $gte: todayStart, $lt: todayEnd }
-            }) as IMeal[];
-            
-            // Default macro goals (TODO: get from user profile)
-            const macroGoals = {
-              protein: 140,
-              carbs: 200,
-              fat: 70,
-              calories: 2200
-            };
-            
-            // Calculate new nutrition context
-            const newNutritionContext = calculateNutritionContext(
-              userId,
-              updatedMeal.date.toISOString().split('T')[0],
-              allMealsToday.map(m => convertMealToResponse(m)),
-              macroGoals
-            );
-            
-            const originalMacroProgress = originalEvent.mealData.dailyMacroProgress.total;
-            const newMacroProgress = newNutritionContext.dailyMacroProgress.total;
-            
-            // Check threshold changes
-            const originalThresholds = getThresholdsCrossed(originalMacroProgress);
-            const newThresholds = getThresholdsCrossed(newMacroProgress);
-            
-            // If thresholds changed, fire meal_updated event
-            if (JSON.stringify(originalThresholds) !== JSON.stringify(newThresholds)) {
-              const updateToken = generateToken();
-              
-              const mealUpdateEvent: MealEvent = {
-                token: updateToken,
-                userId,
-                source: 'trophe',
-                action: 'meal_updated',
-                timestamp: new Date(),
-                metadata: {
-                  originalEvent: originalEvent.token,
-                  thresholdChange: {
-                    from: originalThresholds,
-                    to: newThresholds,
-                    macroProgress: { from: originalMacroProgress, to: newMacroProgress }
-                  }
-                },
-                mealData: {
-                  mealId: updatedMeal._id.toString(),
-                  mealName: updatedMeal.name,
-                  mealDate: updatedMeal.date.toISOString().split('T')[0],
-                  totalMeals: await Meal.countDocuments({ userId }),
-                  dailyMacroProgress: newNutritionContext.dailyMacroProgress,
-                  macroTotals: newNutritionContext.macroTotals
-                }
-              };
-              
-              console.log('🎯 [MEAL-UPDATE] Threshold change detected:', {
-                from: originalThresholds,
-                to: newThresholds,
-                macroChange: `${originalMacroProgress}% → ${newMacroProgress}%`
-              });
-              
-              await processEvent(mealUpdateEvent);
-            }
-          }
-        } catch (thresholdError) {
-          console.error('💥 [MEAL-UPDATE] Threshold check failed:', thresholdError);
-          // Don't fail the update if threshold check fails
-        }
-      }
-      
+
       return apiResponse(mealResponse, true, 'Meal updated successfully');
     } catch (error) {
       return handleApiError(error, "Error updating meal");
     }
-  }, 
+  },
   AuthLevel.DEV_OPTIONAL
 );
-
-/**
- * Helper function to determine which thresholds are crossed
- */
-function getThresholdsCrossed(macroProgress: number): number[] {
-  const thresholds = [];
-  if (macroProgress >= 80) thresholds.push(80);
-  if (macroProgress >= 100) thresholds.push(100);
-  return thresholds;
-}
 
 /**
  * DELETE /api/meals/[id]
