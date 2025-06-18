@@ -305,6 +305,56 @@ userProgressSchema.methods.purgeOldHistory = async function (
   return removedCount;
 };
 
+/**
+ * Subtract XP (for reversals) with proper level recalculation
+ * This prevents XP farming by ensuring level decreases when appropriate
+ */
+userProgressSchema.methods.subtractXp = async function (
+  this: HydratedDocument<IUserProgress>,
+  amount: number,
+  source: string,
+  category?: ProgressCategory,
+  description?: string
+): Promise<boolean> {
+  // Store previous level for comparison
+  const previousLevel = this.level;
+  
+  // Subtract XP (ensure it doesn't go below 0)
+  this.totalXp = Math.max(0, this.totalXp - amount);
+  
+  // Recalculate level based on new total XP
+  this.level = this.calculateLevel(this.totalXp);
+  
+  // Update category XP if provided
+  if (category) {
+    this.categoryXp[category] = Math.max(0, (this.categoryXp[category] || 0) - amount);
+    
+    // Ensure categoryProgress exists for this category
+    if (!this.categoryProgress[category]) {
+      this.categoryProgress[category] = { level: 1, xp: 0, unlockedExercises: [] };
+    }
+    
+    this.categoryProgress[category].xp = this.categoryXp[category];
+    this.categoryProgress[category].level = this.calculateLevel(this.categoryXp[category]);
+  }
+  
+  // Add negative transaction to history (for audit trail)
+  this.xpHistory.push({
+    amount: -amount,
+    source: `reverse_${source}`,
+    category,
+    date: new Date(),
+    description: description || 'XP reversal',
+    timestamp: Date.now(),
+  });
+  
+  this.lastUpdated = new Date();
+  await this.save();
+  
+  // Return true if level decreased (opposite of leveledUp)
+  return this.level < previousLevel;
+};
+
 // Define the model with explicit typing
 const UserProgress: IUserProgressModel = (mongoose.models.UserProgress ||
   mongoose.model<IUserProgress, IUserProgressModel>('UserProgress', userProgressSchema)) as IUserProgressModel;

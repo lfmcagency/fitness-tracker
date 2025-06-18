@@ -70,6 +70,10 @@ export interface IUserProgress extends mongoose.Document {
   // Methods
   calculateLevel(xp: number): number;
   addXp(amount: number, source: string, category?: ProgressCategory, description?: string): Promise<boolean>;
+  
+  // 🆕 NEW: Subtraction method for clean reversal handling
+  subtractXp(amount: number, source: string, category?: ProgressCategory, description?: string): Promise<boolean>;
+  
   getNextLevelXp(): number;
   getXpToNextLevel(): number;
   hasLeveledUp(previousXp: number, newXp: number): boolean;

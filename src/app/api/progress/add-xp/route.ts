@@ -5,16 +5,16 @@ import { NextRequest } from 'next/server';
 import { dbConnect } from '@/lib/db';
 import { withAuth, AuthLevel } from '@/lib/auth-utils';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
-import { handleRichProgressEvent, handleLegacyProgressEvent } from '@/lib/xp/index';
-import { ProgressEventContract, XpAwardResult } from '@/types/api/progressResponses';
-import { RichProgressContract } from '@/lib/event-coordinator/types';
+import { handleProgressEvent } from '@/lib/xp/index';
+import { XpAwardResult } from '@/types/api/progressResponses';
+import { ProgressContract } from '@/lib/event-coordinator/types';
 import { Types } from 'mongoose';
 
 /**
  * POST /api/progress/add-xp
  * 
- * Now handles both rich contracts (Phase 5) and legacy contracts (backward compatibility)
- * Rich contracts provide complete context for atomic operations
+ * Simplified endpoint that receives simple ProgressContract from coordinator
+ * Handles both forward actions (award XP) and reverse actions (subtract XP)
  */
 export const POST = withAuth<XpAwardResult>(async (req: NextRequest, userId: string) => {
   try {
@@ -26,77 +26,48 @@ export const POST = withAuth<XpAwardResult>(async (req: NextRequest, userId: str
     }
     
     // Parse request body
-    let requestData: ProgressEventContract | RichProgressContract;
+    let contract: ProgressContract;
     try {
-      requestData = await req.json();
+      contract = await req.json();
     } catch (error) {
       return apiError('Invalid JSON in request body', 400, 'ERR_INVALID_JSON');
     }
     
-    // Detect contract type and route accordingly
-    if (isRichProgressContract(requestData)) {
-      console.log(`🚀 [PROGRESS] Processing rich contract: ${requestData.token}`);
-      
-      // Ensure userId matches authenticated user
-      requestData.userId = userId;
-      
-      // Handle rich contract with atomic operations
-      const result = await handleRichProgressEvent(requestData);
-      
-      // Build success message
-      let message = `Awarded ${result.xpAwarded} XP`;
-      if (result.leveledUp) {
-        message += ` - Level up! Now level ${result.currentLevel}`;
-      }
-      if (result.achievementsUnlocked?.length) {
-        message += ` - ${result.achievementsUnlocked.length} achievement(s) unlocked!`;
-      }
-      if (result.tasksUpdated?.length) {
-        message += ` - ${result.tasksUpdated.length} task(s) updated`;
-      }
-      
-      return apiResponse(result, true, message);
-      
-    } else {
-      console.log(`📦 [PROGRESS] Processing legacy contract: ${requestData.eventId}`);
-      
-      // Validate legacy contract fields
-      if (!requestData.eventId || !requestData.source || 
-          requestData.streakCount === undefined || requestData.totalCompletions === undefined) {
-        return apiError('Invalid legacy contract - missing required fields', 400, 'ERR_VALIDATION');
-      }
-      
-      // Ensure userId matches authenticated user
-      (requestData as ProgressEventContract).userId = userId;
-      
-      // Handle legacy contract
-      const result = await handleLegacyProgressEvent(requestData as ProgressEventContract);
-      
-      // Build success message
-      let message = `Awarded ${result.xpAwarded} XP`;
-      if (result.leveledUp) {
-        message += ` - Level up! Now level ${result.currentLevel}`;
-      }
-      if (result.achievementsUnlocked?.length) {
-        message += ` - ${result.achievementsUnlocked.length} achievement(s) unlocked!`;
-      }
-      
-      return apiResponse(result, true, message);
+    // Validate contract structure
+    if (!contract.token || !contract.source || !contract.action || !contract.context) {
+      return apiError('Invalid progress contract - missing required fields', 400, 'ERR_VALIDATION');
     }
     
+    // Ensure userId matches authenticated user
+    contract.userId = userId;
+    
+    console.log(`🎯 [PROGRESS-API] Processing ${contract.source}_${contract.action} | ${contract.token}`);
+    
+    // Handle progress event (both forward and reverse)
+    const result = await handleProgressEvent(contract);
+    
+    // Build success message
+    let message: string;
+    if (contract.action.startsWith('reverse_')) {
+      message = `Reversed ${Math.abs(result.xpAwarded)} XP`;
+      if (result.leveledUp) {
+        message += ` - Level decreased to ${result.currentLevel}`;
+      }
+    } else {
+      message = `Awarded ${result.xpAwarded} XP`;
+      if (result.leveledUp) {
+        message += ` - Level up! Now level ${result.currentLevel}`;
+      }
+      if (result.achievementsUnlocked?.length) {
+        message += ` - ${result.achievementsUnlocked.length} achievement(s) unlocked!`;
+      }
+    }
+    
+    console.log(`✅ [PROGRESS-API] ${contract.token} complete: ${message}`);
+    
+    return apiResponse(result, true, message);
+    
   } catch (error) {
-    return handleApiError(error, 'Error processing XP award');
+    return handleApiError(error, 'Error processing progress event');
   }
 }, AuthLevel.DEV_OPTIONAL);
-
-/**
- * Type guard to detect rich vs legacy contracts
- */
-function isRichProgressContract(data: any): data is RichProgressContract {
-  return data && 
-         typeof data.token === 'string' &&
-         typeof data.context === 'object' &&
-         Array.isArray(data.taskUpdates) &&
-         Array.isArray(data.achievementThresholds) &&
-         typeof data.xpMetadata === 'object';
-}

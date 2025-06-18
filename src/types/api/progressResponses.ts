@@ -3,53 +3,56 @@ import { ApiResponse } from './common';
 import { ProgressCategory } from '../models/progress';
 
 // ==========================================
-// EVENT CONTRACTS (what gets sent between systems)
+// SIMPLIFIED EVENT CONTRACTS
 // ==========================================
 
 /**
- * What Ethos sends to Progress when awarding XP
- * Ethos provides context, Progress calculates XP amounts
+ * What coordinator sends to Progress - simplified from old rich contracts
+ * This replaces the complex ProgressEventContract
  */
 export interface ProgressEventContract {
   userId: string;
-  eventId: number; // For deduplication
-  source: string; // 'task_completion', 'meal_logged', etc.
+  token: string;
+  source: 'ethos' | 'trophe' | 'arete';
+  action: string;
+  timestamp: Date;
   
-  // Task context (from Ethos)
-  taskId?: string;
-  taskType?: string;
-  streakCount: number;
-  totalCompletions: number;
-  token?: string;
-  
-  // Milestone context
-  milestoneHit?: string; // '7_day_streak', '50_completions', etc.
-  previousMetric?: string; // For 80% → 100% transitions
-  currentMetric?: string; // 'macro_80_percent', 'macro_100_percent'
-  
-  // Category for Soma events
-  category?: ProgressCategory;
-  
-  // Additional context for XP calculation
-  difficulty?: 'easy' | 'medium' | 'hard';
-  bodyweight?: number;
-  reps?: number;
-  exerciseName?: string;
-  isSystemTask?: boolean;
-  isSystemItem?: boolean;
-  metadata?: Record<string, any>;  // Changed from index signature to explicit metadata field
+  // Simple context from domain processors
+  context: {
+    // Common fields
+    milestoneHit?: string;
+    
+    // Task context (ethos)
+    taskId?: string;
+    taskName?: string;
+    streakCount?: number;
+    totalCompletions?: number;
+    isSystemTask?: boolean;
+    
+    // Meal context (trophe)
+    mealId?: string;
+    mealName?: string;
+    totalMeals?: number;
+    dailyMacroProgress?: number;
+    macroGoalsMet?: boolean;
+    
+    // Weight context (arete)
+    weightEntryId?: string;
+    currentWeight?: number;
+    totalEntries?: number;
+  };
 }
 
 /**
- * What Progress sends to Achievement system
+ * What Progress sends to Achievement system (future)
  */
 export interface AchievementEventContract {
   userId: string;
   achievementId: string;
   achievementType: 'discipline' | 'usage' | 'progress';
   triggeredBy: 'streak' | 'total_count' | 'xp_threshold' | 'level_threshold';
-  currentValue: number; // Current streak/count/xp/level
-  token?: string; // Add token support
+  currentValue: number;
+  token?: string;
 }
 
 // ==========================================
@@ -57,7 +60,7 @@ export interface AchievementEventContract {
 // ==========================================
 
 /**
- * Result from XP award - clean and simple
+ * Clean XP award result - no more complex contracts
  */
 export interface XpAwardResult {
   xpAwarded: number;
@@ -79,7 +82,7 @@ export interface XpAwardResult {
 }
 
 /**
- * Simple progress overview - no complex bundling
+ * Simple progress overview - clean dashboard data
  */
 export interface ProgressOverviewData {
   level: {

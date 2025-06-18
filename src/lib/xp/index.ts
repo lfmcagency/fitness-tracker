@@ -1,479 +1,267 @@
 // src/lib/xp/index.ts
 import { Types } from 'mongoose';
 import { getUserProgress } from './calculations';
-import { ProgressEventContract, XpAwardResult, AchievementEventContract } from '@/types/api/progressResponses';
-import { RichProgressContract, TaskUpdateRequest, AchievementThreshold, ReversalData } from '@/lib/event-coordinator/types';
-import { ProgressCategory } from '@/lib/category-progress';
+import { XpAwardResult } from '@/types/api/progressResponses';
+import { ProgressContract, TaskEventContext, MealEventContext, WeightEventContext, FoodEventContext } from '@/lib/event-coordinator/types';
+import { calculateTaskCompletionXp } from './ethos';
+import { calculateMealLoggingXp, calculateMacroGoalXp } from './trophe';
 import UserProgress from '@/models/UserProgress';
-import EventLog, { EventLogStatus } from '@/models/EventLog'; // 🆕 Import EventLog
 
 /**
- * ENHANCED ATOMIC PROGRESS HANDLER
+ * SIMPLIFIED PROGRESS EVENT HANDLER
  * 
- * Processes rich contracts with complete context for atomic operations:
- * XP + achievements + task updates + reversal data in one transaction
- * Now also stores complete contracts in EventLog for reversal capability
+ * Receives simple domain contexts from coordinator and awards/subtracts XP
+ * Handles achievement threshold detection and level change monitoring
+ * 
+ * Replaces the old complex rich contract system with clean, simple processing
  */
 
 /**
- * Enhanced result type with atomic operation data
+ * Main progress event handler - the only function coordinator needs to call
  */
-export interface EnhancedXpAwardResult extends XpAwardResult {
-  categoryUpdates: {};
-  newLevel: number;
-  previousLevel: undefined;
-  /** Token for operation tracking */
-  token: string;
+export async function handleProgressEvent(contract: ProgressContract): Promise<XpAwardResult> {
+  const { token, userId, source, action, context, timestamp } = contract;
   
-  /** Tasks updated via cross-domain operations */
-  tasksUpdated?: Array<{
-    taskId: string;
-    action: string;
-    success: boolean;
-    result?: any;
-    error?: string;
-  }>;
-  
-  /** Complete reversal package for atomic undo */
-  reversalData?: ReversalData;
-  
-  /** Dashboard update summary */
-  dashboardUpdates?: {
-    userProgress: boolean;
-    categoryProgress: boolean;
-    achievements: boolean;
-    tasks: boolean;
-  };
-  
-  /** Performance metrics */
-  performance?: {
-    totalDuration: number;
-    xpCalculationTime: number;
-    taskUpdateTime: number;
-    achievementTime: number;
-    reversalBuildTime: number;
-    eventLogTime: number; // 🆕 Track EventLog storage time
-  };
-  
-  /** Whether contract was stored in EventLog */
-  contractStored?: boolean; // 🆕 Track storage success
-}
-
-/**
- * Main rich contract handler - atomic operations with complete context
- * 🆕 Now stores successful contracts in EventLog for reversal capability
- */
-export async function handleRichProgressEvent(contract: RichProgressContract): Promise<EnhancedXpAwardResult> {
-  const startTime = Date.now();
-  const { token, userId, context, taskUpdates, achievementThresholds, xpMetadata } = contract;
-  
-  console.log(`🚀 [PROGRESS-RICH] Starting atomic operation: ${token}`);
-  console.log(`📊 [PROGRESS-RICH] Context:`, {
-    token,
-    streakCount: context.streakCount,
-    totalCompletions: context.totalCompletions,
-    taskUpdates: taskUpdates.length,
-    achievementThresholds: achievementThresholds.length
-  });
+  console.log(`🎯 [PROGRESS] Processing ${source}_${action} | ${token}`);
   
   try {
     const userObjectId = new Types.ObjectId(userId);
     
-    // 1. Get user progress and snapshot for reversal
-    const snapshotStart = Date.now();
+    // Get user progress document
     const userProgress = await getUserProgress(userObjectId);
+    
+    // Store previous state for level change detection and achievement thresholds
     const previousState = {
       level: userProgress.level,
       totalXp: userProgress.totalXp,
-      categoryProgress: JSON.parse(JSON.stringify(userProgress.categoryProgress)),
       achievements: [...userProgress.achievements],
       pendingAchievements: [...userProgress.pendingAchievements]
     };
     
-    // 2. Calculate XP from rich context metadata
-    const xpStart = Date.now();
-    const totalXpAwarded = calculateXpFromRichContext(xpMetadata, context);
-    console.log(`💰 [PROGRESS-RICH] Calculated XP: ${totalXpAwarded} (base: ${xpMetadata.baseXp})`);
+    // Calculate XP amount based on domain and action
+    const isReverse = action.startsWith('reverse_');
+    let xpAmount = calculateXpFromContext(source, action, context);
     
-    // 3. Award XP atomically
-    const previousLevel = userProgress.level;
-    const categoryToUse = mapDomainToCategory(contract.source);
+    console.log(`💰 [PROGRESS] Calculated XP: ${isReverse ? '-' : '+'}${Math.abs(xpAmount)} for ${source}_${action}`);
     
-    const leveledUp = await userProgress.addXp(
-      totalXpAwarded,
-      `${contract.source}_${contract.action}`,
-      categoryToUse,
-      buildRichDescription(contract)
-    );
+    // Award or subtract XP based on action type
+    const category = mapSourceToCategory(source);
+    const description = buildDescription(source, action, context);
+    let leveledUp: boolean;
     
-    const xpDuration = Date.now() - xpStart;
-    
-    // 4. Process achievement thresholds from contract
-    const achievementStart = Date.now();
-    const achievementResults = await processAchievementThresholds(
-      userProgress,
-      achievementThresholds,
-      previousState,
-      token
-    );
-    const achievementDuration = Date.now() - achievementStart;
-    
-    // 5. Execute cross-domain task updates
-    const taskStart = Date.now();
-    const taskResults = await processCrossDomainTaskUpdates(taskUpdates, token);
-    const taskDuration = Date.now() - taskStart;
-    
-    // 6. Build complete reversal data
-    const reversalStart = Date.now();
-    const finalState = {
-      level: userProgress.level,
-      totalXp: userProgress.totalXp,
-      categoryProgress: JSON.parse(JSON.stringify(userProgress.categoryProgress)),
-      achievements: [...userProgress.achievements],
-      pendingAchievements: [...userProgress.pendingAchievements]
-    };
-    
-    const reversalData = buildReversalData(
-      token,
-      previousState,
-      finalState,
-      totalXpAwarded,
-      achievementResults.unlockedAchievements,
-      taskResults,
-      contract
-    );
-    const reversalDuration = Date.now() - reversalStart;
-    
-    // 🆕 7. Store complete contract in EventLog for reversal capability
-    const eventLogStart = Date.now();
-    let contractStored = false;
-    
-    try {
-      // Update contract with final reversal data
-      const contractWithReversal = {
-        ...contract,
-        reversalData: reversalData
-      };
-      
-      await EventLog.createEventLog(contract, reversalData);
-      contractStored = true;
-      
-      console.log(`💾 [PROGRESS-RICH] Contract stored in EventLog: ${token}`);
-      
-    } catch (eventLogError) {
-      console.error(`💥 [PROGRESS-RICH] Failed to store contract in EventLog: ${token}`, eventLogError);
-      // Don't fail the entire operation if EventLog storage fails
-      // This is important - the XP was already awarded, so we can't roll back easily
-      contractStored = false;
+    if (isReverse) {
+      // Use subtractXp method for clean reversal (prevents XP farming)
+      leveledUp = await userProgress.subtractXp(
+        Math.abs(xpAmount), // Always positive amount for subtraction
+        action.replace('reverse_', ''), // Remove reverse prefix for source
+        category,
+        description
+      );
+      xpAmount = -Math.abs(xpAmount); // Make sure result shows negative
+    } else {
+      // Use existing addXp method for forward actions
+      leveledUp = await userProgress.addXp(
+        xpAmount,
+        `${source}_${action}`,
+        category,
+        description
+      );
     }
     
-    const eventLogDuration = Date.now() - eventLogStart;
+    console.log(`💾 [PROGRESS] XP ${isReverse ? 'subtracted' : 'awarded'}: ${Math.abs(xpAmount)} | Level ${userProgress.level} | ${token}`);
     
-    // 8. Trigger dashboard updates
-    const dashboardUpdates = {
-      userProgress: true,
-      categoryProgress: categoryToUse !== undefined,
-      achievements: achievementResults.unlockedAchievements.length > 0,
-      tasks: taskResults.length > 0
-    };
-    
-    const totalDuration = Date.now() - startTime;
-    
-    // 9. Build enhanced result
-    const result: EnhancedXpAwardResult = {
-      token,
-      xpAwarded: totalXpAwarded,
+    // Build basic result
+    const result: XpAwardResult = {
+      xpAwarded: xpAmount,
       totalXp: userProgress.totalXp,
       currentLevel: userProgress.level,
       leveledUp,
-      xpToNextLevel: userProgress.getXpToNextLevel(),
-      achievementsUnlocked: achievementResults.unlockedAchievements,
-      tasksUpdated: taskResults,
-      reversalData,
-      dashboardUpdates,
-      contractStored, // 🆕 Include storage status
-      performance: {
-        totalDuration,
-        xpCalculationTime: xpDuration,
-        taskUpdateTime: taskDuration,
-        achievementTime: achievementDuration,
-        reversalBuildTime: reversalDuration,
-        eventLogTime: eventLogDuration // 🆕 Include EventLog timing
-      },
-      previousLevel: undefined,
-      categoryUpdates: {},
-      newLevel: 0
+      xpToNextLevel: userProgress.getXpToNextLevel()
     };
     
     // Add category progress if applicable
-    if (categoryToUse) {
-      const previousCategoryXp = previousState.categoryProgress[categoryToUse]?.xp || 0;
-      const categoryLeveledUp = userProgress.categoryProgress[categoryToUse].level > 
-        userProgress.calculateLevel(previousCategoryXp);
-      
+    if (category) {
       result.categoryProgress = {
-        category: categoryToUse,
-        xp: userProgress.categoryXp[categoryToUse],
-        level: userProgress.categoryProgress[categoryToUse].level,
-        leveledUp: categoryLeveledUp,
+        category,
+        xp: userProgress.categoryXp[category],
+        level: userProgress.categoryProgress[category].level,
+        leveledUp: leveledUp && !isReverse // Only show category level up for forward actions
       };
     }
     
-    console.log(`✅ [PROGRESS-RICH] Atomic operation complete: ${token} (${totalDuration}ms)`);
-    console.log(`📈 [PROGRESS-RICH] Results:`, {
-      xpAwarded: totalXpAwarded,
-      leveledUp,
-      achievementsUnlocked: achievementResults.unlockedAchievements.length,
-      tasksUpdated: taskResults.length,
-      contractStored // 🆕 Log storage status
-    });
+    // For forward actions only: Check achievement thresholds
+    if (!isReverse) {
+      const achievementsUnlocked = await checkAchievementThresholds(
+        previousState,
+        userProgress,
+        context,
+        token
+      );
+      
+      if (achievementsUnlocked.length > 0) {
+        result.achievementsUnlocked = achievementsUnlocked;
+        console.log(`🏆 [PROGRESS] Achievements unlocked: ${achievementsUnlocked.join(', ')} | ${token}`);
+      }
+    }
+    
+    // TODO: Store simple event log for reversal capability
+    // await storeProgressEvent(contract, result);
+    
+    console.log(`✅ [PROGRESS] Event complete: ${token} (${isReverse ? 'reversed' : 'awarded'} ${Math.abs(xpAmount)} XP, Level ${userProgress.level})`);
     
     return result;
     
   } catch (error) {
-    console.error(`💥 [PROGRESS-RICH] Atomic operation failed: ${token}`, error);
+    console.error(`💥 [PROGRESS] Event failed: ${token}`, error);
+    throw new Error(`Progress event failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Calculate XP amount from domain context using existing calculation files
+ */
+function calculateXpFromContext(
+  source: string,
+  action: string,
+  context: TaskEventContext | MealEventContext | WeightEventContext | FoodEventContext
+): number {
+  
+  switch (source) {
+    case 'ethos':
+      return calculateEthosXp(action, context as TaskEventContext);
     
-    // 🆕 Store failed contract in EventLog for debugging
-    try {
-      await EventLog.create({
-        token: contract.token,
-        userId: new Types.ObjectId(contract.userId),
-        contractData: contract,
-        reversalData: contract.reversalData, // May be incomplete, but better than nothing
-        status: EventLogStatus.FAILED,
-        timestamp: new Date(),
-        errorMessage: error instanceof Error ? error.message : 'Unknown error'
-      });
-      
-      console.log(`💾 [PROGRESS-RICH] Failed contract stored for debugging: ${token}`);
-      
-    } catch (eventLogError) {
-      console.error(`💥 [PROGRESS-RICH] Failed to store failed contract: ${token}`, eventLogError);
-      // If we can't even store the failure, just log and continue
+    case 'trophe':
+      return calculateTropheXp(action, context as MealEventContext);
+    
+    case 'arete':
+      return calculateAreteXp(action, context as WeightEventContext);
+    
+    default:
+      console.warn(`Unknown source: ${source}, using default XP`);
+      return 10; // Default base XP
+  }
+}
+
+/**
+ * Calculate XP for Ethos (task) events using existing ethos.ts calculations
+ */
+function calculateEthosXp(action: string, context: TaskEventContext): number {
+  if (action === 'task_completed') {
+    return calculateTaskCompletionXp(
+      'task_completion',
+      context.streakCount || 0,
+      context.milestoneHit
+    );
+  }
+  
+  if (action === 'task_created') {
+    return 5; // Small reward for creating tasks
+  }
+  
+  if (action === 'task_deleted') {
+    return 0; // No XP for deletion
+  }
+  
+  return 10; // Default task XP
+}
+
+/**
+ * Calculate XP for Trophe (nutrition) events using existing trophe.ts calculations
+ */
+function calculateTropheXp(action: string, context: MealEventContext): number {
+  if (action === 'meal_created') {
+    let xp = calculateMealLoggingXp(); // Base meal logging XP from trophe.ts
+    
+    // Add macro goal bonus if goals were met
+    if (context.macroGoalsMet) {
+      const macroXp = calculateMacroGoalXp('macro_80_percent');
+      xp += macroXp.baseXp;
     }
     
-    // In a full implementation, this would trigger rollback
-    // For now, we log and rethrow
-    throw new Error(`Rich progress event failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  }
-}
-
-/**
- * Calculate total XP from rich context metadata
- */
-function calculateXpFromRichContext(xpMetadata: any, context: any): number {
-  let totalXp = xpMetadata.baseXp;
-  
-  // Apply difficulty multiplier
-  totalXp *= xpMetadata.difficultyMultiplier;
-  
-  // Apply streak bonus
-  if (context.streakCount > 0) {
-    totalXp += Math.floor(context.streakCount * xpMetadata.streakMultiplier);
-  }
-  
-  // Apply milestone bonus
-  if (context.milestoneHit) {
-    totalXp += xpMetadata.milestoneBonus;
-  }
-  
-  // Apply category bonus
-  totalXp += xpMetadata.categoryBonus;
-  
-  return Math.floor(Math.max(1, totalXp));
-}
-
-/**
- * Process achievement thresholds from rich contract
- */
-async function processAchievementThresholds(
-  userProgress: any,
-  thresholds: AchievementThreshold[],
-  previousState: any,
-  token: string
-): Promise<{
-  unlockedAchievements: string[];
-  processedThresholds: Array<{ achievementId: string; success: boolean; error?: string }>;
-}> {
-  const unlockedAchievements: string[] = [];
-  const processedThresholds: Array<{ achievementId: string; success: boolean; error?: string }> = [];
-  
-  for (const threshold of thresholds) {
-    try {
-      if (threshold.justCrossed && !userProgress.pendingAchievements.includes(threshold.achievementId)) {
-        // Add to pending achievements
-        await userProgress.addPendingAchievement(threshold.achievementId);
-        unlockedAchievements.push(threshold.achievementId);
-        
-        // Fire achievement event (async)
-        fireAchievementEvent({
-          userId: userProgress.userId.toString(),
-          achievementId: threshold.achievementId,
-          achievementType: mapThresholdTypeToAchievementType(threshold.type),
-          triggeredBy: threshold.type === 'streak' ? 'streak' : 'total_count',
-          currentValue: threshold.currentValue,
-          token
-        });
-        
-        processedThresholds.push({
-          achievementId: threshold.achievementId,
-          success: true
-        });
-        
-        console.log(`🏆 [PROGRESS-RICH] Achievement unlocked: ${threshold.achievementId} | ${token}`);
-      }
-    } catch (error) {
-      console.error(`💥 [PROGRESS-RICH] Achievement processing failed: ${threshold.achievementId}`, error);
-      processedThresholds.push({
-        achievementId: threshold.achievementId,
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      });
+    // Add milestone bonus
+    if (context.milestoneHit) {
+      xp += 25; // Milestone bonus
     }
+    
+    return xp;
   }
   
-  return { unlockedAchievements, processedThresholds };
-}
-
-/**
- * Process cross-domain task updates
- */
-async function processCrossDomainTaskUpdates(
-  taskUpdates: TaskUpdateRequest[],
-  token: string
-): Promise<Array<{ taskId: string; action: string; success: boolean; result?: any; error?: string }>> {
-  const results: Array<{ taskId: string; action: string; success: boolean; result?: any; error?: string }> = [];
-  
-  for (const taskUpdate of taskUpdates) {
-    try {
-      console.log(`🔄 [PROGRESS-RICH] Cross-domain task update: ${taskUpdate.action} | ${token}`);
-      
-      // Call ethos processor for task operations
-      const result = await callEthosProcessor(taskUpdate, token);
-      
-      results.push({
-        taskId: result.taskId || 'unknown',
-        action: taskUpdate.action,
-        success: true,
-        result
-      });
-      
-      console.log(`✅ [PROGRESS-RICH] Task update complete: ${taskUpdate.action} | ${token}`);
-      
-    } catch (error) {
-      console.error(`💥 [PROGRESS-RICH] Task update failed: ${taskUpdate.action}`, error);
-      results.push({
-        taskId: taskUpdate.taskId || 'unknown',
-        action: taskUpdate.action,
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      });
-    }
+  if (action === 'meal_deleted') {
+    return 0; // No XP for deletion (handled by reversal)
   }
   
-  return results;
-}
-
-/**
- * Call ethos processor for task operations
- */
-async function callEthosProcessor(taskUpdate: TaskUpdateRequest, token: string): Promise<any> {
-  // This would call the ethos processor directly
-  // For now, return mock result
-  console.log(`🔧 [PROGRESS-RICH] Calling ethos processor for task update:`, taskUpdate);
+  if (action === 'food_created') {
+    return 10; // Reward for contributing to food database
+  }
   
-  return {
-    taskId: taskUpdate.taskId || 'mock_task',
-    success: true,
-    action: taskUpdate.action
-  };
+  if (action === 'food_deleted') {
+    return 0; // No XP for deletion
+  }
+  
+  return 5; // Default nutrition XP
 }
 
 /**
- * Build complete reversal data package
+ * Calculate XP for Arete (weight/progress) events
  */
-function buildReversalData(
-  token: string,
-  previousState: any,
-  finalState: any,
-  xpAwarded: number,
-  achievementsUnlocked: string[],
-  taskResults: any[],
-  contract: RichProgressContract
-): ReversalData {
-  return {
-    token,
-    undoInstructions: {
-      subtractXp: xpAwarded,
-      lockAchievements: achievementsUnlocked,
-      revertLevel: finalState.level !== previousState.level ? previousState.level : undefined,
-      undoTaskUpdates: taskResults
-        .filter(r => r.success)
-        .map(r => ({
-          taskId: r.taskId,
-          revertTo: { action: 'undo', originalAction: r.action }
-        }))
-    },
-    previousUserState: previousState,
-    finalUserState: finalState,
-    snapshotData: {
-      userStateBeforeEvent: {
-        level: previousState.level,
-        totalXp: previousState.totalXp,
-        categoryProgress: previousState.categoryProgress,
-        achievements: previousState.achievements,
-        pendingAchievements: previousState.pendingAchievements
-      },
-      eventContext: contract.context,
-      crossDomainUpdates: contract.taskUpdates
+function calculateAreteXp(action: string, context: WeightEventContext): number {
+  if (action === 'weight_logged') {
+    let xp = 5; // Base weight logging XP
+    
+    // Add milestone bonus
+    if (context.milestoneHit) {
+      xp += 15; // Weight tracking milestone
     }
-  };
+    
+    return xp;
+  }
+  
+  if (action === 'weight_deleted') {
+    return 0; // No XP for deletion (handled by reversal)
+  }
+  
+  return 5; // Default weight XP
 }
 
 /**
- * Map threshold type to achievement type
+ * Map source to category for category XP tracking
  */
-function mapThresholdTypeToAchievementType(thresholdType: 'streak' | 'total' | 'milestone' | 'cross_domain'): 'discipline' | 'usage' | 'progress' {
-  const mapping: Record<string, 'discipline' | 'usage' | 'progress'> = {
-    'streak': 'discipline',
-    'total': 'progress',
-    'milestone': 'progress',
-    'cross_domain': 'usage'
+function mapSourceToCategory(source: string): 'core' | 'push' | 'pull' | 'legs' | undefined {
+  const mapping: Record<string, 'core' | 'push' | 'pull' | 'legs'> = {
+    'ethos': 'core',    // Discipline/habits = core strength
+    'trophe': 'push',   // Nutrition = building strength  
+    'arete': 'legs'     // Progress tracking = foundation
   };
   
-  return mapping[thresholdType] || 'progress';
+  return mapping[source];
 }
 
 /**
- * Map domain to progress category
+ * Build description for XP transaction history
  */
-function mapDomainToCategory(domain: string): ProgressCategory | undefined {
-  const mapping: Record<string, ProgressCategory> = {
-    'ethos': 'core',
-    'trophe': 'push', 
-    'soma': 'legs'
-  };
-  
-  return mapping[domain];
-}
-
-/**
- * Build rich description from contract context
- */
-function buildRichDescription(contract: RichProgressContract): string {
-  const { source, action, context } = contract;
-  
+function buildDescription(
+  source: string,
+  action: string,
+  context: TaskEventContext | MealEventContext | WeightEventContext | FoodEventContext
+): string {
   let desc = `${source} ${action}`.replace('_', ' ');
   
-  if (context.itemName) {
-    desc += ` (${context.itemName})`;
+  // Add context-specific details
+  if ('taskName' in context) {
+    desc += ` (${context.taskName})`;
+    if (context.streakCount && context.streakCount > 0) {
+      desc += ` - ${context.streakCount} day streak`;
+    }
+  } else if ('mealName' in context) {
+    desc += ` (${context.mealName})`;
+    if (context.macroGoalsMet) {
+      desc += ` - macro goals met`;
+    }
+  } else if ('currentWeight' in context) {
+    desc += ` (${context.currentWeight}kg)`;
   }
   
-  if (context.streakCount > 0) {
-    desc += ` - ${context.streakCount} day streak`;
-  }
-  
-  if (context.milestoneHit) {
+  if ('milestoneHit' in context && context.milestoneHit) {
     desc += ` - ${context.milestoneHit.replace('_', ' ')} milestone!`;
   }
   
@@ -481,187 +269,91 @@ function buildRichDescription(contract: RichProgressContract): string {
 }
 
 /**
- * Fire achievement event (async, fire-and-forget)
+ * Check if XP/level changes crossed achievement thresholds
+ * Adds achievements to pendingAchievements for manual claiming later
  */
-async function fireAchievementEvent(event: AchievementEventContract & { token?: string }): Promise<void> {
-  try {
-    console.log(`🏆 [PROGRESS-RICH] Firing achievement event:`, event);
-    // TODO: Call achievement system when ready
-    // await fetch('/api/achievements/unlock', { method: 'POST', body: JSON.stringify(event) });
-  } catch (error) {
-    console.error(`💥 [PROGRESS-RICH] Failed to fire achievement event:`, error);
-  }
-}
-
-/**
- * LEGACY COMPATIBILITY - Basic contract handler
- */
-export async function handleLegacyProgressEvent(contract: ProgressEventContract): Promise<XpAwardResult> {
-  console.log(`📦 [PROGRESS-LEGACY] Handling legacy event:`, contract);
+async function checkAchievementThresholds(
+  previousState: any,
+  userProgress: any,
+  context: any,
+  token: string
+): Promise<string[]> {
+  const achievementsUnlocked: string[] = [];
   
-  const userId = new Types.ObjectId(contract.userId);
-  const userProgress = await getUserProgress(userId);
-  
-  // Store previous values for comparison
-  const previousXp = userProgress.totalXp;
-  const previousLevel = userProgress.level;
-  const previousCategoryXp = contract.category ? userProgress.categoryXp[contract.category] : 0;
-  
-  // Calculate XP amount using legacy logic
-  const xpAmount = calculateLegacyXpFromContract(contract);
-  
-  // Award XP to user
-  const leveledUp = await userProgress.addXp(
-    xpAmount,
-    contract.source,
-    contract.category,
-    buildLegacyDescription(contract)
-  );
-  
-  // Build legacy result
-  const result: XpAwardResult = {
-    xpAwarded: xpAmount,
-    totalXp: userProgress.totalXp,
-    currentLevel: userProgress.level,
-    leveledUp,
-    xpToNextLevel: userProgress.getXpToNextLevel(),
-  };
-  
-  // Add category progress if applicable
-  if (contract.category) {
-    const categoryLeveledUp = userProgress.categoryProgress[contract.category].level > 
-      userProgress.calculateLevel(previousCategoryXp);
-    
-    result.categoryProgress = {
-      category: contract.category,
-      xp: userProgress.categoryXp[contract.category],
-      level: userProgress.categoryProgress[contract.category].level,
-      leveledUp: categoryLeveledUp,
-    };
-  }
-  
-  // Check for achievement thresholds and fire events (legacy style)
-  const achievementEvents = checkLegacyAchievementThresholds(
-    userId.toString(),
-    previousXp,
-    userProgress.totalXp,
-    previousLevel,
-    userProgress.level
-  );
-  
-  if (achievementEvents.length > 0) {
-    result.achievementsUnlocked = achievementEvents.map(e => e.achievementId);
-    // Fire achievement events (async, don't wait)
-    achievementEvents.forEach(event => fireAchievementEvent(event));
-  }
-  
-  console.log(`✅ [PROGRESS-LEGACY] Event complete: +${xpAmount} XP`);
-  return result;
-}
-
-/**
- * Legacy XP calculation
- */
-function calculateLegacyXpFromContract(contract: ProgressEventContract): number {
-  const XP_RULES = {
-    BASE_XP: {
-      'task_completion': 10,
-      'meal_logged': 5,
-      'workout_completion': 50,
-      'exercise_progression': 25,
-    },
-    STREAK_BONUS: 2,
-    MAX_STREAK_BONUS: 50,
-    MILESTONES: {
-      '7_day_streak': 25,
-      '30_day_streak': 100,
-      '100_day_streak': 500,
-      '50_completions': 75,
-      '100_completions': 200,
-      'macro_80_percent': 15,
-      'macro_100_percent': 25,
-    },
-  } as const;
-  
-  let xp = XP_RULES.BASE_XP[contract.source as keyof typeof XP_RULES.BASE_XP] || 10;
-  
-  // Streak bonus
-  if (contract.streakCount > 0) {
-    const streakBonus = Math.min(
-      contract.streakCount * XP_RULES.STREAK_BONUS,
-      XP_RULES.MAX_STREAK_BONUS
-    );
-    xp += streakBonus;
-  }
-  
-  // Milestone bonus
-  if (contract.milestoneHit) {
-    const milestoneBonus = XP_RULES.MILESTONES[contract.milestoneHit as keyof typeof XP_RULES.MILESTONES];
-    if (milestoneBonus) xp += milestoneBonus;
-  }
-  
-  return Math.max(1, xp);
-}
-
-/**
- * Legacy achievement threshold checking
- */
-function checkLegacyAchievementThresholds(
-  userId: string,
-  previousXp: number,
-  newXp: number,
-  previousLevel: number,
-  newLevel: number
-): AchievementEventContract[] {
-  const ACHIEVEMENT_THRESHOLDS = {
-    XP: [1000, 5000, 10000, 25000, 50000],
-    LEVEL: [10, 20, 30, 50, 75, 100],
-  } as const;
-  
-  const events: AchievementEventContract[] = [];
-  
-  // Check XP thresholds
-  for (const threshold of ACHIEVEMENT_THRESHOLDS.XP) {
-    if (previousXp < threshold && newXp >= threshold) {
-      events.push({
-        userId,
-        achievementId: `xp_milestone_${threshold}`,
-        achievementType: 'progress',
-        triggeredBy: 'xp_threshold',
-        currentValue: newXp,
-      });
+  // XP threshold achievements
+  const XP_THRESHOLDS = [1000, 2500, 5000, 10000, 25000, 50000, 100000];
+  for (const threshold of XP_THRESHOLDS) {
+    if (previousState.totalXp < threshold && userProgress.totalXp >= threshold) {
+      const achievementId = `xp_milestone_${threshold}`;
+      await userProgress.addPendingAchievement(achievementId);
+      achievementsUnlocked.push(achievementId);
+      console.log(`🎯 [PROGRESS] XP milestone reached: ${threshold} XP | ${token}`);
     }
   }
   
-  // Check level thresholds
-  for (const threshold of ACHIEVEMENT_THRESHOLDS.LEVEL) {
-    if (previousLevel < threshold && newLevel >= threshold) {
-      events.push({
-        userId,
-        achievementId: `level_milestone_${threshold}`,
-        achievementType: 'progress',
-        triggeredBy: 'level_threshold',
-        currentValue: newLevel,
-      });
+  // Level threshold achievements
+  const LEVEL_THRESHOLDS = [5, 10, 20, 30, 50, 75, 100];
+  for (const threshold of LEVEL_THRESHOLDS) {
+    if (previousState.level < threshold && userProgress.level >= threshold) {
+      const achievementId = `level_milestone_${threshold}`;
+      await userProgress.addPendingAchievement(achievementId);
+      achievementsUnlocked.push(achievementId);
+      console.log(`📈 [PROGRESS] Level milestone reached: Level ${threshold} | ${token}`);
     }
   }
   
-  return events;
+  // Domain-specific milestone achievements from context
+  if ('milestoneHit' in context && context.milestoneHit) {
+    const achievementId = `milestone_${context.milestoneHit}`;
+    if (!userProgress.pendingAchievements.includes(achievementId)) {
+      await userProgress.addPendingAchievement(achievementId);
+      achievementsUnlocked.push(achievementId);
+      console.log(`🏅 [PROGRESS] Domain milestone reached: ${context.milestoneHit} | ${token}`);
+    }
+  }
+  
+  // TODO: Fire achievement notification events (commented out until achievement system ready)
+  if (achievementsUnlocked.length > 0) {
+    for (const achievementId of achievementsUnlocked) {
+      // await fireAchievementNotification({
+      //   userId: userProgress.userId.toString(),
+      //   achievementId,
+      //   triggeredBy: achievementId.includes('xp_') ? 'xp_threshold' : 
+      //               achievementId.includes('level_') ? 'level_threshold' : 'milestone',
+      //   currentValue: achievementId.includes('xp_') ? userProgress.totalXp : 
+      //                achievementId.includes('level_') ? userProgress.level : 1,
+      //   token
+      // });
+      
+      console.log(`🔔 [PROGRESS] Achievement notification ready: ${achievementId} | ${token}`);
+    }
+  }
+  
+  return achievementsUnlocked;
 }
 
 /**
- * Legacy description builder
+ * Fire achievement notification to achievement system (future implementation)
  */
-function buildLegacyDescription(contract: ProgressEventContract): string {
-  let desc = contract.source.replace('_', ' ');
-  
-  if (contract.streakCount > 0) {
-    desc += ` (${contract.streakCount} day streak)`;
-  }
-  
-  if (contract.milestoneHit) {
-    desc += ` - ${contract.milestoneHit.replace('_', ' ')} milestone!`;
-  }
-  
-  return desc;
-}
+// async function fireAchievementNotification(event: {
+//   userId: string;
+//   achievementId: string;
+//   triggeredBy: string;
+//   currentValue: number;
+//   token: string;
+// }): Promise<void> {
+//   try {
+//     console.log(`🚀 [PROGRESS] Firing achievement notification:`, event);
+//     
+//     // Call achievement system API when ready
+//     // await fetch('/api/achievements/unlock', {
+//     //   method: 'POST',
+//     //   headers: { 'Content-Type': 'application/json' },
+//     //   body: JSON.stringify(event)
+//     // });
+//     
+//   } catch (error) {
+//     console.error(`💥 [PROGRESS] Failed to fire achievement notification:`, error);
+//     // Don't throw - achievement failures shouldn't break XP awarding
+//   }
+// }
