@@ -1,3 +1,4 @@
+// src/app/api/meals/[id]/foods/route.ts
 export const dynamic = 'force-dynamic';
 
 import { NextRequest } from "next/server";
@@ -12,6 +13,9 @@ import { AddFoodToMealRequest } from "@/types/api/mealRequests";
 import { convertMealFoodToResponse } from "@/types/converters/mealConverters";
 import { IMeal } from "@/types/models/meal";
 import { IFood } from "@/types/models/food";
+
+// Same-day validation utility
+import { getTodayString } from '@/lib/shared-utilities';
 
 /**
  * GET /api/meals/[id]/foods
@@ -122,7 +126,7 @@ export const GET = withAuth<{
 
 /**
  * POST /api/meals/[id]/foods
- * Add a new food to a meal
+ * Add a new food to a meal (SAME-DAY VALIDATION)
  */
 export const POST = withAuth<{
   food: MealFoodData;
@@ -171,6 +175,18 @@ export const POST = withAuth<{
       // Check if user has permission to update this meal
       if (meal.userId && meal.userId.toString() !== userId) {
         return apiError('You do not have permission to update this meal', 403, 'ERR_FORBIDDEN');
+      }
+      
+      // 🚨 SAME-DAY VALIDATION
+      const todayString = getTodayString();
+      const mealDateString = meal.date.toISOString().split('T')[0];
+      
+      if (mealDateString !== todayString) {
+        return apiError(
+          `Cannot modify historical data. Meal was logged on ${mealDateString}, today is ${todayString}.`,
+          403,
+          'ERR_HISTORICAL_EDIT'
+        );
       }
       
       // Validate food data
@@ -316,7 +332,7 @@ export const POST = withAuth<{
 
 /**
  * PUT /api/meals/[id]/foods
- * Replace all foods in a meal
+ * Replace all foods in a meal (SAME-DAY VALIDATION)
  */
 export const PUT = withAuth<{
   foods: MealFoodData[];
@@ -372,6 +388,18 @@ export const PUT = withAuth<{
       // Check if user has permission to update this meal
       if (meal.userId && meal.userId.toString() !== userId) {
         return apiError('You do not have permission to update this meal', 403, 'ERR_FORBIDDEN');
+      }
+      
+      // 🚨 SAME-DAY VALIDATION
+      const todayString = getTodayString();
+      const mealDateString = meal.date.toISOString().split('T')[0];
+      
+      if (mealDateString !== todayString) {
+        return apiError(
+          `Cannot modify historical data. Meal was logged on ${mealDateString}, today is ${todayString}.`,
+          403,
+          'ERR_HISTORICAL_EDIT'
+        );
       }
       
       // Process each food with validation

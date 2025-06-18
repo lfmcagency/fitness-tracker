@@ -1,7 +1,7 @@
 /**
  * TROPHE PROCESSOR - Nutrition Events
  * 
- * Handles meal and food creation/deletion events.
+ * Handles meal and food creation/deletion/update events.
  * Calculates macro progress and meal counts for XP system.
  */
 
@@ -60,6 +60,8 @@ export class TropheProcessor implements DomainProcessor {
         return await this.handleMealCreation(event);
       case 'meal_deleted':
         return await this.handleMealDeletion(event);
+      case 'meal_updated':
+        return await this.handleMealUpdate(event);
       default:
         throw new Error(`Unsupported meal action: ${action}`);
     }
@@ -132,6 +134,47 @@ export class TropheProcessor implements DomainProcessor {
     console.log(`🗑️ [TROPHE] Meal deletion context: ${token}`, {
       totalMeals: context.totalMeals,
       macroProgress: context.dailyMacroProgress
+    });
+    
+    return {
+      success: true,
+      token,
+      context
+    };
+  }
+
+  /**
+   * Handle meal update (threshold changes)
+   */
+  private async handleMealUpdate(event: MealEvent): Promise<DomainEventResult> {
+    const { token, mealData, metadata } = event;
+    
+    // Extract threshold change info from metadata
+    const thresholdChange = metadata?.thresholdChange;
+    
+    if (!thresholdChange) {
+      console.log(`🔄 [TROPHE] Meal update with no threshold changes: ${token}`);
+      return { success: true, token };
+    }
+    
+    // Build context for threshold-based XP calculation
+    const context: MealEventContext = {
+      mealId: mealData.mealId,
+      mealName: mealData.mealName,
+      totalMeals: mealData.totalMeals,
+      dailyMacroProgress: mealData.dailyMacroProgress.total,
+      macroGoalsMet: mealData.dailyMacroProgress.total >= 80,
+      // Special milestone for threshold changes
+      milestoneHit: this.detectThresholdMilestone(
+        thresholdChange.from,
+        thresholdChange.to
+      )
+    };
+    
+    console.log(`🔄 [TROPHE] Meal update context: ${token}`, {
+      macroProgress: context.dailyMacroProgress,
+      thresholdChange: `${thresholdChange.from} → ${thresholdChange.to}`,
+      milestone: context.milestoneHit
     });
     
     return {
@@ -269,54 +312,34 @@ export class TropheProcessor implements DomainProcessor {
   }
 
   /**
-   * Helper to calculate daily macro progress
+   * Detect threshold change milestones (for meal updates)
    */
-  private async calculateDailyMacroProgress(
-    userId: string, 
-    date: string
-  ): Promise<{
-    protein: number;
-    carbs: number; 
-    fat: number;
-    calories: number;
-    total: number;
-  }> {
-    try {
-      // Get all meals for the day
-      const meals = await Meal.find({
-        user: new Types.ObjectId(userId),
-        date: new Date(date)
-      });
-      
-      // Calculate totals
-      const totals = meals.reduce((acc, meal) => {
-        acc.protein += meal.totalProtein || 0;
-        acc.carbs += meal.totalCarbs || 0;
-        acc.fat += meal.totalFat || 0;
-        acc.calories += meal.totalCalories || 0;
-        return acc;
-      }, { protein: 0, carbs: 0, fat: 0, calories: 0 });
-      
-      // Mock goals for now (should come from user settings)
-      const goals = { protein: 140, carbs: 200, fat: 70, calories: 2200 };
-      
-      // Calculate percentages
-      const percentages = {
-        protein: Math.min((totals.protein / goals.protein) * 100, 100),
-        carbs: Math.min((totals.carbs / goals.carbs) * 100, 100),
-        fat: Math.min((totals.fat / goals.fat) * 100, 100),
-        calories: Math.min((totals.calories / goals.calories) * 100, 100),
-        total: 0
-      };
-      
-      // Calculate weighted average
-      percentages.total = (percentages.protein + percentages.carbs + percentages.fat + percentages.calories) / 4;
-      
-      return percentages;
-      
-    } catch (error) {
-      console.error('Error calculating macro progress:', error);
-      return { protein: 0, carbs: 0, fat: 0, calories: 0, total: 0 };
+  private detectThresholdMilestone(
+    fromThresholds: number[],
+    toThresholds: number[]
+  ): string | undefined {
+    
+    // Check for newly crossed thresholds
+    const newThresholds = toThresholds.filter(t => !fromThresholds.includes(t));
+    const lostThresholds = fromThresholds.filter(t => !toThresholds.includes(t));
+    
+    if (newThresholds.includes(100)) {
+      return 'perfect_macro_threshold_crossed';
     }
+    
+    if (newThresholds.includes(80)) {
+      return 'macro_target_threshold_crossed';
+    }
+    
+    // Could also handle threshold loss if needed
+    if (lostThresholds.includes(100)) {
+      return 'perfect_macro_threshold_lost';
+    }
+    
+    if (lostThresholds.includes(80)) {
+      return 'macro_target_threshold_lost';
+    }
+    
+    return undefined;
   }
 }

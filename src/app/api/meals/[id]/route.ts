@@ -12,6 +12,12 @@ import { UpdateMealRequest } from "@/types/api/mealRequests";
 import { convertMealToResponse } from "@/types/converters/mealConverters";
 import { IMeal } from "@/types/models/meal";
 
+// Event coordinator integration
+import { processEvent, generateToken } from '@/lib/event-coordinator';
+import { MealEvent } from '@/lib/event-coordinator/types';
+import { calculateNutritionContext, getTodayString } from '@/lib/shared-utilities';
+import SimpleEventLog from '@/lib/event-coordinator/SimpleEventLog';
+
 /**
  * GET /api/meals/[id]
  * Get a specific meal by ID
@@ -61,7 +67,7 @@ export const GET = withAuth<MealData, { id: string }>(
 
 /**
  * PUT /api/meals/[id]
- * Update a specific meal by ID
+ * Update a specific meal by ID (SAME-DAY VALIDATION)
  */
 export const PUT = withAuth<MealData, { id: string }>(
   async (req: NextRequest, userId: string, context) => {
@@ -110,6 +116,18 @@ export const PUT = withAuth<MealData, { id: string }>(
         return apiError('You do not have permission to update this meal', 403, 'ERR_FORBIDDEN');
       }
       
+      // 🚨 SAME-DAY VALIDATION
+      const todayString = getTodayString();
+      const mealDateString = meal.date.toISOString().split('T')[0];
+      
+      if (mealDateString !== todayString) {
+        return apiError(
+          `Cannot modify historical data. Meal was logged on ${mealDateString}, today is ${todayString}.`,
+          403,
+          'ERR_HISTORICAL_EDIT'
+        );
+      }
+      
       // Create update object with validated fields
       const updates: any = {};
       
@@ -128,6 +146,13 @@ export const PUT = withAuth<MealData, { id: string }>(
           if (isNaN(date.getTime())) {
             return apiError('Invalid date format', 400, 'ERR_VALIDATION');
           }
+          
+          // Ensure new date is also today (can't move meals to other days)
+          const newDateString = date.toISOString().split('T')[0];
+          if (newDateString !== todayString) {
+            return apiError('Can only move meals within the same day', 400, 'ERR_VALIDATION');
+          }
+          
           updates.date = date;
         } catch (error) {
           return apiError('Invalid date format', 400, 'ERR_VALIDATION');
@@ -161,9 +186,6 @@ export const PUT = withAuth<MealData, { id: string }>(
         }
       }
       
-      // NOTE: This endpoint does not update foods array
-      // Foods should be managed through the /api/meals/[id]/foods endpoints
-      
       // If there are no valid updates, return error
       if (Object.keys(updates).length === 0) {
         return apiError('No valid fields to update', 400, 'ERR_NO_UPDATES');
@@ -188,6 +210,92 @@ export const PUT = withAuth<MealData, { id: string }>(
       // Convert to response format
       const mealResponse = convertMealToResponse(updatedMeal);
       
+      // 🚀 CHECK FOR THRESHOLD CHANGES (only if meal has foods that could affect macros)
+      if (updatedMeal.creationToken && updatedMeal.foods && updatedMeal.foods.length > 0) {
+        try {
+          console.log('🔄 [MEAL-UPDATE] Checking threshold changes...');
+          
+          // Get original creation event
+          const originalEvent = await SimpleEventLog.findByToken(updatedMeal.creationToken as unknown as string);
+          
+          if (originalEvent && originalEvent.mealData) {
+            // Get current meals for today to recalculate totals
+            const todayStart = new Date(updatedMeal.date);
+            todayStart.setHours(0, 0, 0, 0);
+            const todayEnd = new Date(todayStart);
+            todayEnd.setDate(todayEnd.getDate() + 1);
+            
+            const allMealsToday = await Meal.find({
+              userId,
+              date: { $gte: todayStart, $lt: todayEnd }
+            }) as IMeal[];
+            
+            // Default macro goals (TODO: get from user profile)
+            const macroGoals = {
+              protein: 140,
+              carbs: 200,
+              fat: 70,
+              calories: 2200
+            };
+            
+            // Calculate new nutrition context
+            const newNutritionContext = calculateNutritionContext(
+              userId,
+              updatedMeal.date.toISOString().split('T')[0],
+              allMealsToday.map(m => convertMealToResponse(m)),
+              macroGoals
+            );
+            
+            const originalMacroProgress = originalEvent.mealData.dailyMacroProgress.total;
+            const newMacroProgress = newNutritionContext.dailyMacroProgress.total;
+            
+            // Check threshold changes
+            const originalThresholds = getThresholdsCrossed(originalMacroProgress);
+            const newThresholds = getThresholdsCrossed(newMacroProgress);
+            
+            // If thresholds changed, fire meal_updated event
+            if (JSON.stringify(originalThresholds) !== JSON.stringify(newThresholds)) {
+              const updateToken = generateToken();
+              
+              const mealUpdateEvent: MealEvent = {
+                token: updateToken,
+                userId,
+                source: 'trophe',
+                action: 'meal_updated',
+                timestamp: new Date(),
+                metadata: {
+                  originalEvent: originalEvent.token,
+                  thresholdChange: {
+                    from: originalThresholds,
+                    to: newThresholds,
+                    macroProgress: { from: originalMacroProgress, to: newMacroProgress }
+                  }
+                },
+                mealData: {
+                  mealId: updatedMeal._id.toString(),
+                  mealName: updatedMeal.name,
+                  mealDate: updatedMeal.date.toISOString().split('T')[0],
+                  totalMeals: await Meal.countDocuments({ userId }),
+                  dailyMacroProgress: newNutritionContext.dailyMacroProgress,
+                  macroTotals: newNutritionContext.macroTotals
+                }
+              };
+              
+              console.log('🎯 [MEAL-UPDATE] Threshold change detected:', {
+                from: originalThresholds,
+                to: newThresholds,
+                macroChange: `${originalMacroProgress}% → ${newMacroProgress}%`
+              });
+              
+              await processEvent(mealUpdateEvent);
+            }
+          }
+        } catch (thresholdError) {
+          console.error('💥 [MEAL-UPDATE] Threshold check failed:', thresholdError);
+          // Don't fail the update if threshold check fails
+        }
+      }
+      
       return apiResponse(mealResponse, true, 'Meal updated successfully');
     } catch (error) {
       return handleApiError(error, "Error updating meal");
@@ -197,11 +305,25 @@ export const PUT = withAuth<MealData, { id: string }>(
 );
 
 /**
- * DELETE /api/meals/[id]
- * Delete a specific meal by ID
+ * Helper function to determine which thresholds are crossed
  */
-export const DELETE = withAuth<{ id: string }, { id: string }>(
+function getThresholdsCrossed(macroProgress: number): number[] {
+  const thresholds = [];
+  if (macroProgress >= 80) thresholds.push(80);
+  if (macroProgress >= 100) thresholds.push(100);
+  return thresholds;
+}
+
+/**
+ * DELETE /api/meals/[id]
+ * Delete a specific meal by ID (SAME-DAY + EVENTS)
+ */
+export const DELETE = withAuth<{ id: string; token?: string; achievements?: any }, { id: string }>(
   async (req: NextRequest, userId: string, context) => {
+    const token = generateToken();
+    
+    console.log(`🗑️ [MEAL-DELETE] DELETE started with token: ${token}`);
+    
     try {
       await dbConnect();
       
@@ -234,6 +356,22 @@ export const DELETE = withAuth<{ id: string }, { id: string }>(
         return apiError('You do not have permission to delete this meal', 403, 'ERR_FORBIDDEN');
       }
       
+      // 🚨 SAME-DAY VALIDATION
+      const todayString = getTodayString();
+      const mealDateString = meal.date.toISOString().split('T')[0];
+      
+      if (mealDateString !== todayString) {
+        return apiError(
+          `Cannot delete historical data. Meal was logged on ${mealDateString}, today is ${todayString}.`,
+          403,
+          'ERR_HISTORICAL_DELETE'
+        );
+      }
+      
+      // Store meal data for event before deletion
+      const mealForEvent = convertMealToResponse(meal);
+      const mealDate = meal.date;
+      
       // Delete meal with defensive error handling
       try {
         await Meal.deleteOne({ _id: id });
@@ -241,8 +379,100 @@ export const DELETE = withAuth<{ id: string }, { id: string }>(
         return handleApiError(error, 'Error deleting meal from database');
       }
       
-      return apiResponse({ id }, true, 'Meal deleted successfully');
+      // 🚀 FIRE MEAL DELETION EVENT TO COORDINATOR
+      try {
+        console.log('🗑️ [MEAL-DELETE] Firing meal_deleted event to coordinator...');
+        
+        // Get remaining meals for today to calculate new totals
+        const todayStart = new Date(mealDate);
+        todayStart.setHours(0, 0, 0, 0);
+        const todayEnd = new Date(todayStart);
+        todayEnd.setDate(todayEnd.getDate() + 1);
+        
+        const remainingMealsToday = await Meal.find({
+          userId,
+          date: { $gte: todayStart, $lt: todayEnd }
+        }) as IMeal[];
+        
+        // Get new total meal count for user (after deletion)
+        const totalMeals = await Meal.countDocuments({ userId });
+        
+        // Default macro goals (TODO: get from user profile)
+        const macroGoals = {
+          protein: 140,
+          carbs: 200,
+          fat: 70,
+          calories: 2200
+        };
+        
+        // Calculate new nutrition context using shared utility
+        const nutritionContext = calculateNutritionContext(
+          userId,
+          mealDate.toISOString().split('T')[0],
+          remainingMealsToday.map(m => convertMealToResponse(m)),
+          macroGoals
+        );
+        
+        // Build proper MealEvent for deletion
+        const mealEvent: MealEvent = {
+          token,
+          userId,
+          source: 'trophe',
+          action: 'meal_deleted',
+          timestamp: new Date(),
+          metadata: {
+            deletedMeal: mealForEvent,
+            nutritionContext
+          },
+          mealData: {
+            mealId: id,
+            mealName: mealForEvent.name,
+            mealDate: mealDate.toISOString().split('T')[0],
+            totalMeals, // New count after deletion
+            dailyMacroProgress: nutritionContext.dailyMacroProgress,
+            macroTotals: nutritionContext.macroTotals
+          }
+        };
+        
+        console.log('🗑️ [MEAL-DELETE] Firing meal deletion event:', {
+          token,
+          action: mealEvent.action,
+          mealName: mealEvent.mealData.mealName,
+          newMacroProgress: mealEvent.mealData.dailyMacroProgress.total
+        });
+        
+        const coordinatorResult = await processEvent(mealEvent);
+        
+        console.log('🎉 [MEAL-DELETE] Coordinator processing complete:', {
+          success: coordinatorResult.success,
+          xpAwarded: coordinatorResult.xpAwarded, // Should be negative
+          token: coordinatorResult.token
+        });
+        
+        // Build response
+        let message = 'Meal deleted successfully';
+        if (coordinatorResult.xpAwarded && coordinatorResult.xpAwarded < 0) {
+          message = `Meal deleted (${Math.abs(coordinatorResult.xpAwarded)} XP reversed)`;
+        }
+        
+        return apiResponse({
+          id,
+          token,
+          achievements: coordinatorResult.achievementsUnlocked
+        }, true, message);
+        
+      } catch (coordinatorError) {
+        console.error('💥 [MEAL-DELETE] Coordinator error:', coordinatorError);
+        
+        // Still return success since meal was deleted, but note coordinator failure
+        return apiResponse({
+          id,
+          token
+        }, true, 'Meal deleted successfully, but event processing failed');
+      }
+      
     } catch (error) {
+      console.error('💥 [MEAL-DELETE] Unexpected error in DELETE /api/meals/[id]:', error);
       return handleApiError(error, "Error deleting meal");
     }
   }, 

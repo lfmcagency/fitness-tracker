@@ -21,6 +21,8 @@ export enum EventLogStatus {
  * Simple event log document interface
  */
 export interface ISimpleEventLog extends Document {
+  dailyMacroProgress: any;
+  mealData: ISimpleEventLog | null;
   /** Unique token for fast lookup */
   token: string;
   

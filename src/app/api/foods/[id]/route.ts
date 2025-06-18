@@ -1,3 +1,4 @@
+// src/app/api/foods/[id]/route.ts
 export const dynamic = 'force-dynamic';
 
 import { NextRequest } from "next/server";
@@ -6,11 +7,16 @@ import { dbConnect } from '@/lib/db';
 import Food from "@/models/Food";
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { isValidObjectId } from "mongoose";
-import { FoodData } from "@/types/api/foodResponses"; // Import FoodData, not FoodResponse
+import { FoodData } from "@/types/api/foodResponses";
 import { UpdateFoodRequest } from "@/types/api/foodRequests";
 import { convertFoodToResponse } from "@/types/converters/foodConverters";
 import { IFood } from "@/types/models/food";
 import User from "@/models/User";
+
+// Event coordinator integration
+import { processEvent, generateToken } from '@/lib/event-coordinator';
+import { FoodEvent } from '@/lib/event-coordinator/types';
+import { getTodayString } from '@/lib/shared-utilities';
 
 /**
  * GET /api/foods/[id]
@@ -67,7 +73,7 @@ export const GET = withAuth<FoodData, { id: string }>(
 
 /**
  * PUT /api/foods/[id]
- * Update a specific food by ID
+ * Update a specific food by ID (SAME-DAY VALIDATION)
  */
 export const PUT = withAuth<FoodData, { id: string }>(
   async (req: NextRequest, userId, context) => {
@@ -114,11 +120,25 @@ export const PUT = withAuth<FoodData, { id: string }>(
       // Check if user has permission to update this food
       // Users can only update their own foods, not system foods
       const user = await User.findById(userId);
-const isAdmin = user?.role?.includes('admin');
+      const isAdmin = user?.role?.includes('admin');
 
-if (!isAdmin && (!food.userId || food.userId.toString() !== userId)) {
-  return apiError('You do not have permission to update this food', 403, 'ERR_FORBIDDEN');
-}
+      if (!isAdmin && (!food.userId || food.userId.toString() !== userId)) {
+        return apiError('You do not have permission to update this food', 403, 'ERR_FORBIDDEN');
+      }
+      
+      // 🚨 SAME-DAY VALIDATION FOR USER FOODS
+      if (food.userId && !isAdmin) {
+        const todayString = getTodayString();
+        const foodCreatedDateString = food.createdAt.toISOString().split('T')[0];
+        
+        if (foodCreatedDateString !== todayString) {
+          return apiError(
+            `Cannot modify historical data. Food was created on ${foodCreatedDateString}, today is ${todayString}.`,
+            403,
+            'ERR_HISTORICAL_EDIT'
+          );
+        }
+      }
       
       // Create update object with validated fields
       const updates: any = {};
@@ -302,10 +322,14 @@ if (!isAdmin && (!food.userId || food.userId.toString() !== userId)) {
 
 /**
  * DELETE /api/foods/[id]
- * Delete a specific food by ID
+ * Delete a specific food by ID (SAME-DAY + EVENTS)
  */
-export const DELETE = withAuth<{ id: string }, { id: string }>(
+export const DELETE = withAuth<{ id: string; token?: string; achievements?: any }, { id: string }>(
   async (req: NextRequest, userId, context) => {
+    const token = generateToken();
+    
+    console.log(`🗑️ [FOOD-DELETE] DELETE started with token: ${token}`);
+    
     try {
       await dbConnect();
       
@@ -338,8 +362,26 @@ export const DELETE = withAuth<{ id: string }, { id: string }>(
       const user = await User.findById(userId);
       const isAdmin = user?.role?.includes('admin');
       if (!isAdmin && (!food.userId || food.userId.toString() !== userId)) {
-  return apiError('You do not have permission to delete this food', 403, 'ERR_FORBIDDEN');
-}
+        return apiError('You do not have permission to delete this food', 403, 'ERR_FORBIDDEN');
+      }
+      
+      // 🚨 SAME-DAY VALIDATION FOR USER FOODS
+      if (food.userId && !isAdmin) {
+        const todayString = getTodayString();
+        const foodCreatedDateString = food.createdAt.toISOString().split('T')[0];
+        
+        if (foodCreatedDateString !== todayString) {
+          return apiError(
+            `Cannot delete historical data. Food was created on ${foodCreatedDateString}, today is ${todayString}.`,
+            403,
+            'ERR_HISTORICAL_DELETE'
+          );
+        }
+      }
+      
+      // Store food data for event before deletion
+      const foodForEvent = convertFoodToResponse(food);
+      const isSystemFood = food.isSystemFood;
       
       // Delete food with defensive error handling
       try {
@@ -348,8 +390,80 @@ export const DELETE = withAuth<{ id: string }, { id: string }>(
         return handleApiError(error, 'Error deleting food from database');
       }
       
-      return apiResponse({ id: foodId }, true, 'Food deleted successfully');
+      // 🚀 FIRE FOOD DELETION EVENT TO COORDINATOR (only for user foods)
+      if (!isSystemFood) {
+        try {
+          console.log('🗑️ [FOOD-DELETE] Firing food_deleted event to coordinator...');
+          
+          // Get new total food count for user (after deletion)
+          const totalFoods = await Food.countDocuments({ userId });
+          
+          // Build proper FoodEvent for deletion
+          const foodEvent: FoodEvent = {
+            token,
+            userId,
+            source: 'trophe',
+            action: 'food_deleted',
+            timestamp: new Date(),
+            metadata: {
+              deletedFood: foodForEvent
+            },
+            foodData: {
+              foodId,
+              foodName: foodForEvent.name,
+              totalFoods, // New count after deletion
+              isSystemFood: false
+            }
+          };
+          
+          console.log('🗑️ [FOOD-DELETE] Firing food deletion event:', {
+            token,
+            action: foodEvent.action,
+            foodName: foodEvent.foodData.foodName,
+            newTotalFoods: foodEvent.foodData.totalFoods
+          });
+          
+          const coordinatorResult = await processEvent(foodEvent);
+          
+          console.log('🎉 [FOOD-DELETE] Coordinator processing complete:', {
+            success: coordinatorResult.success,
+            xpAwarded: coordinatorResult.xpAwarded, // Should be negative
+            token: coordinatorResult.token
+          });
+          
+          // Build response
+          let message = 'Food deleted successfully';
+          if (coordinatorResult.xpAwarded && coordinatorResult.xpAwarded < 0) {
+            message = `Food deleted (${Math.abs(coordinatorResult.xpAwarded)} XP reversed)`;
+          }
+          
+          return apiResponse({
+            id: foodId,
+            token,
+            achievements: coordinatorResult.achievementsUnlocked
+          }, true, message);
+          
+        } catch (coordinatorError) {
+          console.error('💥 [FOOD-DELETE] Coordinator error:', coordinatorError);
+          
+          // Still return success since food was deleted, but note coordinator failure
+          return apiResponse({
+            id: foodId,
+            token
+          }, true, 'Food deleted successfully, but event processing failed');
+        }
+      } else {
+        // System food deletion - no events
+        console.log('🗑️ [FOOD-DELETE] System food deleted (no events fired)');
+        
+        return apiResponse({
+          id: foodId,
+          token
+        }, true, 'System food deleted successfully');
+      }
+      
     } catch (error) {
+      console.error('💥 [FOOD-DELETE] Unexpected error in DELETE /api/foods/[id]:', error);
       return handleApiError(error, "Error deleting food");
     }
   }, 

@@ -51,7 +51,7 @@ export interface TaskEventContext {
  */
 export interface MealEvent extends BaseEventData {
   source: 'trophe';
-  action: 'meal_created' | 'meal_deleted';
+  action: 'meal_created' | 'meal_deleted' | 'meal_updated';
   mealData: {
     mealId: string;
     mealName: string;

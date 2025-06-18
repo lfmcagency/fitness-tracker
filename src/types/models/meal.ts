@@ -23,6 +23,7 @@ export interface IMealMethods {
 }
 
 export interface IMeal extends mongoose.Document {
+  creationToken: IMealFood[];
   _id: mongoose.Types.ObjectId;
   userId: mongoose.Types.ObjectId;
   date: Date;
@@ -32,6 +33,7 @@ export interface IMeal extends mongoose.Document {
   totals: IMealTotals;
   notes?: string;
   createdAt: Date;
+  creationtoken?: string;
   updatedAt: Date;
   
   // Methods

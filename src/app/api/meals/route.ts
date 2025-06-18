@@ -12,10 +12,10 @@ import { CreateMealRequest } from "@/types/api/mealRequests";
 import { convertMealToResponse } from "@/types/converters/mealConverters";
 import { IMeal } from "@/types/models/meal";
 
-// NEW: Rich coordinator integration
-import { processEvent, generateToken, startTokenTracking, trackTokenStage } from '@/lib/event-coordinator';
-import { BaseEventData } from '@/lib/event-coordinator/types';
-import { calculateNutritionContext } from '@/lib/shared-utilities';
+// Event coordinator integration
+import { processEvent, generateToken } from '@/lib/event-coordinator';
+import { MealEvent } from '@/lib/event-coordinator/types';
+import { calculateNutritionContext, getTodayString } from '@/lib/shared-utilities';
 
 // Default pagination values
 const DEFAULT_PAGE = 1;
@@ -213,20 +213,16 @@ export const GET = withAuth<{
 
 /**
  * POST /api/meals
- * Create a new meal with RICH COORDINATOR INTEGRATION
+ * Create a new meal with CLEAN EVENT INTEGRATION
  */
 export const POST = withAuth<MealData & { token?: string; achievements?: any }>(
   async (req: NextRequest, userId: string) => {
-    // 🎯 GENERATE TOKEN FOR END-TO-END TRACKING
     const token = generateToken();
-    startTokenTracking(token);
-    trackTokenStage(token, 'meal_api_start');
     
     console.log(`🥗 [MEAL-API] POST started with token: ${token}`);
     
     try {
       await dbConnect();
-      trackTokenStage(token, 'db_connected');
       
       // Parse request body with defensive error handling
       let body: CreateMealRequest;
@@ -267,18 +263,12 @@ export const POST = withAuth<MealData & { token?: string; achievements?: any }>(
         return apiError('Invalid time format. Use HH:MM format.', 400, 'ERR_VALIDATION');
       }
       
-      // Validate foods array if provided
+      // Process foods array if provided
       const foods: any[] = [];
-      if (body.foods) {
-        if (!Array.isArray(body.foods)) {
-          return apiError('Foods must be an array', 400, 'ERR_VALIDATION');
-        }
-        
-        // Process each food with validation
+      if (body.foods && Array.isArray(body.foods)) {
         for (const food of body.foods) {
           try {
             if (!food || typeof food !== 'object') {
-              console.warn('Skipping invalid food entry:', food);
               continue;
             }
             
@@ -286,7 +276,6 @@ export const POST = withAuth<MealData & { token?: string; achievements?: any }>(
             let foodId = null;
             if (food.foodId) {
               if (!isValidObjectId(food.foodId)) {
-                console.warn('Skipping food with invalid foodId:', food.foodId);
                 continue;
               }
               foodId = food.foodId;
@@ -309,63 +298,11 @@ export const POST = withAuth<MealData & { token?: string; achievements?: any }>(
               }
             }
             
-            // Validate nutritional values with safe parsing
-            let protein = 0;
-            let carbs = 0;
-            let fat = 0;
-            let calories = 0;
-            
-            // Parse protein
-            if (food.protein !== undefined) {
-              if (typeof food.protein === 'string') {
-                protein = parseFloat(food.protein);
-              } else if (typeof food.protein === 'number') {
-                protein = food.protein;
-              }
-              
-              if (isNaN(protein) || protein < 0) {
-                protein = 0;
-              }
-            }
-            
-            // Parse carbs
-            if (food.carbs !== undefined) {
-              if (typeof food.carbs === 'string') {
-                carbs = parseFloat(food.carbs);
-              } else if (typeof food.carbs === 'number') {
-                carbs = food.carbs;
-              }
-              
-              if (isNaN(carbs) || carbs < 0) {
-                carbs = 0;
-              }
-            }
-            
-            // Parse fat
-            if (food.fat !== undefined) {
-              if (typeof food.fat === 'string') {
-                fat = parseFloat(food.fat);
-              } else if (typeof food.fat === 'number') {
-                fat = food.fat;
-              }
-              
-              if (isNaN(fat) || fat < 0) {
-                fat = 0;
-              }
-            }
-            
-            // Parse calories
-            if (food.calories !== undefined) {
-              if (typeof food.calories === 'string') {
-                calories = parseFloat(food.calories);
-              } else if (typeof food.calories === 'number') {
-                calories = food.calories;
-              }
-              
-              if (isNaN(calories) || calories < 0) {
-                calories = 0;
-              }
-            }
+            // Parse nutritional values
+            const protein = parseNutrientValue(food.protein);
+            const carbs = parseNutrientValue(food.carbs);
+            const fat = parseNutrientValue(food.fat);
+            let calories = parseNutrientValue(food.calories);
             
             // Calculate calories if not provided
             if (calories === 0 && (protein > 0 || carbs > 0 || fat > 0)) {
@@ -395,7 +332,6 @@ export const POST = withAuth<MealData & { token?: string; achievements?: any }>(
             foods.push(foodToAdd);
           } catch (foodError) {
             console.error('Error processing food entry:', foodError);
-            // Skip this food but continue processing others
           }
         }
       }
@@ -405,16 +341,16 @@ export const POST = withAuth<MealData & { token?: string; achievements?: any }>(
         name: body.name.trim(),
         date: mealDate,
         time: body.time || '',
-        userId, // Associate with current user
+        userId,
         notes: body.notes && typeof body.notes === 'string' ? body.notes.trim() : '',
-        foods: foods
+        foods: foods,
+        creationToken: token  // Store creation token for threshold tracking
       };
       
       // Create meal with defensive error handling
       let newMeal: IMeal;
       try {
         newMeal = await Meal.create(mealData) as IMeal;
-        trackTokenStage(token, 'meal_saved');
       } catch (error) {
         return handleApiError(error, 'Error creating meal in database');
       }
@@ -422,12 +358,11 @@ export const POST = withAuth<MealData & { token?: string; achievements?: any }>(
       // Convert to response using converter
       const mealResponse = convertMealToResponse(newMeal);
       
-      // 🚀 FIRE NUTRITION EVENT TO COORDINATOR
+      // 🚀 FIRE MEAL EVENT TO COORDINATOR
       try {
-        console.log('🥗 [MEAL-API] Firing nutrition event to coordinator...');
-        trackTokenStage(token, 'coordinator_call_start');
+        console.log('🥗 [MEAL-API] Firing meal_created event to coordinator...');
         
-        // Get all meals for today to calculate context
+        // Get all meals for today to calculate total count
         const todayStart = new Date(mealDate);
         todayStart.setHours(0, 0, 0, 0);
         const todayEnd = new Date(todayStart);
@@ -438,7 +373,10 @@ export const POST = withAuth<MealData & { token?: string; achievements?: any }>(
           date: { $gte: todayStart, $lt: todayEnd }
         }) as IMeal[];
         
-        // Default macro goals (TODO: get from user profile in Phase 6)
+        // Get total meal count for user (lifetime)
+        const totalMeals = await Meal.countDocuments({ userId });
+        
+        // Default macro goals (TODO: get from user profile)
         const macroGoals = {
           protein: 140,
           carbs: 200,
@@ -446,7 +384,7 @@ export const POST = withAuth<MealData & { token?: string; achievements?: any }>(
           calories: 2200
         };
         
-        // Calculate nutrition context
+        // Calculate nutrition context using shared utility
         const nutritionContext = calculateNutritionContext(
           userId,
           mealDate.toISOString().split('T')[0],
@@ -454,33 +392,37 @@ export const POST = withAuth<MealData & { token?: string; achievements?: any }>(
           macroGoals
         );
         
-        // Build rich event data
-        const eventData: BaseEventData = {
+        // Build proper MealEvent
+        const mealEvent: MealEvent = {
           token,
           userId,
           source: 'trophe',
-          action: 'meal_logged',
+          action: 'meal_created',
           timestamp: new Date(),
           metadata: {
-            mealData: mealResponse,
-            nutritionContext,
-            allMealsToday: allMealsToday.length,
-            macroGoals,
-            mealDate: mealDate.toISOString()
+            mealResponse,
+            nutritionContext
+          },
+          mealData: {
+            mealId: newMeal._id.toString(),
+            mealName: newMeal.name,
+            mealDate: mealDate.toISOString().split('T')[0],
+            totalMeals,
+            dailyMacroProgress: nutritionContext.dailyMacroProgress,
+            macroTotals: nutritionContext.macroTotals
           }
         };
         
-        console.log('🥗 [MEAL-API] Firing nutrition event:', {
+        console.log('🥗 [MEAL-API] Firing meal event:', {
           token,
-          action: eventData.action,
-          mealName: mealResponse.name,
-          macroProgress: nutritionContext.dailyMacroProgress.total
+          action: mealEvent.action,
+          mealName: mealEvent.mealData.mealName,
+          macroProgress: mealEvent.mealData.dailyMacroProgress.total
         });
         
-        const coordinatorResult = await processEvent(eventData);
-        trackTokenStage(token, 'coordinator_complete');
+        const coordinatorResult = await processEvent(mealEvent);
         
-        console.log('🎉 [MEAL-API] Nutrition coordinator processing complete:', {
+        console.log('🎉 [MEAL-API] Coordinator processing complete:', {
           success: coordinatorResult.success,
           achievementsUnlocked: coordinatorResult.achievementsUnlocked?.length || 0,
           token: coordinatorResult.token
@@ -499,12 +441,11 @@ export const POST = withAuth<MealData & { token?: string; achievements?: any }>(
             achievements: coordinatorResult.achievementsUnlocked,
             token: coordinatorResult.token
           } : undefined,
-          token // Include token in response for debugging
+          token
         }, true, message, 201);
         
       } catch (coordinatorError) {
-        console.error('💥 [MEAL-API] Nutrition coordinator error:', coordinatorError);
-        trackTokenStage(token, 'coordinator_failed');
+        console.error('💥 [MEAL-API] Coordinator error:', coordinatorError);
         
         // Still return success since meal was saved, but note coordinator failure
         return apiResponse({
@@ -515,9 +456,26 @@ export const POST = withAuth<MealData & { token?: string; achievements?: any }>(
       
     } catch (error) {
       console.error('💥 [MEAL-API] Unexpected error in POST /api/meals:', error);
-      trackTokenStage(token, 'meal_api_failed');
       return handleApiError(error, "Error creating meal");
     }
   }, 
   AuthLevel.DEV_OPTIONAL
 );
+
+/**
+ * Helper function to safely parse nutrient values
+ */
+function parseNutrientValue(value: any): number {
+  if (value === undefined || value === null) return 0;
+  
+  let parsedValue: number;
+  if (typeof value === 'string') {
+    parsedValue = parseFloat(value);
+  } else if (typeof value === 'number') {
+    parsedValue = value;
+  } else {
+    return 0;
+  }
+  
+  return !isNaN(parsedValue) && parsedValue >= 0 ? parsedValue : 0;
+}

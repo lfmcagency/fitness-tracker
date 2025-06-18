@@ -11,6 +11,10 @@ import { CreateFoodRequest } from "@/types/api/foodRequests";
 import { convertFoodToResponse } from "@/types/converters/foodConverters";
 import { IFood } from "@/types/models/food";
 
+// Event coordinator integration
+import { processEvent, generateToken } from '@/lib/event-coordinator';
+import { FoodEvent } from '@/lib/event-coordinator/types';
+
 /**
  * GET /api/foods
  * List foods with optional search
@@ -54,12 +58,12 @@ export const GET = withAuth<FoodListData>(
       const skip = (page - 1) * limit;
       
       const [foods, total] = await Promise.all([
-  Food.find(query)
-    .sort({ name: 1 })
-    .skip(skip)
-    .limit(limit) as Promise<IFood[]>,  // Remove .lean()
-  Food.countDocuments(query)
-]);
+        Food.find(query)
+          .sort({ name: 1 })
+          .skip(skip)
+          .limit(limit) as Promise<IFood[]>,
+        Food.countDocuments(query)
+      ]);
       
       // Convert to response format
       const foodResponses = foods.map(food => convertFoodToResponse(food));
@@ -83,10 +87,14 @@ export const GET = withAuth<FoodListData>(
 
 /**
  * POST /api/foods
- * Create a new food
+ * Create a new food with EVENT INTEGRATION
  */
-export const POST = withAuth<FoodData>(  
+export const POST = withAuth<FoodData & { token?: string; achievements?: any }>(  
   async (req: NextRequest, userId: string) => {
+    const token = generateToken();
+    
+    console.log(`🥕 [FOOD-API] POST started with token: ${token}`);
+    
     try {
       await dbConnect();
       
@@ -151,14 +159,84 @@ export const POST = withAuth<FoodData>(
       };
       
       // Create food
-      const food = await Food.create(foodData) as IFood;
+      let newFood: IFood;
+      try {
+        newFood = await Food.create(foodData) as IFood;
+      } catch (error) {
+        return handleApiError(error, 'Error creating food in database');
+      }
       
       // Convert to response
-      const foodResponse = convertFoodToResponse(food);
+      const foodResponse = convertFoodToResponse(newFood);
       
-      return apiResponse(foodResponse, true, 'Food created successfully', 201);
+      // 🚀 FIRE FOOD EVENT TO COORDINATOR
+      try {
+        console.log('🥕 [FOOD-API] Firing food_created event to coordinator...');
+        
+        // Get total food count for user (lifetime)
+        const totalFoods = await Food.countDocuments({ userId });
+        
+        // Build proper FoodEvent
+        const foodEvent: FoodEvent = {
+          token,
+          userId,
+          source: 'trophe',
+          action: 'food_created',
+          timestamp: new Date(),
+          metadata: {
+            foodResponse
+          },
+          foodData: {
+            foodId: newFood._id.toString(),
+            foodName: newFood.name,
+            totalFoods,
+            isSystemFood: false
+          }
+        };
+        
+        console.log('🥕 [FOOD-API] Firing food event:', {
+          token,
+          action: foodEvent.action,
+          foodName: foodEvent.foodData.foodName,
+          totalFoods: foodEvent.foodData.totalFoods
+        });
+        
+        const coordinatorResult = await processEvent(foodEvent);
+        
+        console.log('🎉 [FOOD-API] Coordinator processing complete:', {
+          success: coordinatorResult.success,
+          achievementsUnlocked: coordinatorResult.achievementsUnlocked?.length || 0,
+          token: coordinatorResult.token
+        });
+        
+        // Build response with achievement info if any were unlocked
+        let message = 'Food created successfully';
+        if (coordinatorResult.achievementsUnlocked && coordinatorResult.achievementsUnlocked.length > 0) {
+          message = `Food created and ${coordinatorResult.achievementsUnlocked.length} achievement(s) unlocked!`;
+        }
+        
+        return apiResponse({
+          ...foodResponse,
+          achievements: coordinatorResult.achievementsUnlocked && coordinatorResult.achievementsUnlocked.length > 0 ? {
+            unlockedCount: coordinatorResult.achievementsUnlocked.length,
+            achievements: coordinatorResult.achievementsUnlocked,
+            token: coordinatorResult.token
+          } : undefined,
+          token
+        }, true, message, 201);
+        
+      } catch (coordinatorError) {
+        console.error('💥 [FOOD-API] Coordinator error:', coordinatorError);
+        
+        // Still return success since food was saved, but note coordinator failure
+        return apiResponse({
+          ...foodResponse,
+          token
+        }, true, 'Food created successfully, but event processing failed', 201);
+      }
       
     } catch (error) {
+      console.error('💥 [FOOD-API] Unexpected error in POST /api/foods:', error);
       return handleApiError(error, "Error creating food");
     }
   }, 
