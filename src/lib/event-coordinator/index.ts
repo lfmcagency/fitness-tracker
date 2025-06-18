@@ -22,6 +22,8 @@ import {
   logEventSuccess,
   logEventFailure 
 } from './logging';
+import { handleProgressEvent } from '@/lib/xp/index';
+import { dbConnect } from '@/lib/db';
 
 /**
  * Domain processor registry
@@ -106,7 +108,7 @@ export async function processEvent(event: DomainEvent): Promise<DomainEventResul
 }
 
 /**
- * Send simple context to Progress system
+ * Send simple context to Progress system - FIXED: Direct function call
  */
 async function sendToProgress(contract: ProgressContract): Promise<{
   xpAwarded: number;
@@ -118,30 +120,15 @@ async function sendToProgress(contract: ProgressContract): Promise<{
       action: contract.action
     });
     
-    // Call Progress API (keeping existing endpoint for now)
-    const response = await fetch('/api/progress/add-xp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId: contract.userId,
-        eventId: Date.now(),
-        source: `${contract.source}_${contract.action}`,
-        metadata: {
-          token: contract.token,
-          context: contract.context,
-          timestamp: contract.timestamp.toISOString()
-        }
-      })
-    });
-
-    const result = await response.json();
-    if (!result.success) {
-      throw new Error(result.message || 'Progress processing failed');
-    }
-
+    // Ensure DB connection for progress processing
+    await dbConnect();
+    
+    // Call progress handler directly (no HTTP calls)
+    const result = await handleProgressEvent(contract);
+    
     return {
-      xpAwarded: result.data?.xpAwarded || 0,
-      achievementsUnlocked: result.data?.achievementsUnlocked || []
+      xpAwarded: result.xpAwarded || 0,
+      achievementsUnlocked: result.achievementsUnlocked || []
     };
     
   } catch (error) {
@@ -203,7 +190,7 @@ export async function reverseEvent(
     
     trackTokenStage(reverseToken, 'reverse_complete');
     
-    // Send reversal to Progress (subtract XP)
+    // Send reversal to Progress (subtract XP) - direct call
     if (reverseResult.context && originalEvent.xpAwarded > 0) {
       await sendToProgress({
         token: reverseToken,

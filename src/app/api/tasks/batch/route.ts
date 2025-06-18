@@ -1,3 +1,4 @@
+// src/app/api/tasks/batch/route.ts
 export const dynamic = 'force-dynamic';
 
 import { NextRequest } from 'next/server';
@@ -8,14 +9,29 @@ import { ITask } from '@/types/models/tasks';
 import { withAuth, AuthLevel } from '@/lib/auth-utils';
 import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { convertTaskToTaskData } from '@/types/converters/taskConverters';
-import { handleTaskCompletion, handleBatchTaskCompletion } from '@/lib/event-coordinator/task-completion';
+import { processEvent, generateToken } from '@/lib/event-coordinator';
+import { extractAchievements, mergeAchievementNotifications } from '@/lib/shared-utilities';
+import { getTodayString, isSameDay } from '@/lib/shared-utilities';
 import { TaskData } from '@/types';
 import { BatchTaskRequest } from '@/types/api/taskRequests';
 import { isValidObjectId } from 'mongoose';
 
+// Same-day validation helper
+function validateSameDay(targetDate: Date): void {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  const target = new Date(targetDate);
+  target.setHours(0, 0, 0, 0);
+  
+  if (target.getTime() !== today.getTime()) {
+    throw new Error('Can only modify today\'s data. Yesterday is locked history.');
+  }
+}
+
 /**
  * POST /api/tasks/batch
- * Performs batch operations on tasks with FIXED event-driven architecture
+ * Performs batch operations on tasks with clean event integration
  */
 export const POST = withAuth<TaskData[] | { count: number; taskIds: string[]; achievements?: any }>(
   async (req: NextRequest, userId: string) => {
@@ -30,10 +46,9 @@ export const POST = withAuth<TaskData[] | { count: number; taskIds: string[]; ac
         return apiError('Invalid JSON in request body', 400, 'ERR_INVALID_JSON');
       }
       
-      // Extract and validate operation
+      // Validate operation
       const operation = requestBody?.operation;
-      if (!operation || typeof operation !== 'string' || 
-          !['complete', 'delete', 'update'].includes(operation)) {
+      if (!operation || !['complete', 'delete', 'update'].includes(operation)) {
         return apiError(
           'Invalid operation. Supported operations: complete, delete, update.',
           400,
@@ -41,13 +56,12 @@ export const POST = withAuth<TaskData[] | { count: number; taskIds: string[]; ac
         );
       }
       
-      // Extract and validate taskIds
+      // Validate and filter task IDs
       const taskIds = requestBody?.taskIds;
       if (!Array.isArray(taskIds) || taskIds.length === 0) {
         return apiError('No task IDs provided.', 400, 'ERR_VALIDATION');
       }
       
-      // Filter out invalid task IDs
       const validTaskIds = taskIds.filter(id => 
         id && typeof id === 'string' && id.trim() !== '' && isValidObjectId(id)
       );
@@ -56,7 +70,6 @@ export const POST = withAuth<TaskData[] | { count: number; taskIds: string[]; ac
         return apiError('No valid task IDs provided.', 400, 'ERR_VALIDATION');
       }
       
-      // Extract data object
       const data = requestBody?.data;
       
       // Filter tasks to only include those owned by the user
@@ -68,8 +81,6 @@ export const POST = withAuth<TaskData[] | { count: number; taskIds: string[]; ac
       // Perform the requested operation
       switch (operation) {
         case 'complete': {
-          console.log(`🎯 [BATCH] Completing ${validTaskIds.length} tasks...`);
-          
           try {
             const completionDate = data?.completionDate 
               ? new Date(data.completionDate) 
@@ -79,16 +90,27 @@ export const POST = withAuth<TaskData[] | { count: number; taskIds: string[]; ac
               return apiError('Invalid completion date', 400, 'ERR_INVALID_DATE');
             }
             
+            // Same-day validation for all completions
+            try {
+              validateSameDay(completionDate);
+            } catch (error) {
+              return apiError(error instanceof Error ? error.message : 'Same-day validation failed', 403, 'ERR_HISTORICAL_EDIT');
+            }
+            
             // Get all tasks and prepare for batch completion
             const tasks = await Task.find(query) as ITask[];
-            const tasksToComplete = [];
+            const completions = [];
+            const allAchievements = [];
             
             for (const task of tasks) {
               if (!task.isCompletedOnDate(completionDate)) {
+                const token = generateToken();
+                
                 // Store previous state before completing
                 const previousState = {
                   streak: task.currentStreak,
-                  totalCompletions: task.totalCompletions
+                  totalCompletions: task.totalCompletions,
+                  completed: false
                 };
                 
                 // Complete the task
@@ -105,50 +127,58 @@ export const POST = withAuth<TaskData[] | { count: number; taskIds: string[]; ac
                   'api'
                 );
                 
-                tasksToComplete.push({
-                  task,
-                  completionDate,
-                  previousState
-                });
+                // Fire event to coordinator
+                const taskEvent = {
+                  token,
+                  userId,
+                  source: 'ethos' as const,
+                  action: 'task_completed' as const,
+                  timestamp: new Date(),
+                  taskData: {
+                    taskId: task._id.toString(),
+                    taskName: task.name,
+                    streakCount: task.currentStreak,
+                    totalCompletions: task.totalCompletions,
+                    completionDate: completionDate.toISOString(),
+                    previousState
+                  }
+                };
                 
-                console.log(`✅ [BATCH] Completed task: ${task.name}`);
+                try {
+                  const result = await processEvent(taskEvent);
+                  const achievements = extractAchievements(result);
+                  if (achievements) {
+                    allAchievements.push(achievements);
+                  }
+                } catch (coordinatorError) {
+                  console.error(`💥 [BATCH] Error processing coordinator event for task ${task.name}:`, coordinatorError);
+                  // Continue - completion still succeeded
+                }
+                
+                completions.push(task);
               }
             }
             
-            // 🆕 FIRE EVENTS TO COORDINATOR - FIXED BATCH VERSION 🆕
-            let coordinatorResult = {
-              achievementsUnlocked: [] as string[],
-              processedTasks: 0,
-              errors: [] as string[]
-            };
-            
-            if (tasksToComplete.length > 0) {
-              try {
-                coordinatorResult = await handleBatchTaskCompletion(userId, tasksToComplete);
-                console.log(`🎉 [BATCH] Coordinator processing complete: ${coordinatorResult.processedTasks}/${tasksToComplete.length} tasks`);
-              } catch (coordinatorError) {
-                console.error('💥 [BATCH] Error processing coordinator events:', coordinatorError);
-                // Continue - completions still succeeded
-              }
-            }
+            // Merge all achievements
+            const mergedAchievements = mergeAchievementNotifications(...allAchievements);
             
             // Build response
-            const completedTaskData = tasksToComplete.map(({ task }) => convertTaskToTaskData(task, completionDate));
+            const completedTaskData = completions.map(task => convertTaskToTaskData(task, completionDate));
             
             const response: any = {
               tasks: completedTaskData,
               completedCount: completedTaskData.length
             };
             
-            if (coordinatorResult.achievementsUnlocked.length > 0) {
+            if (mergedAchievements) {
               response.achievements = {
-                unlockedCount: coordinatorResult.achievementsUnlocked.length,
-                achievements: coordinatorResult.achievementsUnlocked
+                unlockedCount: mergedAchievements.unlockedCount,
+                achievements: mergedAchievements.achievements
               };
             }
             
-            const message = coordinatorResult.achievementsUnlocked.length > 0
-              ? `${completedTaskData.length} tasks completed and ${coordinatorResult.achievementsUnlocked.length} achievement(s) unlocked!`
+            const message = mergedAchievements
+              ? `${completedTaskData.length} tasks completed and ${mergedAchievements.unlockedCount} achievement(s) unlocked!`
               : `${completedTaskData.length} tasks marked as completed.`;
             
             return apiResponse(response, true, message);
@@ -159,7 +189,7 @@ export const POST = withAuth<TaskData[] | { count: number; taskIds: string[]; ac
         
         case 'delete': {
           try {
-            // First check for system tasks
+            // First check for system tasks and same-day validation
             const tasksToDelete = await Task.find(query) as ITask[];
             const systemTasks = tasksToDelete.filter(task => task.isSystemTask);
             
@@ -171,10 +201,49 @@ export const POST = withAuth<TaskData[] | { count: number; taskIds: string[]; ac
               );
             }
             
+            // Same-day validation for all deletions
+            const today = getTodayString();
+            const invalidTasks = tasksToDelete.filter(task => {
+              const taskDate = task.date.toISOString().split('T')[0];
+              return taskDate !== today;
+            });
+            
+            if (invalidTasks.length > 0) {
+              return apiError(
+                `Can only delete today's tasks. Historical tasks: ${invalidTasks.map(t => t.name).join(', ')}`,
+                403,
+                'ERR_HISTORICAL_DELETE'
+              );
+            }
+            
+            // Fire deletion events for each task
+            for (const task of tasksToDelete) {
+              const token = generateToken();
+              
+              const taskEvent = {
+                token,
+                userId,
+                source: 'ethos' as const,
+                action: 'task_deleted' as const,
+                timestamp: new Date(),
+                taskData: {
+                  taskId: task._id.toString(),
+                  taskName: task.name,
+                  streakCount: task.currentStreak,
+                  totalCompletions: task.totalCompletions
+                }
+              };
+              
+              try {
+                await processEvent(taskEvent);
+              } catch (coordinatorError) {
+                console.error(`💥 [BATCH] Error processing deletion event for task ${task.name}:`, coordinatorError);
+                // Continue - deletion still succeeded
+              }
+            }
+            
             // Proceed with deletion
             const deleteResult = await Task.deleteMany(query);
-            
-            console.log(`🗑️ [BATCH] Deleted ${deleteResult?.deletedCount || 0} tasks`);
             
             return apiResponse(
               { 
@@ -237,7 +306,6 @@ export const POST = withAuth<TaskData[] | { count: number; taskIds: string[]; ac
                 if (updatedTask) {
                   const taskData = convertTaskToTaskData(updatedTask);
                   updatedTasks.push(taskData);
-                  console.log(`📝 [BATCH] Updated task: ${updatedTask.name}`);
                 }
               } catch (error) {
                 console.error(`💥 [BATCH] Error updating task ${taskId}:`, error);
@@ -256,7 +324,6 @@ export const POST = withAuth<TaskData[] | { count: number; taskIds: string[]; ac
         }
         
         default:
-          // This should never happen due to validation above
           return apiError('Invalid operation', 400, 'ERR_INVALID_OPERATION');
       }
     } catch (error) {
