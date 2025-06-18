@@ -9,6 +9,7 @@ import { apiResponse, apiError, handleApiError } from '@/lib/api-utils';
 import { TaskData, PaginationInfo, RecurrencePattern, TaskPriority, DomainCategory } from '@/types';
 import { CreateTaskRequest, TaskQueryParams } from '@/types/api/taskRequests';
 import { convertTaskToTaskData } from '@/lib/task-utils';
+import { processEvent, generateToken } from '@/lib/event-coordinator'; // 🆕 Added for creation events
 
 // Default pagination values
 const DEFAULT_PAGE = 1;
@@ -223,7 +224,7 @@ export const GET = withAuth<{ data: TaskData[]; pagination: PaginationInfo }>(
 
 /**
  * POST /api/tasks
- * Creates a new task (simplified for event-driven architecture)
+ * Creates a new task with event firing (FIXED: Now fires creation events!)
  */
 export const POST = withAuth<TaskData>(
   async (req: NextRequest, userId: string) => {
@@ -334,7 +335,28 @@ export const POST = withAuth<TaskData>(
       // Convert to TaskData format with defensive error handling
       const taskData_result = convertTaskToTaskData(newTask);
       
-      // NOTE: No event firing for task creation - only completion events matter
+      // 🆕 FIRE CREATION EVENT (this was missing!)
+      const taskEvent = {
+        token: generateToken(),
+        userId,
+        source: 'ethos' as const,
+        action: 'task_created' as const,
+        timestamp: new Date(),
+        taskData: {
+          taskId: newTask._id.toString(),
+          taskName: newTask.name,
+          streakCount: 0,
+          totalCompletions: 0
+        }
+      };
+
+      try {
+        await processEvent(taskEvent);
+        console.log(`✅ [TASK-CREATE] Event processed: ${taskEvent.token}`);
+      } catch (coordinatorError) {
+        console.error('💥 [TASK-CREATE] Event processing failed:', coordinatorError);
+        // Continue - task creation still succeeded, just event logging failed
+      }
       
       return apiResponse(taskData_result, true, 'Task created successfully', 201);
     } catch (error) {

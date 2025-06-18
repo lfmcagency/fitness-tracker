@@ -3,13 +3,16 @@
  * 
  * Simple domain router - no more rich contracts, no more orchestration.
  * Just routes events to processors and sends context to Progress.
+ * 
+ * 🆕 FIXED: Now actually saves events to database for reversal!
  */
 
 import { 
   DomainEvent, 
   DomainEventResult, 
   ProgressContract,
-  DomainProcessor 
+  DomainProcessor,
+  EventContext
 } from './types';
 import { EthosProcessor } from './ethos';
 import { TropheProcessor } from './trophe';
@@ -24,6 +27,7 @@ import {
 } from './logging';
 import { handleProgressEvent } from '@/lib/xp/index';
 import { dbConnect } from '@/lib/db';
+import SimpleEventLog from './SimpleEventLog'; // 🆕 Added for database persistence
 
 /**
  * Domain processor registry
@@ -35,7 +39,7 @@ const PROCESSORS: Record<string, DomainProcessor> = {
 };
 
 /**
- * MAIN EVENT PROCESSOR - Simple domain router
+ * MAIN EVENT PROCESSOR - Simple domain router with database persistence
  */
 export async function processEvent(event: DomainEvent): Promise<DomainEventResult> {
   const { token, source } = event;
@@ -47,6 +51,9 @@ export async function processEvent(event: DomainEvent): Promise<DomainEventResul
   console.log(`🎯 [COORDINATOR] Processing ${source}_${event.action} | ${token}`);
   
   try {
+    // Ensure database connection
+    await dbConnect();
+    
     // Get domain processor
     const processor = PROCESSORS[source];
     if (!processor) {
@@ -63,6 +70,20 @@ export async function processEvent(event: DomainEvent): Promise<DomainEventResul
       throw new Error(domainResult.error || 'Domain processing failed');
     }
     
+    // 🆕 SAVE EVENT TO DATABASE (this was missing!)
+    try {
+      await SimpleEventLog.createEventLog(
+        event,
+        domainResult.context || {} as EventContext,
+        0 // XP will be updated after progress processing
+      );
+      console.log(`💾 [COORDINATOR] Event saved to database: ${token}`);
+      trackTokenStage(token, 'event_saved');
+    } catch (dbError) {
+      console.error(`💥 [COORDINATOR] Failed to save event: ${token}`, dbError);
+      // Continue processing - don't fail the whole operation for logging issues
+    }
+    
     // Send to Progress if we have context
     let progressResult;
     if (domainResult.context) {
@@ -75,6 +96,23 @@ export async function processEvent(event: DomainEvent): Promise<DomainEventResul
         timestamp: event.timestamp
       });
       trackTokenStage(token, 'progress_complete');
+      
+      // 🆕 UPDATE EVENT LOG WITH ACTUAL XP AWARDED
+      if (progressResult?.xpAwarded) {
+        try {
+          await SimpleEventLog.updateOne(
+            { token },
+            { 
+              xpAwarded: progressResult.xpAwarded,
+              status: 'completed' // Ensure status is set
+            }
+          );
+          console.log(`💰 [COORDINATOR] XP updated in event log: ${token} (+${progressResult.xpAwarded})`);
+        } catch (updateError) {
+          console.error(`💥 [COORDINATOR] Failed to update XP: ${token}`, updateError);
+          // Non-critical - continue
+        }
+      }
     }
     
     // Complete tracking
@@ -95,6 +133,19 @@ export async function processEvent(event: DomainEvent): Promise<DomainEventResul
     
   } catch (error) {
     console.error(`💥 [COORDINATOR] Event failed: ${token}`, error);
+    
+    // 🆕 MARK EVENT AS FAILED IN DATABASE
+    try {
+      await SimpleEventLog.updateOne(
+        { token },
+        { 
+          status: 'failed',
+          errorMessage: error instanceof Error ? error.message : String(error)
+        }
+      );
+    } catch (dbError) {
+      console.error(`💥 [COORDINATOR] Failed to mark event as failed: ${token}`, dbError);
+    }
     
     logEventFailure(token, 'coordinator', event, error instanceof Error ? error.message : String(error));
     completeTokenTracking(token);
@@ -155,11 +206,11 @@ export async function reverseEvent(
   
   try {
     // Import here to avoid circular dependency
-    const { findEventByToken, validateSameDay } = await import('./reverse');
+    const { findEventByToken, validateSameDay, markEventAsReversed } = await import('./reverse');
     
     trackTokenStage(reverseToken, 'lookup_original');
     
-    // Find original event
+    // Find original event in database
     const originalEvent = await findEventByToken(originalToken);
     if (!originalEvent) {
       throw new Error(`Original event not found: ${originalToken}`);
@@ -200,7 +251,11 @@ export async function reverseEvent(
         context: reverseResult.context,
         timestamp: new Date()
       });
+      trackTokenStage(reverseToken, 'progress_reversed');
     }
+    
+    // 🆕 MARK ORIGINAL EVENT AS REVERSED
+    await markEventAsReversed(originalToken, reverseToken);
     
     const performance = completeTokenTracking(reverseToken);
     

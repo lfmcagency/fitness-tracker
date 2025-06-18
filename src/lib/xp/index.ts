@@ -159,7 +159,7 @@ function calculateEthosXp(action: string, context: TaskEventContext): number {
   }
   
   if (action === 'task_deleted') {
-    return 0; // No XP for deletion
+    return -5; //  XP reversal for deletion
   }
   
   return 10; // Default task XP
@@ -187,7 +187,7 @@ function calculateTropheXp(action: string, context: MealEventContext): number {
   }
   
   if (action === 'meal_deleted') {
-    return 0; // No XP for deletion (handled by reversal)
+    return -5; //  reverse base meal logging XP
   }
   
   if (action === 'food_created') {
@@ -195,7 +195,7 @@ function calculateTropheXp(action: string, context: MealEventContext): number {
   }
   
   if (action === 'food_deleted') {
-    return 0; // No XP for deletion
+    return -10; //  reverse base food creation XP
   }
   
   return 5; // Default nutrition XP
@@ -217,7 +217,7 @@ function calculateAreteXp(action: string, context: WeightEventContext): number {
   }
   
   if (action === 'weight_deleted') {
-    return 0; // No XP for deletion (handled by reversal)
+    return -5; // reverse base weight logging XP
   }
   
   return 5; // Default weight XP
